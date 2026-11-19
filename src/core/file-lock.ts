@@ -14,9 +14,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Runs `fn` while holding `<dir>/<name>` (created exclusively, holding the writer's pid). Waits up to `lockWaitMs` (5 s),
- * then throws `busy()`. A stale lock is taken over (see `takeOver`).
+ * then throws `busy()`. A stale lock is taken over (see `takeOver`). An async `fn` holds the lock until it settles.
  */
-export async function withFileLock<T>(dir: string, name: string, fn: () => T, busy: () => Error, o: LockOptions = {}): Promise<T> {
+export async function withFileLock<T>(dir: string, name: string, fn: () => T, busy: () => Error, o: LockOptions = {}): Promise<Awaited<T>> {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const lockFile = join(dir, name);
   const deadline = Date.now() + (o.lockWaitMs ?? 5000);
@@ -30,7 +30,7 @@ export async function withFileLock<T>(dir: string, name: string, fn: () => T, bu
       await sleep(25);
     }
   }
-  try { return fn(); } finally { try { unlinkSync(lockFile); } catch { /* already gone */ } }
+  try { return await fn(); } finally { try { unlinkSync(lockFile); } catch { /* already gone */ } }
 }
 
 /**

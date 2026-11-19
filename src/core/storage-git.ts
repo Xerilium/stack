@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import { existsSync } from 'fs';
-import { isAbsolute, join } from 'path';
+import { isAbsolute, join, resolve } from 'path';
+import { withFileLock } from './file-lock';
 import { FsStorage, FileWrite, WriteOptions, WriteResult, ConflictError, StorageError, checkExpected, validatePath, versionOf } from './storage';
 
 export interface GitStorageOptions {
@@ -9,9 +10,15 @@ export interface GitStorageOptions {
   branch?: string;
   /** Base environment for spawned git (default process.env). Never mutated. */
   env?: NodeJS.ProcessEnv;
+  /** How long a write waits for another Stack process on this repo (default 10 s). @req FR:storage-git/git.concurrency */
+  lockWaitMs?: number;
 }
 
 const MAX_PUSH_ATTEMPTS = 3;
+/** A writer that just let go of `stack-write.lock` waits this long before taking it again, so a waiting process (it polls every 25 ms) gets a turn. */
+const LOCK_YIELD_MS = 50;
+/** When this process last let go of each repo's write lock. */
+const released = new Map<string, number>();
 
 const NOT_COMMITTED = /^0+$/;
 /** `git blame --porcelain` output to commit time (ms) per 0-based line; `Infinity` for a line not yet committed. */
@@ -41,6 +48,8 @@ export class GitStorage extends FsStorage {
   protected branch: string;
   private branchExplicit: boolean;
   private env?: NodeJS.ProcessEnv;
+  private lockWaitMs: number;
+  private gitDir?: string;
 
   constructor(root: string, opts: GitStorageOptions = {}) {
     super(root);
@@ -48,6 +57,21 @@ export class GitStorage extends FsStorage {
     this.remote = opts.remote;
     this.branch = opts.branch ?? 'main';
     this.branchExplicit = opts.branch !== undefined;
+    this.lockWaitMs = opts.lockWaitMs ?? 10_000;
+  }
+
+  /**
+   * Runs `fn` under `<git-dir>/stack-write.lock`, so Stack processes on one repo (web host, CLI, MCP, delivery loop) never
+   * race on `index.lock` or `HEAD`. Callers are already in the in-process queue. A dead writer's lock is taken over.
+   * @req FR:storage-git/git.concurrency
+   */
+  protected async writeLock<T>(fn: () => Promise<T>): Promise<T> {
+    const dir = this.gitDir ??= resolve(this.root, (await this.git('rev-parse', '--git-dir')).trim());
+    const gap = LOCK_YIELD_MS - (Date.now() - (released.get(dir) ?? 0));
+    if (gap > 0) await new Promise((r) => setTimeout(r, gap));
+    try {
+      return await withFileLock(dir, 'stack-write.lock', fn, () => new StorageError('Another Stack process is writing; try again'), { lockWaitMs: this.lockWaitMs }) as T;
+    } finally { released.set(dir, Date.now()); }
   }
 
   /** @req FR:storage-git/git.exec @req FR:storage-git/git.env */
@@ -170,7 +194,7 @@ export class GitStorage extends FsStorage {
 
   /** Fetch and rebase onto the remote (no-op without a remote). Serialized with writes. */
   sync(): Promise<void> {
-    return this.enqueue(() => this.syncNow());
+    return this.enqueue(() => this.writeLock(() => this.syncNow()));
   }
 
   /** Unqueued sync; only for callers already inside the write queue. */
@@ -189,8 +213,12 @@ export class GitStorage extends FsStorage {
     return { version: versionOf(content) };
   }
 
-  /** One commit (and one push) for all changed paths; serialized per adapter instance only. @req FR:storage-git/write.many @req FR:storage-git/write.many.commit @req FR:storage-git/git.concurrency */
-  protected async lockedMany(writes: FileWrite[], message?: string): Promise<void> {
+  /** One commit (and one push) for all changed paths; serialized in process and across processes on one repo. @req FR:storage-git/write.many @req FR:storage-git/write.many.commit @req FR:storage-git/git.concurrency */
+  protected lockedMany(writes: FileWrite[], message?: string): Promise<void> {
+    return this.writeLock(() => this.commitMany(writes, message));
+  }
+
+  private async commitMany(writes: FileWrite[], message?: string): Promise<void> {
     await this.checkBranch();
     if (this.remote) await this.syncNow();
     const paths = writes.map(w => w.path);
