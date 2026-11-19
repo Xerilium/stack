@@ -157,7 +157,7 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
               <label class="fb-shot"><input type="checkbox" checked={shot} disabled={phase === 'sending'} onChange={(e) => setShot((e.target as HTMLInputElement).checked)} />Include a screenshot of this page</label>
               {error && <p class="fb-err" role="alert">{error}</p>}
               <div class="fb-actions">
-                {/* The way out without a keyboard. @req FR:feedback-button/ui.panel.cancel */}
+                {/* The way out without a keyboard. @req FR:feedback-button/ui.panel.cancel @req FR:feedback-button/ui.panel.cancel.busy */}
                 <button type="button" class="btn quiet fb-cancel" disabled={phase === 'sending'} onClick={onClose}>Cancel</button>
                 {/* No text needed: only sending turns it off. @req FR:design-review/ui.button.text */}
                 <button type="button" class="btn" disabled={phase === 'sending'} title="Send this page and its goals to ChatGPT and file the reply as a GitHub issue" onClick={() => void review()}>Design review</button>

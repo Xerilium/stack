@@ -24,16 +24,31 @@ test('Cancel closes the panel, sends nothing, and returns focus to the icon', as
   expect(posts).toHaveLength(0);
 });
 
-// @req FR:feedback-button/ui.panel.cancel
+// @req FR:feedback-button/ui.panel.fit
 test('the three actions fit one line and keep 44 px targets on a phone', async ({ page }, info) => {
   const mobile = info.project.name === 'mobile';
   const { panel } = await open(page, mobile);
-  const boxes = [];
-  for (const name of ['Cancel', 'Design review', 'Send']) boxes.push((await panel.getByRole('button', { name, exact: true }).boundingBox())!);
+  for (const name of ['Cancel', 'Design review', 'Send']) await expect(panel.getByRole('button', { name, exact: true })).toBeVisible();
+  // One read for all three: the panel fades in, so separate reads can see different frames.
+  const boxes = await panel.locator('.fb-actions .btn').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, height: r.height }; }));
+  expect(boxes).toHaveLength(3);
   expect(new Set(boxes.map((b) => Math.round(b.y))).size).toBe(1);
   expect(boxes[0].x).toBeLessThan(boxes[1].x);
   if (mobile) for (const b of boxes) expect(b.height).toBeGreaterThanOrEqual(44);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+// @req FR:feedback-button/ui.panel.cancel.busy
+test('Cancel is off while the feedback sends', async ({ page }, info) => {
+  const { panel } = await open(page, info.project.name === 'mobile');
+  let release = () => {};
+  await page.route('**/api/feedback', async (route) => { await new Promise<void>((r) => { release = r; }); return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id: 'fb-2', at: new Date().toISOString(), screenshot: false }) }); });
+  await panel.getByRole('textbox', { name: 'Feedback' }).fill('Hold on');
+  await panel.getByRole('checkbox', { name: 'Include a screenshot of this page' }).uncheck(); // the panel stays in view while it sends
+  await panel.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(panel.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
+  release();
+  await expect(panel.getByRole('status')).toHaveText('Sent');
 });
 
 // @req FR:feedback-button/ui.panel.hint

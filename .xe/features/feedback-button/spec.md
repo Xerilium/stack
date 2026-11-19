@@ -27,7 +27,9 @@ The owner needs to send feedback from any page in two clicks so that a thought i
 
 - **FR:ui.icon** (P1): A feedback icon button sits in the rail footer (desktop) and in the top bar (phone). Label and tooltip `Send feedback (F)`. No shortcut badge. `Shift+F` opens the panel when no field has focus and no dialog is open (`f` alone is taken by list and Agents keys)
 - **FR:ui.panel** (P1): The panel has a multi-line text box, a checkbox `Include a screenshot of this page` (default on), and `Send`. `Send` is off while the text is blank. Escape closes it
-  - **FR:ui.panel.cancel** (P1): Panel MUST have a quiet `Cancel` button before the other actions. It closes the panel and sends nothing, so a phone needs no keyboard. It is off while sending. The actions fit one line at 375 px
+  - **FR:ui.panel.cancel** (P1): Panel MUST have a quiet `Cancel` button before the other actions. `Cancel` closes the panel and sends nothing
+  - **FR:ui.panel.cancel.busy** (P1): `Cancel` MUST be off while the feedback sends
+  - **FR:ui.panel.fit** (P1): The panel actions MUST fit one line at 375 px. A narrower panel wraps them; no action is cut off
   - **FR:ui.panel.hint** (P2): The empty text box MUST show the placeholder `What should change?`
 - **FR:ui.sent** (P1): On success the panel shows only `Sent` and closes after a short pause. On failure it keeps the text, shows the error, and focuses the text box. Escape does nothing while sending
 - **FR:ui.shot** (P1): With the box checked, the panel hides before the capture. In the desktop app the host captures the window (`capture: true`). In a browser it uses the Screen Capture API when present (asked on the click, one frame after the panel hides, then stops); no API or a denied prompt sends without a screenshot
