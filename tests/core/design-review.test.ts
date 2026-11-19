@@ -17,7 +17,7 @@ afterEach(() => setPageCapture(undefined));
 describe('page goals', () => {
   // @req FR:design-review/goals.file @req FR:design-review/goals.file.pages @req FR:design-review/goals.file.entry
   it('lists every page with a name and 2 to 5 goals', () => {
-    expect([...PAGE_IDS].sort()).toEqual(['asks', 'home', 'inbox', 'list', 'now', 'projects', 'prs', 'sessions', 'settings', 'today']);
+    expect([...PAGE_IDS].sort()).toEqual(['asks', 'home', 'inbox', 'inventory', 'list', 'now', 'priorities', 'projects', 'prs', 'sessions', 'settings', 'today']);
     for (const id of PAGE_IDS) {
       expect(PAGE_GOALS[id].name.length).toBeGreaterThan(0);
       expect(PAGE_GOALS[id].goals.length).toBeGreaterThanOrEqual(2);
@@ -95,7 +95,7 @@ describe('issue', () => {
   // @req FR:design-review/issue.title @req FR:design-review/issue.body @req FR:design-review/issue.redact @req FR:design-review/issue.mentions
   it('titles by page and starts the body with the AI prefix', () => {
     const i = issueFor({ page: 'asks', viewport: '375x812', theme: 'light', model: 'gpt-5', reply: 'Use ghp_abcdefghijklmnopqrstuvwxyz0123 less.' });
-    expect(i.title).toBe('design(asks): Design review of Needs you');
+    expect(i.title).toBe('design(asks): Design review of Notifications');
     expect(i.body.startsWith('🤖 [AI] ')).toBe(true);
     for (const g of PAGE_GOALS.asks.goals) expect(i.body).toContain(g);
     expect(i.body).toContain('375x812');
