@@ -1,7 +1,7 @@
 /** @req FR:web-shell/state.errors */
 import { describe, expect, it } from 'vitest';
 import { ApiFailure } from '../src/api';
-import { errText } from '../src/errtext';
+import { errText, UserError } from '../src/errtext';
 
 const f = (code: string, message: string, details?: { field: string; message: string }[], status = 400) => new ApiFailure(status, code, message, details);
 
@@ -20,6 +20,10 @@ describe('errText', () => {
     expect(errText(f('invalid', 'Request cannot be applied', undefined, 422), 'save the task')).toBe('Could not save the task. Check the values and try again.');
     expect(errText(f('bad_request', 'Validation failed', [], 400), 'save the task')).toBe('Could not save the task. Try again.');
   });
+  // @req FR:web-shell/state.errors.details
+  it('field details show whatever the code', () => {
+    expect(errText(f('bad_request', 'Validation failed', [{ field: 'pris[0].title', message: 'Too long' }], 400), 'save')).toBe('Too long');
+  });
   // @req FR:web-shell/state.errors.code
   it('internal: try again, then send feedback', () => {
     expect(errText(f('internal', 'Internal error', undefined, 500), 'send the reply')).toBe('Could not send the reply. Try again. If it happens again, send feedback (F).');
@@ -32,13 +36,14 @@ describe('errText', () => {
   });
   // @req FR:web-shell/state.errors.code
   it('other codes and non-API errors: could not, try again', () => {
-    expect(errText(f('forbidden', 'Forbidden', undefined, 403), 'move it')).toBe('Could not move it. Try again.');
+    expect(errText(f('forbidden', 'Forbidden', undefined, 403), 'move it')).toBe('Could not move it. This account is not allowed to do that.');
     expect(errText(f('http_502', 'Request failed (502)', undefined, 502), 'move it')).toBe('Could not move it. Try again.');
     expect(errText(new TypeError('x is undefined'), 'move it')).toBe('Could not move it. Try again.');
     expect(errText('boom', 'move it')).toBe('Could not move it. Try again.');
   });
   // @req FR:web-shell/state.errors.specific
   it('keeps a server message that names the cause', () => {
+    expect(errText(new UserError('Reply with a reason to reject'), 'x')).toBe('Reply with a reason to reject');
     expect(errText(f('not_found', 'No live lane on this host', undefined, 404), 'x')).toBe('No live lane on this host');
     expect(errText(f('conflict', 'Inbox full: 50 open items', undefined, 409), 'x')).toBe('Inbox full: 50 open items');
     expect(errText(f('internal', 'Disk full', undefined, 500), 'x')).toBe('Disk full');

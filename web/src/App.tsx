@@ -8,7 +8,7 @@
 import { Fragment } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, createClient } from './api';
-import { errText } from './errtext';
+import { errText, UserError } from './errtext';
 import { capacityRows } from './capacity';
 import { applyFilters, buildHash, NO_FILTERS, parseHash, redirectHash, type Filters } from './filters';
 import { Dialog, GROUP_NAMES, GROUPS, Help, Picker, setRefProjects, Toasts, type GroupName, type Toast } from './parts';
@@ -596,10 +596,10 @@ export function App() {
     const id = a.key.replace(/^need:/, '');
     // A PR priority recommendation: Go accepts, a reply rejects with the text as the reason; it has no defer and no undo. @req FR:pr-priority/needs.actions
     if (a.decide) {
-      if (s.answer === 'defer') throw new Error('A PR priority recommendation cannot be deferred: accept it or reply to reject it');
+      if (s.answer === 'defer') throw new UserError('A PR priority recommendation cannot be deferred: accept it or reply to reject it');
       const accept = s.answer === 'go' || s.answer === 'done';
       const reason = s.text?.trim() || (s.answer === 'no' ? 'No' : '');
-      if (!accept && !reason) throw new Error('Reply with a reason to reject');
+      if (!accept && !reason) throw new UserError('Reply with a reason to reject');
       await api.decideRec(a.decide, accept ? { decision: 'accept' } : { decision: 'reject', reason });
       setNeeds(await api.needs());
       toast(accept ? 'Accepted · PR priority changed' : 'Rejected · the agent will see the reason', 'ok');
@@ -607,7 +607,7 @@ export function App() {
     }
     // A blocked live check: Go or a reply reopens it for the agent; it has no defer and no undo. @req FR:pr-review-lane/lane.needs
     const live = id.startsWith('lv.');
-    if (live && s.answer === 'defer') throw new Error('A blocked live check cannot be deferred: answer it or reply');
+    if (live && s.answer === 'defer') throw new UserError('A blocked live check cannot be deferred: answer it or reply');
     const body = s.answer === 'defer' && s.until ? { choice: 'defer' as const, until: s.until }
       : s.answer === 'go' || s.answer === 'done' ? { choice: 'go' as const }
         : { choice: 'reply' as const, text: s.text || (s.answer === 'no' ? 'No' : 'Noted') };
@@ -619,7 +619,7 @@ export function App() {
   const answerTask = async (a: AskItem, s: Send) => {
     if (a.source === 'need') return answerNeedItem(a, s);
     const t = tasks.find((x) => x.ref === a.ref);
-    if (!t) throw new Error('Row changed elsewhere');
+    if (!t) throw new UserError('Row changed elsewhere. Reload, then try again.');
     let ok: unknown;
     if (s.answer === 'go') ok = await sendReply(t, `Go with the recommendation: ${a.recommend}`, 'decision', '');
     else if (s.answer === 'defer' && s.until) ok = await run(() => api.action('suspend', t.ref, { hours: Math.max(1, Math.round((new Date(s.until!).getTime() - Date.now()) / 3600_000)) }), () => '');
