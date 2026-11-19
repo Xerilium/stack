@@ -31,6 +31,8 @@ describe('Dialog', () => {
     expect(mount(<Dialog title="T" sheet={false} onClose={() => undefined}>x</Dialog>).querySelector('[role=dialog]')!.className).toBe('dialog');
   });
   // @req FR:ui-kit/dialog.focus
+  // @req FR:ui-kit/dialog.trap
+  // @req FR:ui-kit/dialog.return
   it('focuses the first control, keeps Tab inside, and returns focus to the opener on close', () => {
     const opener = document.createElement('button'); document.body.append(opener); opener.focus();
     const root = document.createElement('div'); document.body.append(root);
@@ -62,7 +64,8 @@ describe('Toasts', () => {
     const r = mount(<Toasts toasts={[{ id: 1, text: 'Saved', kind: 'ok' }, { id: 2, text: 'Cannot save', kind: 'err' }]} dismiss={() => undefined} />);
     expect(r.innerHTML).toBe('<div class="toasts" role="status" aria-live="polite"><div class="toast ok"><span>Saved</span><button type="button" class="link" aria-label="Dismiss">×</button></div><div class="toast err"><span>Cannot save</span><button type="button" class="link" aria-label="Dismiss">×</button></div></div>');
   });
-  // @req FR:ui-kit/toasts.actions
+  // @req FR:ui-kit/toasts.dismiss
+  // @req FR:ui-kit/toasts.undo
   it('Undo runs the undo and dismisses; Dismiss only dismisses', () => {
     const log: string[] = [];
     const r = mount(<Toasts toasts={[{ id: 7, text: 'Done', kind: 'ok', undo: () => log.push('undo') }]} dismiss={(id) => log.push(`dismiss ${id}`)} />);
@@ -74,7 +77,7 @@ describe('Toasts', () => {
   });
 });
 
-// @req FR:ui-kit/dialog
+// Not an FR: guards the re-export from `parts`.
 it('parts still exports the moved components, so no view import changes', () => {
   expect([parts.Dialog, parts.EmptyState, parts.Toasts]).toEqual([Dialog, EmptyState, Toasts]);
 });

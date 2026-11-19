@@ -108,7 +108,9 @@ The owner needs a failed load to say what happened so that the owner can fix it 
 Owner needs every dialog to open, trap focus and close the same way so that the keyboard works the same in each one.
 
 - **FR:dialog** (P1): `Dialog` MUST show a titled modal box over a scrim (`role="dialog"`, `aria-modal`, named by `title`)
-  - **FR:dialog.focus** (P1): `Dialog` MUST keep Tab inside the box and return focus to the opener on close
+  - **FR:dialog.focus** (P1): `Dialog` MUST move focus to its first control on open
+  - **FR:dialog.trap** (P1): `Dialog` MUST keep Tab inside the box
+  - **FR:dialog.return** (P1): `Dialog` MUST return focus to the opener on close
   - **FR:dialog.close** (P1): `Dialog` MUST close on Escape and on a tap on the scrim
   - **FR:dialog.sheet** (P3): `Dialog` MUST be a bottom sheet on a phone unless `sheet` is false
 
@@ -117,7 +119,8 @@ Owner needs every dialog to open, trap focus and close the same way so that the 
 Owner needs the result of each action in one place so that he sees it and can undo it.
 
 - **FR:toasts** (P1): `Toasts` MUST show every toast in one polite live region
-  - **FR:toasts.actions** (P2): `Toasts` MUST give each toast Dismiss, and Undo when the toast has one
+  - **FR:toasts.dismiss** (P2): `Toasts` MUST give each toast a Dismiss button
+  - **FR:toasts.undo** (P2): `Toasts` MUST give a toast an Undo button when the toast has an undo
 
 ### FR:a11y: Access
 

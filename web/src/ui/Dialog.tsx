@@ -5,6 +5,8 @@ import { useLayoutEffect, useRef } from 'preact/hooks';
  * A modal dialog: a scrim, a titled box, a focus trap, Escape to close, and focus back to the opener on close.
  * @req FR:ui-kit/dialog
  * @req FR:ui-kit/dialog.focus
+ * @req FR:ui-kit/dialog.trap
+ * @req FR:ui-kit/dialog.return
  * @req FR:ui-kit/dialog.close
  * @req FR:ui-kit/dialog.sheet
  * @req FR:web-app/ux.a11y

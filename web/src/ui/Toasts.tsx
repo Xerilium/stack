@@ -1,7 +1,8 @@
 /**
  * The toast stack: one polite live region; each toast has its text, an optional Undo, and Dismiss.
  * @req FR:ui-kit/toasts
- * @req FR:ui-kit/toasts.actions
+ * @req FR:ui-kit/toasts.dismiss
+ * @req FR:ui-kit/toasts.undo
  * @owns class:toasts
  * @owns class:toast
  */
