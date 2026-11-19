@@ -261,7 +261,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
       if (body.expect !== undefined && body.expect !== t.text) return json(route, 409, { error: { code: 'conflict', message: 'Conflict' } });
       const id = `in-20261028T100000Z-${String(m.inbox.length).padStart(4, '0')}`;
       m.inbox.push({ id, at: new Date().toISOString(), project: t.project, ref: t.ref, task: t.text.replace(/[🤖🪄🙋]/gu, '').trim(), kind: body.kind ?? 'reply', to: /🙋/u.test(t.text) ? 'human' : /🤖|🪄/u.test(t.text) ? 'agent' : 'none', text: body.text, state: 'open', row: t.ref, ...(body.agent ? { agent: body.agent } : {}) });
-      return json(route, 201, { id, path: `tasks/inbox/${t.project}.md` });
+      return json(route, 201, { id, path: `tasks/.stack/inbox/${t.project}.md` });
     }
     if (path === '/inbox/handled') { const e = m.inbox.find((x) => x.id === body.id); if (!e) return json(route, 404, { error: { code: 'not_found', message: 'Not found' } }); const changed = e.state !== 'handled'; e.state = 'handled'; if (changed && body.withdrawn === true) e.withdrawn = true; return json(route, 200, { changed }); }
     if (path === '/sync' && req.method() === 'POST') { const n = m.pending ?? 0; if (m.pending !== undefined) { m.pending = 0; m.since = null; } return json(route, 200, { flushed: n, rev: m.rev ?? null }); }

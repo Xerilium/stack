@@ -1,5 +1,5 @@
 /**
- * Agent definitions at the project folder level: one file per agent (`tasks/agents/<slug>.md`) with a scope of project or project/section prefixes,
+ * Agent definitions at the project folder level: one file per agent (`tasks/.stack/agents/<slug>.md`) with a scope of project or project/section prefixes,
  * plus the agents a project names in its `Agents` metadata. Resolves which agent is active for a task and reads the newest review of a row.
  * Claude's own definitions (`.claude/agents/<slug>.md`) join the team read-only; every agent reports to someone (`reports-to`, else the narrowest agent
  * whose projects strictly contain its own, else the roll-up), and the roll-up (scope `*`; `cos` by convention) is first on every task.
@@ -9,6 +9,7 @@ import { LifecycleError, type LifecycleContext, type TaskRef } from './lifecycle
 import { parseProject } from './parser';
 import { NotFoundError } from './storage';
 import { logName, redact } from './triage';
+import { isReadme, logFile, projectId, ROOT_SYSTEM } from './task-paths';
 
 export const AGENT_MODES = ['long-running', 'ad-hoc'] as const;
 export type AgentMode = (typeof AGENT_MODES)[number];
@@ -69,7 +70,7 @@ const MAX_PROMPT = 20_000;
 
 export function agentsPath(slug: string): string {
   if (typeof slug !== 'string' || !SLUG.test(slug)) throw new LifecycleError('Invalid agent slug (lower case letters, digits, . _ -; up to 40)');
-  return `tasks/agents/${slug}.md`;
+  return `${ROOT_SYSTEM}/agents/${slug}.md`;
 }
 /** @req FR:agent-team/agent.path.claude */
 export function claudeAgentsPath(slug: string): string {
@@ -84,7 +85,8 @@ export function slugOf(name: string): string {
 }
 
 const oneLine = (v: string): string => redact(v.replace(CONTROL, ' ')).replace(/\s+/g, ' ').trim();
-const scopeOk = (s: string) => s === '*' || /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[^/\\\0]+)?$/.test(s);
+/** `*`, or a folder, project ID, or project ID plus section, joined by `/`. @req FR:task-structure/id.scope */
+const scopeOk = (s: string) => s === '*' || /^[^/\\\0.,\s][^/\\\0,]*(?:\/[^/\\\0.,][^/\\\0,]*)*$/.test(s);
 
 /** The agent as markdown (v1). */
 export function formatAgent(a: AgentDef): string {
@@ -179,7 +181,9 @@ export interface AgentPut { name?: string; role?: string; scope?: string[]; repo
 
 /** Creates or updates an agent file; `name` is required on create. */
 export async function putAgent(ctx: LifecycleContext, slug: string, input: AgentPut): Promise<{ slug: string; created: boolean }> {
-  const path = agentsPath(slug);
+  // An agent file at any `.stack` level is updated in place; a new one goes to the root. @req FR:task-structure/system.root
+  const root = agentsPath(slug);
+  const path = ((await ctx.storage.listAgents?.()) ?? []).find((p) => p.endsWith(`/${slug}.md`)) ?? root;
   let cur: AgentDef | null = null;
   let version: string | null = null;
   try { const f = await ctx.storage.read(path); cur = parseAgent(slug, f.content); version = f.version; } catch (e) { if (!(e instanceof NotFoundError)) throw e; }
@@ -231,8 +235,8 @@ const baseName = (p: string) => p.slice(p.lastIndexOf('/') + 1).replace(/\.md$/,
 export async function listTeam(ctx: LifecycleContext, scanned: ScannedAgent[] = []): Promise<TeamAgent[]> {
   const projects: { name: string; agents: { name: string; role?: string }[] }[] = [];
   for (const path of await ctx.storage.list()) {
-    const name = baseName(path);
-    if (/^readme$/i.test(name)) continue;
+    if (isReadme(path)) continue;
+    const name = projectId(path);
     const content = (await ctx.storage.read(path)).content;
     const p = parseProject(content);
     const lines = p.lines;
@@ -304,28 +308,32 @@ function withReports(team: TeamAgent[]): TeamAgent[] {
   return team;
 }
 
+/** A non-`*` scope covers a project when it names it, a folder above it, or one of its sections. @req FR:task-structure/id.scope */
+export const scopeCovers = (scope: string, project: string): boolean =>
+  scope !== '*' && (scope === project || project.startsWith(`${scope}/`) || scope.startsWith(`${project}/`));
+
 const resolveProjects = (scope: string[], all: string[]): string[] =>
-  scope.includes('*') ? [...all] : [...new Set(scope.map((s) => s.split('/')[0]).filter((p) => all.includes(p)))];
+  scope.includes('*') ? [...all] : [...new Set(scope.flatMap((s) => all.filter((p) => scopeCovers(s, p))))];
 
 /** Whole words of a heading after its emoji; a scope matches when its words are the heading's first words (`Do` never covers `Done`). */
 const words = (h: string) => h.trim().toLowerCase().replace(/^[^\p{L}\p{N}]+/u, '').split(/\s+/).filter(Boolean);
 const wordPrefix = (scope: string, heading: string) => { const a = words(scope), b = words(heading); return a.length > 0 && a.length <= b.length && a.every((w, i) => w === b[i]); };
-/** How specific a scope entry is for a task: 3 project/section, 2 project, 1 everything, 0 no match. */
+/** How specific a scope entry is for a task: 4 project/section, 3 project, 2 folder, 1 everything, 0 no match. @req FR:task-structure/id.scope */
 function specificity(scope: string, project: string, section?: string): number {
   if (scope === '*') return 1;
-  const [p, ...rest] = scope.split('/');
-  if (p !== project) return 0;
-  if (rest.length === 0) return 2;
+  if (scope === project) return 3;
+  if (project.startsWith(`${scope}/`)) return 2;
+  if (!scope.startsWith(`${project}/`)) return 0;
   // A section scope matches the heading's words after its emoji (`Labels` covers `🏷️ Labels`, not `Done`).
-  const want = rest.join('/').trim().toLowerCase();
-  return section !== undefined && wordPrefix(want, section) ? 3 : 0;
+  const want = scope.slice(project.length + 1).trim().toLowerCase();
+  return section !== undefined && wordPrefix(want, section) ? 4 : 0;
 }
 
 /** Agents that cover a task: the roll-up first, then most specific first; the first is the active agent. @req FR:agent-team/agent.resolve */
 export function agentFor(team: TeamAgent[], project: string, section?: string): TeamAgent[] {
   const rollup = rollupOf(team);
   return team
-    .map((a, i) => ({ a, i, s: a === rollup ? 4 : Math.max(0, ...a.scope.map((x) => specificity(x, project, section))) }))
+    .map((a, i) => ({ a, i, s: a === rollup ? 5 : Math.max(0, ...a.scope.map((x) => specificity(x, project, section))) }))
     .filter((x) => x.s > 0)
     .sort((x, y) => y.s - x.s || x.i - y.i)
     .map((x) => x.a);
@@ -334,17 +342,17 @@ export function agentFor(team: TeamAgent[], project: string, section?: string): 
 export interface Review { at: string; verdict: 'can' | 'partial' | 'cannot'; plan: string; estimate?: string; agent: string; needs: string[] }
 const VERDICT: Record<string, Review['verdict']> = { done: 'can', partial: 'partial', blocked: 'cannot' };
 
-/** The ask key prefix of a row's review needs: `rev-<slug>-<line>-` (the slug is cut to 40 so `rev-<slug>-<line>-<stamp>-<n>` fits an 80-character key). @req FR:agent-team/review.needs */
-export const reviewPrefix = (ref: TaskRef): string => `rev-${logName({ path: ref.path, line: 0 }).toLowerCase().slice(0, 40)}-${ref.line + 1}-`;
+/** The ask key prefix of a row's review needs: `rev-<slug>-<line>-` (folders joined by `.`; the slug is cut to 40 so `rev-<slug>-<line>-<stamp>-<n>` fits an 80-character key). @req FR:agent-team/review.needs */
+// @req FR:task-structure/id.project.review
+export const reviewPrefix = (ref: TaskRef): string => `rev-${projectId(ref.path).split('/').map((s) => logName({ path: s })).join('.').toLowerCase().slice(0, 40)}-${ref.line + 1}-`;
 
 /** The newest review entry per row (0-based line) in a project's log files, one pass. @req FR:agent-team/review.read */
 export async function reviewsIn(ctx: LifecycleContext, path: string): Promise<Map<number, Review>> {
-  const slug = logName({ path, line: 0 });
   const prefix = `${path}:`;
   const best = new Map<number, Review>();
   for (let n = 0; n < 5; n++) {
     let content: string;
-    try { content = (await ctx.storage.read(`tasks/logs/${slug}${n === 0 ? '' : `.${n + 1}`}.md`)).content; } catch (e) { if (e instanceof NotFoundError) continue; throw e; }
+    try { content = (await ctx.storage.read(logFile(path, n))).content; } catch (e) { if (e instanceof NotFoundError) continue; throw e; }
     for (const chunk of content.split(/^## /m).slice(1)) {
       const at = chunk.split('\n')[0].trim();
       const kv = new Map([...chunk.matchAll(/^- ([a-z]+): (.*)$/gm)].map((m) => [m[1], m[2].trim()]));

@@ -495,7 +495,7 @@ describe('response parity (real handler output vs documented schemas)', () => {
 
   it('keeps the Ref pattern, README reservation and parseRef in step', () => {
     const re = new RegExp(doc.components.schemas.Ref.pattern);
-    for (const v of ['alpha:12', 'README:1', 'readme:1', 'ReadMe:1', 'readme2:1', '.x:1', 'a/b:1', 'a:0x', 'a:1234567890']) {
+    for (const v of ['alpha:12', 'README:1', 'readme:1', 'ReadMe:1', 'readme2:1', '.x:1', 'a/b:1', 'a/README:1', 'a/.x:1', 'a:0x', 'a:1234567890']) {
       expect([v, re.test(v)]).toEqual([v, parseRef(v) !== null]);
     }
   });

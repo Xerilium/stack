@@ -15,11 +15,11 @@ const tmp = () => mkdtempSync(join(tmpdir(), 'stack-watch-'));
 
 describe('classify', () => {
   it('maps paths to kinds and ignores noise', () => {
-    expect(classify('tasks/asks/pr-1.md')).toBe('asks');
+    expect(classify('tasks/.stack/asks/pr-1.md')).toBe('asks');
     expect(classify('tasks/alpha.md')).toBe('tasks');
-    expect(classify('tasks/inbox/alpha.md')).toBe('tasks');
+    expect(classify('tasks/.stack/inbox/alpha.md')).toBe('tasks');
     expect(classify('.stack/cos-state.md')).toBe('state');
-    for (const ignored of ['.git/index', 'tasks/.abc123.tmp', 'tasks/asks/.x.tmp', 'tasks/alpha.md~', 'tasks/alpha.md.swp', 'README.md', 'node_modules/x/y.md', 'tasks/asks/4913']) expect(classify(ignored)).toBeNull();
+    for (const ignored of ['.git/index', 'tasks/.abc123.tmp', 'tasks/.stack/asks/.x.tmp', 'tasks/alpha.md~', 'tasks/alpha.md.swp', 'README.md', 'node_modules/x/y.md', 'tasks/.stack/asks/4913']) expect(classify(ignored)).toBeNull();
   });
 });
 
@@ -49,7 +49,7 @@ describe('watchRepo', () => {
     const os = fakeFs(); const w = watchRepo(repoDir(), { debounceMs: 60, watchFn: os.fn });
     const seen: Change[] = [];
     w.on((c) => seen.push(c));
-    os.emit('tasks/asks/a.md'); os.emit('tasks/asks/b.md'); jest.advanceTimersByTime(59); os.emit('tasks/alpha.md'); // each event restarts the window
+    os.emit('tasks/.stack/asks/a.md'); os.emit('tasks/.stack/asks/b.md'); jest.advanceTimersByTime(59); os.emit('tasks/alpha.md'); // each event restarts the window
     jest.advanceTimersByTime(59);
     expect(seen).toHaveLength(0);
     jest.advanceTimersByTime(1);
@@ -108,7 +108,7 @@ function sse(url: string, headers: Record<string, string> = {}) {
 
 describe('GET /events', () => {
   it('sends hello, then a change per file change, with a heartbeat', async () => {
-    const dir = tmp(); mkdirSync(join(dir, 'tasks/asks'), { recursive: true });
+    const dir = tmp(); mkdirSync(join(dir, 'tasks/.stack/asks'), { recursive: true });
     const web = join(dir, 'webdist'); mkdirSync(web); writeFileSync(join(web, 'index.html'), '<html></html>');
     const os = fakeFs();
     const s = await startWeb({ dir, port: 0, webDir: web, watch: { debounceMs: 40, heartbeatMs: 100, watchFn: os.fn } });
@@ -116,7 +116,7 @@ describe('GET /events', () => {
     try {
       await c.waitFor('hello');
       expect(JSON.parse(c.events[0].data)).toEqual({ rev: 0 });
-      os.emit('tasks/asks/a.md');
+      os.emit('tasks/.stack/asks/a.md');
       await c.waitFor('change');
       const ch = c.events.find((e) => e.event === 'change')!;
       expect(JSON.parse(ch.data)).toEqual({ rev: 1, kinds: ['asks'] });
@@ -124,14 +124,14 @@ describe('GET /events', () => {
     } finally { c.close(); await s.close(); }
   });
   it('a client that reconnects with an old rev gets one catch-up change', async () => {
-    const dir = tmp(); mkdirSync(join(dir, 'tasks/asks'), { recursive: true });
+    const dir = tmp(); mkdirSync(join(dir, 'tasks/.stack/asks'), { recursive: true });
     const web = join(dir, 'webdist'); mkdirSync(web); writeFileSync(join(web, 'index.html'), '<html></html>');
     const os = fakeFs();
     const s = await startWeb({ dir, port: 0, webDir: web, watch: { debounceMs: 30, watchFn: os.fn } });
     const first = sse(`${s.url}/events`);
     try {
       await first.waitFor('hello');
-      os.emit('tasks/asks/a.md');
+      os.emit('tasks/.stack/asks/a.md');
       await first.waitFor('change');
       first.close();
       const again = sse(`${s.url}/events`, { 'last-event-id': '0' });

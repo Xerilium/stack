@@ -103,7 +103,7 @@ describe.each(adapters)('%s contract', (_n, make) => {
 
   // @req FR:storage-git/interface.paths
   // dotfiles rejected consistently with list()
-  it.each(['/etc/x.md', '../x.md', 'tasks/../x.md', 'tasks\\x.md', 'tasks/x.txt', 'other/x.md', 'tasks/a/b.md', 'tasks/\0.md', '.git/config', 'tasks/.x.md', 'tasks/.md'])(
+  it.each(['/etc/x.md', '../x.md', 'tasks/../x.md', 'tasks\\x.md', 'tasks/x.txt', 'other/x.md', 'tasks/a/.b/c.md', 'tasks/a//b.md', 'tasks/\0.md', '.git/config', 'tasks/.x.md', 'tasks/.md'])(
     'rejects bad path %j', async p => {
       await expect(s.write(p, 'x')).rejects.toBeInstanceOf(PathError);
       await expect(s.read(p)).rejects.toBeInstanceOf(PathError);
@@ -156,14 +156,14 @@ describe.each(adapters)('%s writeMany', (_n, make) => {
 
   // @req FR:storage-git/write.delete
   it('null content deletes the file in the same operation, with its version checked first', async () => {
-    const v = (await s.write('tasks/asks/k1.md', 'K')).version;
-    await writeAll(s, [{ path: 'tasks/asks/archive/k1.md', content: 'K' }, { path: 'tasks/asks/k1.md', content: null, expectedVersion: v }], 'Archive ask: k1');
-    await expect(s.read('tasks/asks/k1.md')).rejects.toBeInstanceOf(NotFoundError);
-    expect((await s.read('tasks/asks/archive/k1.md')).content).toBe('K');
+    const v = (await s.write('tasks/.stack/asks/k1.md', 'K')).version;
+    await writeAll(s, [{ path: 'tasks/.stack/asks/archive/k1.md', content: 'K' }, { path: 'tasks/.stack/asks/k1.md', content: null, expectedVersion: v }], 'Archive ask: k1');
+    await expect(s.read('tasks/.stack/asks/k1.md')).rejects.toBeInstanceOf(NotFoundError);
+    expect((await s.read('tasks/.stack/asks/archive/k1.md')).content).toBe('K');
     expect(await s.listAsks!()).toEqual([]);
-    await s.write('tasks/asks/k2.md', 'K2');
-    await expect(writeAll(s, [{ path: 'tasks/asks/k2.md', content: null, expectedVersion: 'stale' }])).rejects.toBeInstanceOf(ConflictError);
-    expect((await s.read('tasks/asks/k2.md')).content).toBe('K2');
+    await s.write('tasks/.stack/asks/k2.md', 'K2');
+    await expect(writeAll(s, [{ path: 'tasks/.stack/asks/k2.md', content: null, expectedVersion: 'stale' }])).rejects.toBeInstanceOf(ConflictError);
+    expect((await s.read('tasks/.stack/asks/k2.md')).content).toBe('K2');
   });
 
   // @req FR:storage-git/write.many.duplicates
@@ -212,18 +212,18 @@ describe('GitStorage writeMany', () => {
     expect(count(d)).toBe(before + 2);
     expect(git(d, 'status', '--porcelain').trim()).toBe('');
     // an archive batch: add + delete of an untracked file, in one commit
-    mkdirSync(join(d, 'tasks/asks'), { recursive: true }); writeFileSync(join(d, 'tasks/asks/k.md'), 'K');
-    await writeAll(s, [{ path: 'tasks/asks/archive/k.md', content: 'K', expectedVersion: null }, { path: 'tasks/asks/k.md', content: null }], 'Archive ask: k');
+    mkdirSync(join(d, 'tasks/.stack/asks'), { recursive: true }); writeFileSync(join(d, 'tasks/.stack/asks/k.md'), 'K');
+    await writeAll(s, [{ path: 'tasks/.stack/asks/archive/k.md', content: 'K', expectedVersion: null }, { path: 'tasks/.stack/asks/k.md', content: null }], 'Archive ask: k');
     expect(count(d)).toBe(before + 3);
-    expect(git(d, 'show', '--name-status', '--format=', 'HEAD').trim()).toBe('A\ttasks/asks/archive/k.md');
-    expect(existsSync(join(d, 'tasks/asks/k.md'))).toBe(false);
+    expect(git(d, 'show', '--name-status', '--format=', 'HEAD').trim()).toBe('A\ttasks/.stack/asks/archive/k.md');
+    expect(existsSync(join(d, 'tasks/.stack/asks/k.md'))).toBe(false);
     expect(git(d, 'status', '--porcelain').trim()).toBe('');
     // staged by hand but never committed: deleted the same way
-    writeFileSync(join(d, 'tasks/asks/s.md'), 'S'); git(d, 'add', '--', 'tasks/asks/s.md');
-    await writeAll(s, [{ path: 'tasks/asks/archive/s.md', content: 'S', expectedVersion: null }, { path: 'tasks/asks/s.md', content: null }], 'Archive ask: s');
+    writeFileSync(join(d, 'tasks/.stack/asks/s.md'), 'S'); git(d, 'add', '--', 'tasks/.stack/asks/s.md');
+    await writeAll(s, [{ path: 'tasks/.stack/asks/archive/s.md', content: 'S', expectedVersion: null }, { path: 'tasks/.stack/asks/s.md', content: null }], 'Archive ask: s');
     expect(count(d)).toBe(before + 4);
-    expect(git(d, 'show', '--name-status', '--format=', 'HEAD').trim()).toBe('A\ttasks/asks/archive/s.md');
-    expect(existsSync(join(d, 'tasks/asks/s.md'))).toBe(false);
+    expect(git(d, 'show', '--name-status', '--format=', 'HEAD').trim()).toBe('A\ttasks/.stack/asks/archive/s.md');
+    expect(existsSync(join(d, 'tasks/.stack/asks/s.md'))).toBe(false);
     expect(git(d, 'status', '--porcelain').trim()).toBe('');
   });
 

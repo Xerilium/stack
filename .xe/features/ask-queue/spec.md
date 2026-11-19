@@ -23,7 +23,7 @@ Design and rationale: `docs/design/ask-queue.md`. Agent contract: `docs/asks.md`
 
 ## Ask file format (v1)
 
-One file per ask: `tasks/asks/<key>.md`. `<key>` is chosen by the agent (stable, e.g. `pr-879-approve`), so writing the same key again updates the ask instead of adding another. Fields are `- key: value` lines; an optional `## Detail` section holds long free markdown (hidden until the owner expands the ask); an optional `## Thread` section holds one line per exchange.
+One file per ask: `tasks/.stack/asks/<key>.md`. `<key>` is chosen by the agent (stable, e.g. `pr-879-approve`), so writing the same key again updates the ask instead of adding another. Fields are `- key: value` lines; an optional `## Detail` section holds long free markdown (hidden until the owner expands the ask); an optional `## Thread` section holds one line per exchange.
 
 ```markdown
 # Ask: pr-879-approve
@@ -58,12 +58,12 @@ After the owner answers, Stack adds `answer`, `text`, `answered`. After the agen
 
 ### FR:ask: Data model
 
-- **FR:ask.path** (P1): Storage accepts `tasks/asks/<key>.md` (key `[a-z0-9][a-z0-9._-]{0,79}`, lower case; `README.md` refused). Ask files are never listed as projects, and storage can list the ask folder (`listAsks`, filesystem and memory adapters)
+- **FR:ask.path** (P1): Storage accepts `tasks/.stack/asks/<key>.md` (key `[a-z0-9][a-z0-9._-]{0,79}`, lower case; `README.md` refused). Ask files are never listed as projects, and storage can list the ask folder (`listAsks`, filesystem and memory adapters)
 - **FR:ask.format** (P1): `formatAsk` and `parseAsk` round-trip the v1 format. Fields: `state` (`open`, `answered`, `done`), `ask` (one line, 1-200 chars; the one exact ask), `kind` (`approve`, `decide`, `review`, `go-do`, `answer`), `from`, `project`, `why` (one line, optional), `recommend` (one line; for `decide` one of `options`), `options` (` | `-separated, 2-4, only for `decide`), `default` (what happens if the owner is silent), `by` (ISO deadline), `reversible` (`yes` or `no`, default `no`), `link` (`https` url), `priority` (`crit`, `high`, `normal`, `low`; default `normal`), `effort` (`<n>m` or `<n>h`), `blocks` (integer 0-99), `created`, `updated`, then `answer`, `text`, `answered`, `outcome`, `handled`, `note`, `snoozed`. Unknown lines are kept. Parsing is tolerant: a missing field takes its default, a bad one is dropped
 - **FR:ask.safe** (P1): Every field is redacted and escaped like inbox fields (`FR:agent-inbox/inbox.send`): single line, no control or invisible characters, no markdown links or images from agent text, `link` must be an `https` url. `## Detail` is stored as given but the page renders it as plain text with no html
 - **FR:ask.score** (P1): `scoreAsk(ask, now)` is deterministic: priority (crit 100, high 60, normal 30, low 10) plus deadline pressure (overdue 80, under 2 h 70, under 24 h 50, under 3 d 30, under 7 d 15, else 0) plus 5 per blocked item (max 20) plus 8 when effort is 5 minutes or less plus 10 when not reversible and `by` is within 3 days plus 1 per day open (max 10)
 - **FR:ask.rank** (P1): `listAsks` returns visible asks by score descending, ties by earlier `by`, then older `created`, then key. Visible means `state: open` and not snoozed (`snoozed` in the future). `state=answered` returns asks waiting on the agent, oldest answer first; `state=done` newest first; `all` returns every ask unranked by file order
-- **FR:ask.archive** (P2): `archiveAsks(ctx, {days})` (default 14) moves every `done` ask whose `updated` is older than `days` days to `tasks/asks/archive/<key>.md` in ONE write (one commit), deleting the original; a key archived before gets `<key>.<yyyymmdd>.md`, and an ask whose archive names are both taken is left in place (nothing archived is ever overwritten). `listAsks` never reads the archive, and parses each file once per version (a refresh re-parses only files that changed), so the queue stays fast however many asks agents have closed
+- **FR:ask.archive** (P2): `archiveAsks(ctx, {days})` (default 14) moves every `done` ask whose `updated` is older than `days` days to `tasks/.stack/asks/archive/<key>.md` in ONE write (one commit), deleting the original; a key archived before gets `<key>.<yyyymmdd>.md`, and an ask whose archive names are both taken is left in place (nothing archived is ever overwritten). `listAsks` never reads the archive, and parses each file once per version (a refresh re-parses only files that changed), so the queue stays fast however many asks agents have closed
 
 ### FR:flow: Lifecycle
 
@@ -77,7 +77,7 @@ After the owner answers, Stack adds `answer`, `text`, `answered`. After the agen
 
 The agent that wrote an ask needs to learn that the owner answered without polling every ask. Stack writes a file; it sends nothing over any network.
 
-- **FR:wake.path** (P1): Storage accepts `tasks/wake/<slug>.md` (same name rules as inboxes). `<slug>` is the ask's `from` lowercased, with each run of characters outside `a-z0-9._-` made one `-`, cut at 80 characters. Wake files are never projects
+- **FR:wake.path** (P1): Storage accepts `tasks/.stack/wake/<slug>.md` (same name rules as inboxes). `<slug>` is the ask's `from` lowercased, with each run of characters outside `a-z0-9._-` made one `-`, cut at 80 characters. Wake files are never projects
 - **FR:wake.write** (P1): After `answerAsk` sets `state: answered` (not `defer`, not `retract`), Stack adds one line `- <iso> <key> <answer>` to the wake file of the ask's `from`, under a `# Wake: <slug>` heading. One line per key: a newer answer replaces the older line. The line holds no answer text; the agent reads it with `asks list --state answered`
 - **FR:wake.clear** (P1): `handleAsk` (any outcome) and a `retract` answer remove that key's line. The file stays, possibly empty, so a watcher sees the change
 - **FR:wake.fail** (P2): A wake write failure never undoes the answer; the answer stands and the ask is still found by `asks list --state answered`
@@ -91,7 +91,7 @@ The agent that wrote an ask needs to learn that the owner answered without polli
 
 ### FR:live: Watcher and push
 
-- **FR:live.watch** (P1): `stack web` watches the served folder (`tasks/`, `tasks/asks/`, `.stack/`) and coalesces bursts for 150 ms into one change, classified `asks` (a file under `tasks/asks/`), `tasks` (other `tasks/` files), or `state` (a file in `.stack/`). Editor temp files, dotfiles, and `.git` are ignored
+- **FR:live.watch** (P1): `stack web` watches the served folder (`tasks/`, `tasks/.stack/asks/`, `.stack/`) and coalesces bursts for 150 ms into one change, classified `asks` (a file under `tasks/.stack/asks/`), `tasks` (other `tasks/` files), or `state` (a file in `.stack/`). Editor temp files, dotfiles, and `.git` are ignored
 - **FR:live.sse** (P1): `GET /events` (not under `/api`; same loopback and Host guards as the app) is a server-sent event stream. `/.auth/me` carries `events: true` when the stream exists, and the page connects only then (other hosts: no request, no console noise). It sends `event: hello` with `{rev}` on connect, `event: change` with `{rev, kinds}` per change, and a comment line every 20 s. `rev` is a counter that increases per change. A client that reconnects with an old `rev` gets one `change` with all kinds
 - **FR:live.fallback** (P1): Hosts with no watcher (the Azure host) do not set `events` in `/.auth/me`. The page then polls `GET /asks` every 15 s while visible, and every 60 s refreshes the clock-dependent ranking in all cases
 - **FR:live.quiet** (P1): A change the page itself caused (its own write) does not flash or toast. A change from elsewhere updates the list in place: the owner's cursor stays on the same ask, a new ask fades in with a dot for 6 s, a removed ask fades out. No toast or sound appears for incoming asks (the browser tab title carries the open count); a system notification appears only when the user opted in and the page is hidden (`FR:pwa/notify.new`)

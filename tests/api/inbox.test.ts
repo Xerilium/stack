@@ -53,7 +53,7 @@ describe('inbox and agents routes', () => {
     const { call, storage } = await mk();
     await putAgent({ storage }, 'cid-manager', { name: 'Cid', scope: ['beta'] });
     expect((await call('owner', 'POST', '/inbox', { ref: 'alpha:5', text: 'You take it', kind: 'instruction', agent: 'cid-manager' })).status).toBe(201);
-    expect((await storage.read('tasks/inbox/alpha.md')).content).toContain('- agent: cid-manager');
+    expect((await storage.read('tasks/.stack/inbox/alpha.md')).content).toContain('- agent: cid-manager');
     expect((await call('owner', 'POST', '/inbox', { ref: 'alpha:5', text: 'x', agent: 'no spaces' })).status).toBe(422);
     expect((await call('owner', 'POST', '/inbox', { ref: 'alpha:5', text: 'x', agent: 'not-on-team' })).status).toBe(422); // only a team member
     expect((await call('owner', 'GET', '/inbox?agent=cid-manager')).json.items.map((e: { text: string }) => e.text)).toEqual(['You take it']);
@@ -63,11 +63,11 @@ describe('inbox and agents routes', () => {
     const { call, mint, storage } = await mk();
     const r = await call('owner', 'POST', '/inbox', { ref: 'alpha:5', text: 'Keep it short', expect: '🪄 Draft notes https://github.com/o/r/pull/7' });
     expect(r.status).toBe(201);
-    expect(r.json).toEqual({ id: expect.stringMatching(/^in-/), path: 'tasks/inbox/alpha.md' });
+    expect(r.json).toEqual({ id: expect.stringMatching(/^in-/), path: 'tasks/.stack/inbox/alpha.md' });
     const w = await mint('tasks:write');
     expect((await call(w, 'POST', '/inbox', { ref: 'alpha:5', text: 'spoof' })).status).toBe(403);
     expect((await call(null, 'POST', '/inbox', { ref: 'alpha:5', text: 'x' })).status).toBe(401);
-    expect((await storage.read('tasks/inbox/alpha.md')).content).not.toContain('spoof');
+    expect((await storage.read('tasks/.stack/inbox/alpha.md')).content).not.toContain('spoof');
   });
 
   it('validates the body and the row', async () => {

@@ -17,7 +17,7 @@ describe('stack agents', () => {
     writeFileSync(join(d, 'prompt.md'), 'Read the charter first.');
     const add = await stack(d, 'agents', 'add', 'cos', '--name', 'CoS', '--scope', '*', '--role', 'Roll-up', '--mode', 'long-running', '--model', 'sonnet', '--tools', 'Read,Bash', '--prompt-file', join(d, 'prompt.md'));
     expect(add).toMatchObject({ code: 0, out: 'added cos\n' });
-    const raw = readFileSync(join(d, 'tasks/agents/cos.md'), 'utf8');
+    const raw = readFileSync(join(d, 'tasks/.stack/agents/cos.md'), 'utf8');
     expect(raw).toContain('- scope: *');
     expect(raw).toContain('- tools: Read, Bash');
     expect(raw).toContain('Read the charter first.');
@@ -38,7 +38,7 @@ describe('stack agents reports-to', () => {
     const d = dir();
     await stack(d, 'agents', 'add', 'cos', '--name', 'CoS', '--scope', '*');
     expect((await stack(d, 'agents', 'add', 'cid-manager', '--name', '🎧 Cid Manager', '--scope', 'f4', '--reports-to', 'cos')).out).toBe('added cid-manager\n');
-    expect(readFileSync(join(d, 'tasks/agents/cid-manager.md'), 'utf8')).toContain('- reports-to: cos');
+    expect(readFileSync(join(d, 'tasks/.stack/agents/cid-manager.md'), 'utf8')).toContain('- reports-to: cos');
     expect((await stack(d, 'agents', 'list')).out).toBe('cid-manager  🎧 Cid Manager  f4  cos\ncos  CoS  *  -\n');
     expect((await stack(d, 'agents', 'add', 'x', '--name', 'X', '--reports-to', 'Bad Slug')).code).toBe(2);
   });

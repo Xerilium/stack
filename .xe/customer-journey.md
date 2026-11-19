@@ -59,7 +59,7 @@ sequenceDiagram
     Agent->>Stack: raise ask (recommendation, deadline, link)
     Stack-->>Owner: ask ranked in Needs you
     Owner->>Stack: pick an option, or reply
-    Stack->>Agent: wake line in tasks/wake
+    Stack->>Agent: wake line in tasks/.stack/wake
     Stack-->>Owner: ask moves to Answered
     Agent->>Stack: read answered asks, act
 ```

@@ -10,6 +10,7 @@ import {
 import { AUTONOMY_LEVELS, type Autonomy } from './model';
 import { parseProject, type Task } from './parser';
 import { ConflictError, NotFoundError, writeAll } from './storage';
+import { logFile as projectLogFile, logName as pathLogName, projectId } from './task-paths';
 
 /** The autonomy gate said no. Agents treat this as "skip and move on". */
 export class TriageDenied extends LifecycleError {
@@ -73,7 +74,7 @@ export function authorize(level: string, action: string): boolean {
 
 interface Located { chain: Task[]; row: Task; lines: string[]; section: string; version: string; content: string; name: string }
 const collapse = (v: string) => v.replace(/\s+/g, ' ').trim();
-const baseName = (p: string) => p.replace(/^.*\//, '').replace(/\.md$/, '');
+const baseName = projectId;
 const bare = (l: string) => l.replace(/\r$/, '');
 
 function find(tasks: Task[], line: number, chain: Task[] = []): Task[] | null {
@@ -314,11 +315,9 @@ export async function applyTriage(ctx: LifecycleContext, ref: TaskRef, s: Sugges
 
 const iso = (ctx: LifecycleContext) => (ctx.now ?? (() => new Date()))().toISOString();
 /** A storage-safe log name for any project file name. */
-export const logName = (ref: TaskRef): string => {
-  const slug = baseName(ref.path).replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^[^A-Za-z0-9]+/, '');
-  return /^readme$/i.test(slug) || slug === '' ? 'project' : slug;
-};
-const logFile = (ref: TaskRef, n: number): string => `tasks/logs/${logName(ref)}${n === 0 ? '' : `.${n + 1}`}.md`;
+export const logName = (ref: Pick<TaskRef, 'path'>): string => pathLogName(ref.path);
+/** Log `n` beside the project file. @req FR:task-structure/system.beside */
+const logFile = (ref: TaskRef, n: number): string => projectLogFile(ref.path, n);
 
 /**
  * All files full: drop the oldest and shift the rest down. The last file gets a header plus a tombstone entry (bytes and date range dropped, actor
@@ -346,7 +345,7 @@ async function rotateLogs(ctx: LifecycleContext, ref: TaskRef, caller: Caller): 
 }
 
 /**
- * Append-only entry in `tasks/logs/<project>.md` (rolls to `.2.md`, `.3.md`, ... when a file is full, at most 5 files, then the oldest is dropped; a slug has no dots so a rollover never equals another project's log). Every field is one redacted line.
+ * Append-only entry in `tasks/.stack/logs/<project>.md` (rolls to `.2.md`, `.3.md`, ... when a file is full, at most 5 files, then the oldest is dropped; a slug has no dots so a rollover never equals another project's log). Every field is one redacted line.
  * @req FR:ai-triage-assist/result.log
  */
 async function appendLog(ctx: LifecycleContext, ref: TaskRef, caller: Caller, lvl: Autonomy, fields: [string, string][]): Promise<void> {

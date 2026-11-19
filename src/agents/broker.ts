@@ -1,5 +1,5 @@
 /**
- * Permission prompts as asks: a request becomes `tasks/asks/perm-<session8>-<request>.md`, the owner answers it on the home view,
+ * Permission prompts as asks: a request becomes `tasks/.stack/asks/perm-<session8>-<request>.md`, the owner answers it on the home view,
  * and the answer resolves the agent's request. Unanswered requests are denied at the deadline so an agent never waits forever.
  * @req FR:agent-sessions/perm.ask @req FR:agent-sessions/perm.answer @req FR:agent-sessions/perm.timeout
  */

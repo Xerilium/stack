@@ -155,13 +155,13 @@ describe('the result log cannot be filled to block agents', () => {
   it('claim and record-result keep working after 5 full log files', async () => {
     const { agent, storage, mint } = await mk();
     const big = (n: number) => `# Alpha agent log\n\n## 2026-01-0${n}T00:00:00.000Z\n- note: old-${n}\n`.padEnd(300 * 1024, 'y');
-    await storage.write('tasks/logs/alpha.md', big(1));
-    for (let i = 2; i <= 5; i++) await storage.write(`tasks/logs/alpha.${i}.md`, big(i));
+    await storage.write('tasks/.stack/logs/alpha.md', big(1));
+    for (let i = 2; i <= 5; i++) await storage.write(`tasks/.stack/logs/alpha.${i}.md`, big(i));
     const t = await mint('tasks:write');
     expect((await agent('/tasks/claim', { ref: r(L.assist) }, t)).status).toBe(200);
     const res = await agent('/tasks/result', { ref: r(L.assist), outcome: 'partial', summary: 'still going' }, t);
     expect(res.status).toBe(200);
-    const all = await Promise.all(['alpha', 'alpha.2', 'alpha.3', 'alpha.4', 'alpha.5'].map(async (n) => (await storage.read(`tasks/logs/${n}.md`)).content));
+    const all = await Promise.all(['alpha', 'alpha.2', 'alpha.3', 'alpha.4', 'alpha.5'].map(async (n) => (await storage.read(`tasks/.stack/logs/${n}.md`)).content));
     expect(all.join('')).toContain('still going');
     expect(all.join('')).toContain('claimed');
     expect(all.join('')).not.toContain('old-1');
@@ -249,7 +249,7 @@ describe('re-review fixes', () => {
   it('L1: a partial rotation without writeMany resumes and drops nothing newer', async () => {
     const mem = new MemoryStorage();
     await mem.write('tasks/alpha.md', DOC);
-    let failOn: string | null = 'tasks/logs/alpha.4.md';
+    let failOn: string | null = 'tasks/.stack/logs/alpha.4.md';
     const storage = {
       list: () => mem.list(),
       read: (p: string) => mem.read(p),
@@ -259,8 +259,8 @@ describe('re-review fixes', () => {
       },
     };
     const big = (n: number) => `# Alpha agent log\n\n## 2026-01-0${n}T00:00:00.000Z\n- note: old-${n}\n`.padEnd(300 * 1024, 'y');
-    await mem.write('tasks/logs/alpha.md', big(1));
-    for (let i = 2; i <= 5; i++) await mem.write(`tasks/logs/alpha.${i}.md`, big(i));
+    await mem.write('tasks/.stack/logs/alpha.md', big(1));
+    for (let i = 2; i <= 5; i++) await mem.write(`tasks/.stack/logs/alpha.${i}.md`, big(i));
     const tokens = createTokenService({ store: new MemoryTokenStore(), now: () => NOW });
     const auth = createAuth({ owners: [], tokens });
     const h = auth.wrap(createApiHandler({ storage, authorize: auth.authorize, now: () => NOW }));
@@ -268,7 +268,7 @@ describe('re-review fixes', () => {
     const call = async () => (await h(new Request('https://x.test/api/tasks/result', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${tok}` }, body: JSON.stringify({ ref: r(L.assist), outcome: 'partial', summary: 'again' }) }))).status;
     await call();
     expect(await call()).toBe(200);
-    const all = (await Promise.all(['alpha', 'alpha.2', 'alpha.3', 'alpha.4', 'alpha.5'].map(async (n) => (await mem.read(`tasks/logs/${n}.md`)).content))).join('');
+    const all = (await Promise.all(['alpha', 'alpha.2', 'alpha.3', 'alpha.4', 'alpha.5'].map(async (n) => (await mem.read(`tasks/.stack/logs/${n}.md`)).content))).join('');
     for (const n of [2, 3, 4, 5]) expect(all).toContain(`old-${n}`);
     expect(all).not.toContain('old-1');
   });

@@ -46,7 +46,7 @@ One HTTP surface over the core so the web app, quick capture, chat bots, and the
 - **FR:input.json** (P1): A body MUST be `application/json` (415 otherwise), valid JSON object (400), at most 64 KiB (413). GET has no body. The body is read only after authorization, as a stream with a hard 64 KiB cap (no unbounded buffering, with or without `content-length`)
 - **FR:input.strict** (P1): Unknown body fields and unknown query parameters are rejected (`invalid`), so typos never silently do nothing
 - **FR:input.types** (P1): Strings, integers, booleans, enums, and refs are type- and range-checked before the core is called; strings are limited to 2000 characters (summary 10000)
-- **FR:input.ref** (P1): A task ref is the string `project:line` (project is the file base name; line is a non-negative integer). Anything else is `invalid`; `README` (any case) is never a valid ref or project `fileName`
+- **FR:input.ref** (P1): A task ref is the string `project:line` (project is the project ID, `FR:task-structure/id.project`; line is a non-negative integer). Anything else is `invalid`; `README` (any case) is never a valid ref or project `fileName`
 - **FR:input.line** (P1): Single-line fields (including `complete.summary`) MUST reject CR, LF, U+0085, U+2028, and U+2029 so input cannot inject markdown lines
 - **FR:input.enums** (P1): `status`, `priority`, `effort`, `impact` (emoji or `None`), `checkbox` (`Complete`/`Incomplete`), and `suspend` format are checked at the API layer; OpenAPI declares the same enums
 - **FR:input.noforce** (P1): `POST /projects` never overwrites an existing project file (409); there is no `force` option
@@ -62,7 +62,7 @@ One HTTP surface over the core so the web app, quick capture, chat bots, and the
 - **FR:routes.actions** (P1): `POST /tasks/{start|complete|skip|resume|suspend|set}` with `ref` (optional except for `set`; omitted means the next or parked task, as in the core). `complete` takes `summary?`, `remove?`; `suspend` takes `days?` or `hours?`; `set` takes `status?`, `priority?`, `effort?`, `impact?`, `checkbox?`, `suspend?`, `clearEmojis?`. Returns `{changed,ref?,before?,after?,message?}`
 - **FR:routes.remove** (P1): `POST /tasks/remove-completed` `{project?}` returns `{removed,files}`
 - **FR:routes.tasks** (P1): `GET /tasks` lists tasks (children included) with `project`, `section`, `state` (`open` default, `done`, `all`), `q` (case-insensitive text), `limit` (1-200, default 50), `offset`; returns `{items,total,offset,limit}`. `GET /tasks/{ref}` returns one item (404 if the line is not a task). Empty rows are not listed; `depth` counts listed ancestors only
-- **FR:routes.projects** (P1): `GET /projects` lists projects; `GET /projects/{name}` returns one (404 when absent); `name` matches the file base name
+- **FR:routes.projects** (P1): `GET /projects` lists projects; `GET /projects/{name}` returns one (404 when absent); `name` matches the project ID
 - **FR:routes.summaries** (P1): `GET /summaries` returns `{readme,stack,projects,myDay}` generated from storage with the `stack` engine and `.stack/priorities.json`, so the README top is the `GET /next` task (`myDay` is `null` when no tasks); `fields` selects which
 
 ### FR:compact: Token-efficient responses

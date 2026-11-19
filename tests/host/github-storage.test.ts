@@ -72,7 +72,7 @@ describe('snapshot reads', () => {
     const { s } = make(gh);
     await s.list();
     const n = gh.calls.length;
-    await expect(s.read('tasks/inbox/x.md')).rejects.toBeInstanceOf(NotFoundError);
+    await expect(s.read('tasks/.stack/inbox/x.md')).rejects.toBeInstanceOf(NotFoundError);
     expect(gh.calls.length).toBe(n);
   });
   it('keeps exact bytes (BOM, CRLF, emoji) through write and read', async () => {
@@ -102,10 +102,10 @@ describe('freshness', () => {
     expect(refs()).toBe(r0 + 1);
     expect(gh.calls.filter((c) => c.path.includes('/git/ref/')).pop()!.headers['if-none-match']).toMatch(/^W\/"/);
     expect(gets(gh, 'trees')).toBe(1); // 304: same snapshot
-    gh.push({ 'tasks/a.md': 'A2', 'tasks/asks/k.md': 'K' });
+    gh.push({ 'tasks/a.md': 'A2', 'tasks/.stack/asks/k.md': 'K' });
     clock.advance(5000);
     expect((await s.read('tasks/a.md')).content).toBe('A2');
-    expect(await s.listAsks()).toEqual(['tasks/asks/k.md']);
+    expect(await s.listAsks()).toEqual(['tasks/.stack/asks/k.md']);
   });
   // @req FR:live-deploy/gh.fresh.sync @req FR:live-deploy/gh.@function
   it('sync() and rev() force a check and rev is the head sha', async () => {
@@ -149,10 +149,10 @@ describe('paths', () => {
     expect(gh.file('tasks/b.md')).toBeNull();
   });
   it('hides dotfiles, nested files and non-md from list, and lists only valid ask keys', async () => {
-    const gh = new FakeGitHub('acme', 'tasks', { 'tasks/a.md': 'A', 'tasks/.h.md': 'H', 'tasks/x.txt': 'X', 'tasks/logs/l.md': 'L', 'tasks/asks/ok.md': 'K', 'tasks/asks/Bad.md': 'B', 'tasks/asks/archive/old.md': 'O' });
+    const gh = new FakeGitHub('acme', 'tasks', { 'tasks/a.md': 'A', 'tasks/.h.md': 'H', 'tasks/x.txt': 'X', 'tasks/.stack/logs/l.md': 'L', 'tasks/.stack/asks/ok.md': 'K', 'tasks/.stack/asks/Bad.md': 'B', 'tasks/.stack/asks/archive/old.md': 'O' });
     const { s } = make(gh);
     expect(await s.list()).toEqual(['tasks/a.md']);
-    expect(await s.listAsks()).toEqual(['tasks/asks/ok.md']);
+    expect(await s.listAsks()).toEqual(['tasks/.stack/asks/ok.md']);
   });
   // @req FR:live-deploy/gh.paths.links
   it('refuses symlinks and submodules', async () => {
@@ -253,10 +253,10 @@ describe('races', () => {
     const gh = new FakeGitHub('acme', 'tasks', { 'tasks/a.md': 'A' });
     const { s } = make(gh);
     const v = (await s.read('tasks/a.md')).version;
-    gh.beforeRefUpdate = () => { gh.push({ 'tasks/asks/k.md': 'agent ask' }); };
+    gh.beforeRefUpdate = () => { gh.push({ 'tasks/.stack/asks/k.md': 'agent ask' }); };
     await s.write('tasks/a.md', 'A2', { expectedVersion: v });
     expect(gh.file('tasks/a.md')).toBe('A2');
-    expect(gh.file('tasks/asks/k.md')).toBe('agent ask');
+    expect(gh.file('tasks/.stack/asks/k.md')).toBe('agent ask');
   });
   it('conflicts when the moved branch changed a path it expected', async () => {
     const gh = new FakeGitHub('acme', 'tasks', { 'tasks/a.md': 'A' });
@@ -361,14 +361,14 @@ describe('snapshot ordering under concurrent reads and writes', () => {
 describe('blob cache bound', () => {
   it('keeps at most 2000 blobs, dropping the oldest', async () => {
     const files: Record<string, string> = {};
-    for (let i = 0; i < 2005; i++) files[`tasks/asks/k${i}.md`] = `ask ${i}`;
+    for (let i = 0; i < 2005; i++) files[`tasks/.stack/asks/k${i}.md`] = `ask ${i}`;
     const gh = new FakeGitHub('acme', 'tasks', files);
     const { s } = make(gh);
-    for (let i = 0; i < 2005; i++) await s.read(`tasks/asks/k${i}.md`);
+    for (let i = 0; i < 2005; i++) await s.read(`tasks/.stack/asks/k${i}.md`);
     const before = gets(gh, 'blobs');
-    await s.read('tasks/asks/k2004.md');
+    await s.read('tasks/.stack/asks/k2004.md');
     expect(gets(gh, 'blobs')).toBe(before);
-    await s.read('tasks/asks/k0.md');
+    await s.read('tasks/.stack/asks/k0.md');
     expect(gets(gh, 'blobs')).toBe(before + 1);
   });
 });

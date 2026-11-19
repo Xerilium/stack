@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'crypto';
 import { promises as fs } from 'fs';
 import { dirname, join } from 'path';
+import { AGENT_PATH, ARCHIVE_PATH, ASK_PATH, INBOX_PATH, LOG_PATH, SYSTEM, TASK_PATH, TASKS_DIR, WAKE_PATH } from './task-paths';
 
 /** @req FR:storage-git/$errors */
 export class StorageError extends Error {}
@@ -24,9 +25,9 @@ export interface FileWrite { path: string; /** `null` deletes the file (multi-fi
 /** @req FR:storage-git/interface.@type */
 export interface Storage {
   list(): Promise<string[]>;
-  /** Paths of ask files (`tasks/asks/<key>.md`). @req FR:ask-queue/ask.path */
+  /** Paths of ask files (`tasks/<dir>/.stack/asks/<key>.md`). @req FR:ask-queue/ask.path */
   listAsks?(): Promise<string[]>;
-  /** Paths of agent files (`tasks/agents/<slug>.md`). @req FR:agent-team/agent.path */
+  /** Paths of agent files (`tasks/<dir>/.stack/agents/<slug>.md`). @req FR:agent-team/agent.path */
   listAgents?(): Promise<string[]>;
   /** Paths of Claude agent definitions (`.claude/agents/<slug>.md`), read-only. @req FR:agent-team/agent.path.claude */
   listClaudeAgents?(): Promise<string[]>;
@@ -70,22 +71,9 @@ export function assertDistinct(writes: FileWrite[]): void {
 export const versionOf = (content: string): string =>
   createHash('sha256').update(Buffer.from(content, 'utf8')).digest('hex');
 
-/** Dotfiles are rejected (list() hides them, so every adapter must agree). */
-export const TASK_PATH = /^tasks\/[^/\\\0.][^/\\\0]*\.md$/;
+/** Task and system path rules live in `task-paths`; re-exported for adapters. @req FR:task-structure/tree.path @req FR:task-structure/system.path */
+export { TASK_PATH, ASK_PATH, AGENT_PATH };
 const SUMMARY_PATH = /^(README|stack|projects|my-day)\.md$/;
-/** Agent result logs live beside the tasks, in their own folder, and are never projects. */
-const LOG_PATH = /^tasks\/logs\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[A-Za-z0-9][A-Za-z0-9._-]*\.md$/;
-/** Owner-to-agent inboxes: same name rules as logs, never projects. @req FR:agent-inbox/inbox.path */
-const INBOX_PATH = /^tasks\/inbox\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[A-Za-z0-9][A-Za-z0-9._-]*\.md$/;
-
-/** Wake files for agents whose asks were answered: same name rules as inboxes, never projects. @req FR:ask-queue/wake.path */
-const WAKE_PATH = /^tasks\/wake\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,79}\.md$/;
-/** Agent asks for the owner: one file per ask, never projects. @req FR:ask-queue/ask.path */
-export const ASK_PATH = /^tasks\/asks\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,79}\.md$/;
-/** Archived (done) asks: same names, one folder down, never listed as open asks. @req FR:ask-queue/ask.archive */
-const ARCHIVE_PATH = /^tasks\/asks\/archive\/[a-z0-9][a-z0-9._-]{0,79}\.md$/;
-/** Agent definitions (one per agent, scoped to project folders), never projects. @req FR:agent-team/agent.path */
-const AGENT_PATH = /^tasks\/agents\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,39}\.md$/;
 /** Claude's own agent definitions: read into the team, never written by Stack. @req FR:agent-team/agent.path.claude */
 export const CLAUDE_AGENT_PATH = /^\.claude\/agents\/(?![Rr][Ee][Aa][Dd][Mm][Ee]\.md$)[a-z0-9][a-z0-9._-]{0,39}\.md$/;
 const CLAUDE_AGENTS_DIR = '.claude/agents';
@@ -120,8 +108,6 @@ export function validateWritePath(path: string): string {
   return path;
 }
 
-const TASKS_DIR = 'tasks';
-const isTaskFile = (name: string) => name.endsWith('.md') && !name.startsWith('.');
 
 /** @req FR:storage-git/fs.memory */
 export class MemoryStorage implements Storage {
@@ -233,22 +219,35 @@ export class FsStorage implements Storage {
     return join(this.root, path);
   }
 
-  /** @req FR:storage-git/interface.list */
-  async list(): Promise<string[]> {
-    try {
-      const entries = await fs.readdir(await this.safe(TASKS_DIR), { withFileTypes: true });
-      return entries.filter(e => e.isFile() && isTaskFile(e.name)).map(e => `${TASKS_DIR}/${e.name}`).sort();
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
-      throw e;
-    }
-  }
+  /** @req FR:storage-git/interface.list @req FR:task-structure/tree.list @req FR:task-structure/tree.dot */
+  async list(): Promise<string[]> { return this.listTree(false, TASK_PATH); }
 
-  async listAsks(): Promise<string[]> { return this.listIn('asks', ASK_PATH); }
-  async listAgents(): Promise<string[]> { return this.listIn('agents', AGENT_PATH); }
+  /** @req FR:task-structure/system.list */
+  async listAsks(): Promise<string[]> { return this.listTree(true, ASK_PATH); }
+  async listAgents(): Promise<string[]> { return this.listTree(true, AGENT_PATH); }
   async listClaudeAgents(): Promise<string[]> { return this.listDir(CLAUDE_AGENTS_DIR, CLAUDE_AGENT_PATH); }
 
-  private listIn(folder: string, re: RegExp): Promise<string[]> { return this.listDir(`${TASKS_DIR}/${folder}`, re); }
+  /**
+   * Every file under `tasks/` that matches `re`. Enters plain folders, and `.stack` folders when `system`; never a symlink or another dot folder.
+   * @req FR:task-structure/tree.symlink
+   */
+  private async listTree(system: boolean, re: RegExp): Promise<string[]> {
+    const out: string[] = [];
+    const walk = async (dir: string): Promise<void> => {
+      let entries;
+      try { entries = await fs.readdir(await this.safe(dir), { withFileTypes: true }); } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === 'ENOENT' || (e as NodeJS.ErrnoException).code === 'ENOTDIR') return;
+        throw e;
+      }
+      for (const e of entries) {
+        const p = `${dir}/${e.name}`;
+        if (e.isFile()) { if (re.test(p)) out.push(p); } else if (e.isDirectory() && (!e.name.startsWith('.') || (system && e.name === SYSTEM))) await walk(p);
+      }
+    };
+    await walk(TASKS_DIR);
+    return out.sort();
+  }
+
   private async listDir(dir: string, re: RegExp): Promise<string[]> {
     try {
       const entries = await fs.readdir(await this.safe(dir), { withFileTypes: true });

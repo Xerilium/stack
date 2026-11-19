@@ -8,7 +8,7 @@
 
 **Why**: Owner rule: live state must not go to the content repo; git holds durable task docs only. Reports change often and are replaced, so git commits would be noise. The host's port is random, so the host publishes it in `host.json`.
 
-**Rejected**: `.stack/reports.json` in the content repo (commits per report); asks written as `tasks/asks/*.md` (git); SQLite (a native dependency for one small file; JSON with an atomic rename and a lock file is enough at this size).
+**Rejected**: `.stack/reports.json` in the content repo (commits per report); asks written as `tasks/.stack/asks/*.md` (git); SQLite (a native dependency for one small file; JSON with an atomic rename and a lock file is enough at this size).
 
 ## One JSON file, atomic rename, lock file
 

@@ -127,7 +127,7 @@ paths:
                           type: string
                         name:
                           type: string
-                          description: Project file base name
+                          description: Project ID (path under tasks/ without .md)
                         done:
                           type: boolean
                         pick:
@@ -369,7 +369,7 @@ paths:
                 project:
                   type: string
                   maxLength: 200
-                  description: File base name, title, or alias Single line.
+                  description: Project ID (path under tasks/ without .md), title, or alias Single line.
                 text:
                   type: string
                   maxLength: 2000
@@ -963,7 +963,7 @@ paths:
           $ref: "#/components/responses/Error"
   /tasks/result:
     post:
-      summary: Log an agent result in tasks/logs; completes only within autonomy, else defers to a 🙋 subtask
+      summary: Log an agent result in tasks/.stack/logs; completes only within autonomy, else defers to a 🙋 subtask
       operationId: recordResult
       requestBody:
         required: true
@@ -1019,7 +1019,7 @@ paths:
           $ref: "#/components/responses/Error"
   /inbox:
     post:
-      summary: "Send a reply or decision to the agent inbox of the task project (tasks/inbox). Owner session only: 403 for tokens"
+      summary: "Send a reply or decision to the agent inbox of the task project (tasks/.stack/inbox). Owner session only: 403 for tokens"
       operationId: sendToInbox
       requestBody:
         required: true
@@ -1183,7 +1183,7 @@ paths:
           $ref: "#/components/responses/Error"
   /asks/{key}:
     post:
-      summary: Create or update an ask (tasks/asks/<key>.md). The key is stable, so writing it again updates the ask. A token gets 403 on an ask another writer created and on perm-* keys
+      summary: Create or update an ask (tasks/.stack/asks/<key>.md). The key is stable, so writing it again updates the ask. A token gets 403 on an ask another writer created and on perm-* keys
       operationId: putAsk
       parameters:
         - name: key
@@ -3022,7 +3022,7 @@ paths:
           $ref: "#/components/responses/Error"
   /inbox/reply:
     post:
-      summary: "An agent's reply on a task (tasks/inbox, from: agent, named by the token). Tokens only: the owner session gets 403"
+      summary: "An agent's reply on a task (tasks/.stack/inbox, from: agent, named by the token). Tokens only: the owner session gets 403"
       operationId: replyFromAgent
       requestBody:
         required: true
@@ -3250,7 +3250,7 @@ paths:
           $ref: "#/components/responses/Error"
   /team:
     get:
-      summary: "The team: tasks/agents/<slug>.md, .claude/agents/<slug>.md and project Agents lines, each with who it reports to; with project, the agents that cover it, the roll-up first"
+      summary: "The team: tasks/.stack/agents/<slug>.md, .claude/agents/<slug>.md and project Agents lines, each with who it reports to; with project, the agents that cover it, the roll-up first"
       operationId: listTeam
       parameters:
         - name: project
@@ -3713,7 +3713,7 @@ paths:
           required: true
           schema:
             type: string
-          description: File base name
+          description: Project ID (path under tasks/ without .md; encode / as %2F)
         - $ref: "#/components/parameters/fields"
       responses:
         "200":
@@ -4874,7 +4874,7 @@ components:
                   format: date
     Ref:
       type: string
-      pattern: ^(?![Rr][Ee][Aa][Dd][Mm][Ee]:)([^/\\:\0.][^/\\:\0]*):(\d{1,9})$
+      pattern: ^(?!(?:[^:]*\/)?[Rr][Ee][Aa][Dd][Mm][Ee]:)((?:[^/\\:\0.][^/\\:\0]*\/)*[^/\\:\0.][^/\\:\0]*):(\d{1,9})$
       example: alpha:12
       description: "`<project>:<line>`. README (any case) is reserved and never a valid project."
     Error:
@@ -4916,7 +4916,7 @@ components:
                     type: string
     InboxEntry:
       type: object
-      description: One owner message in tasks/inbox/<project>.md. Agents act on open entries, then mark them handled.
+      description: One owner message in tasks/.stack/inbox/<project>.md. Agents act on open entries, then mark them handled.
       properties:
         id:
           type: string
@@ -4961,7 +4961,7 @@ components:
           description: Where the row is now, found by title (lines move); absent when the row is gone
     Ask:
       type: object
-      description: One ask for the owner (tasks/asks/<key>.md) with its computed score and rank.
+      description: One ask for the owner (tasks/.stack/asks/<key>.md) with its computed score and rank.
       properties:
         key:
           type: string
@@ -5132,7 +5132,7 @@ components:
             - stack
             - claude
             - metadata
-          description: tasks/agents file, .claude/agents file, or a project Agents line
+          description: tasks/.stack/agents file, .claude/agents file, or a project Agents line
         home:
           type: string
           description: "Where an agent found outside the content repo lives: its owning project, else its repo folder; user for ~/.claude/agents"

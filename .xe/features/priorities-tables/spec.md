@@ -25,7 +25,7 @@ The owner runs many projects at once. He needs one report that says, per project
 Owner needs the report to use only what each project owner wrote so that no row comes from memory or old data.
 
 - **FR:tasks.@function** (P1): Interface: `tieredTasks(path, src): TieredTask[]`, pure
-- **FR:tasks.store** (P1): Report MUST read rows only from `tasks/*.md` (not `tasks/asks/`, not `tasks/agents/`), and MUST NOT write them.
+- **FR:tasks.store** (P1): Report MUST read rows only from `tasks/*.md` (not `tasks/.stack/asks/`, not `tasks/.stack/agents/`), and MUST NOT write them.
 - **FR:tasks.tier** (P1): A tiered task (@req FR:$tiered) is a line whose first token, after an optional `- `, `* ` or `- [ ] `, is `1️⃣` (today), `2️⃣` (this week) or `3️⃣` (this month).
   - **FR:tasks.tier.goal** (P1): Tiers are goals, not due dates: the report MUST NOT read a date as a tier.
   - **FR:tasks.tier.skip** (P1): Report MUST skip checked lines (`- [x]`), headings and lines with no tier.
@@ -95,7 +95,7 @@ Owner needs the sections to follow his day so that each hour shows only work he 
 Owner needs each agent one tap away so that he can talk to it.
 
 - **FR:agent.link** (P1): Report MUST link the agent to the inventory session whose title matches the agent name (case, emoji and punctuation ignored), else to the session in the priority `session`.
-- **FR:agent.file** (P1): With no session, Report MUST name the agent file (`tasks/agents/<slug>.md` or `.claude/agents/<slug>.md`) whose slug matches the agent name.
+- **FR:agent.file** (P1): With no session, Report MUST name the agent file (`tasks/.stack/agents/<slug>.md` or `.claude/agents/<slug>.md`) whose slug matches the agent name.
 - **FR:agent.plain** (P1): Report MUST show the agent name with no link when no session matches.
 - **FR:agent.session** (P1): With a session, Report MUST give the id that `POST /sessions/{id}/prompt` takes (@req FR:agent-sessions/run.prompt): the inventory `cli` id (@req FR:session-inventory/needs.item) when it is a UUID, else null.
 

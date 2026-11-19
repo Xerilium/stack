@@ -25,8 +25,8 @@ Close the loop between the owner and the agents that work the owner's tasks: rep
 
 The owner needs to send a reply or decision on a task row so that the owning agent reads it on its next run.
 
-- **FR:inbox.@file** (P1): Interface: `tasks/inbox/<slug>.md`, one file per project; `<slug>` is the project file name made storage safe the same way as result logs (`tasks/logs/<slug>.md`)
-- **FR:inbox.path** (P1): Storage accepts `tasks/inbox/<name>.md` (same name rules as result logs). Inbox files are never listed as projects
+- **FR:inbox.@file** (P1): Interface: `tasks/.stack/inbox/<slug>.md`, one file per project; `<slug>` is the project file name made storage safe the same way as result logs (`tasks/.stack/logs/<slug>.md`)
+- **FR:inbox.path** (P1): Storage accepts `tasks/.stack/inbox/<name>.md` (same name rules as result logs). Inbox files are never listed as projects
 - **FR:inbox.format** (P1): `formatEntry` and `parseInbox` MUST round-trip the entry format in the Data Model (`FR:$inbox-entry`): heading `## <id>`, then one `- key: value` line per field
 - **FR:inbox.id** (P1): Ids are `in-<UTC yyyymmddThhmmssZ>-<4 hex>`, unique within the file
 - **FR:inbox.send** (P1): `sendToInbox(ref, text, kind, expect?)` reads the row at `ref` (404 when missing, 409 when `expect` differs from the row text) and appends one entry. Text is one line, 1-1000 characters. Every field is redacted and escaped like result log fields (`FR:ai-triage-assist/result.noleak`), so the file never renders links or images from row text. The task row file is not changed
@@ -62,7 +62,7 @@ The owner needs to see what each agent is doing so that the owner can tell what 
 - **FR:activity.rows** (P1): Agent work is every open 🤖 or 🪄 row whose ancestors are open, that is not parked, suspended, or recurring-skipped, and that is in an Active section or marked 🚧. Each item has `ref`, `project`, `title`, and `text`
 - **FR:activity.prs** (P1): GitHub pull request links (`https://github.com/<owner>/<repo>/pull/<n>`) on the row or in its notes become `prs: [{url, repo, number}]`, deduplicated, at most 5 per row
 - **FR:activity.status** (P1): When a status provider is configured (@req FR:github-pr-status/status.output), each pull request gains `state` (`open`, `draft`, `merged`, `closed`), `checks` (`passing`, `failing`, `pending`, `none`), `title`, and `updatedAt`. A provider failure leaves the pull request without status; the route still answers
-- **FR:activity.log** (P1): `last` is the newest result log entry (`tasks/logs/<slug>*.md`) whose `ref` is the row: `{at, action, outcome?, summary?}`
+- **FR:activity.log** (P1): `last` is the newest result log entry (`tasks/.stack/logs/<slug>*.md`) whose `ref` is the row: `{at, action, outcome?, summary?}`
 - **FR:activity.waiting** (P1): `waitingOn` is the first open 🙋 row that is a child of the agent row, or a sibling under the same parent (top-level rows only look at children)
 - **FR:activity.replies** (P1): `replies` counts open inbox entries whose current row (`FR:inbox.rows`) is this row
 - **FR:activity.state** (P1): `state` is the first that holds: `merged` (every linked PR merged), `failing` (an open PR with failing checks), `waiting` (`waitingOn` set, or the last log outcome is `blocked` or `needs-human`), `review` (an open, non-draft PR with passing or no checks), `ci` (an open PR with pending checks), `working` (🚧, a draft PR, or a log entry in the last 24 hours), else `queued`. `since` is the newest of the PR `updatedAt` and the log `at`

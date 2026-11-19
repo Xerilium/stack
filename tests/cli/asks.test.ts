@@ -19,7 +19,7 @@ describe('stack asks', () => {
     writeFileSync(join(d, 'detail.md'), 'Remaining risk: keyboard pass.');
     const put = await stack(d, 'asks', 'put', 'pr-879-approve', '--ask', 'Approve merging PR 879', '--kind', 'approve', '--from', 'allyte-cos', '--recommend', 'Approve', '--default', 'Merges at 8am', '--by', '2026-10-29T15:00:00Z', '--reversible', 'yes', '--link', 'https://github.com/o/r/pull/879', '--priority', 'high', '--effort', '2m', '--blocks', '3', '--detail-file', join(d, 'detail.md'));
     expect(put).toMatchObject({ code: 0, out: 'pr-879-approve\n' });
-    const raw = readFileSync(join(d, 'tasks/asks/pr-879-approve.md'), 'utf8');
+    const raw = readFileSync(join(d, 'tasks/.stack/asks/pr-879-approve.md'), 'utf8');
     expect(raw).toContain('- ask: Approve merging PR 879');
     expect(raw).toContain('Remaining risk: keyboard pass.');
     await stack(d, 'asks', 'put', 'low-one', '--ask', 'Rename the repo', '--kind', 'go-do', '--from', 'cos', '--priority', 'low');
@@ -56,7 +56,7 @@ describe('stack asks', () => {
     const r = await stack(d, 'asks', 'archive', '--days', '0');
     expect(r.code).toBe(0);
     expect(r.out.trim()).toBe('archived k');
-    expect(readFileSync(join(d, 'tasks/asks/archive/k.md'), 'utf8')).toContain('- state: done');
+    expect(readFileSync(join(d, 'tasks/.stack/asks/archive/k.md'), 'utf8')).toContain('- state: done');
     expect((await stack(d, 'asks', 'list', '--state', 'all', '--json')).out).toContain('"total":0');
     expect((await stack(d, 'asks', 'archive', '--days', 'x')).code).toBe(2);
     expect((await stack(d, 'asks', 'archive', 'extra')).code).toBe(2);

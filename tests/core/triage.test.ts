@@ -31,7 +31,7 @@ async function setup(doc = DOC) {
   await storage.write('tasks/alpha.md', doc);
   const ctx = { storage, config: getDefaults(), now: () => NOW };
   const text = async () => (await storage.read('tasks/alpha.md')).content;
-  const log = async () => (await storage.read('tasks/logs/alpha.md').catch(() => ({ content: '' }))).content;
+  const log = async () => (await storage.read('tasks/.stack/logs/alpha.md').catch(() => ({ content: '' }))).content;
   return { storage, ctx, text, log };
 }
 
@@ -256,7 +256,7 @@ describe('recordResult', () => {
     const { ctx, text, storage } = await setup();
     await expect(recordResult(ctx, ref(L.plain), { outcome: 'done', summary: 'x' }, agent)).rejects.toBeInstanceOf(TriageDenied);
     expect(await storage.list()).toEqual(['tasks/alpha.md']);
-    await expect(storage.read('tasks/logs/alpha.md')).rejects.toThrow();
+    await expect(storage.read('tasks/.stack/logs/alpha.md')).rejects.toThrow();
     const r = await recordResult(ctx, ref(L.triage), { outcome: 'done', summary: 'x', complete: true }, agent);
     expect(r).toMatchObject({ logged: true, completed: false, deferred: true });
     expect(await text()).toContain('- [ ] Triage task 🤖:triage');
@@ -268,11 +268,11 @@ describe('recordResult', () => {
     for (const s of ['', 'a\nb', 'a\u2028b', 'x'.repeat(501)]) await expect(recordResult(ctx, ref(L.agentChild), { ...base, summary: s }, agent)).rejects.toThrow();
     for (const a of ['', 'a b', 'a\nb', 'x'.repeat(65), '../x', 'a`b']) await expect(recordResult(ctx, ref(L.agentChild), base, { actor: a })).rejects.toThrow();
   });
-  it('writes the log under tasks/logs, never as a project', async () => {
+  it('writes the log under tasks/.stack/logs, never as a project', async () => {
     const { ctx, storage } = await setup();
     await recordResult(ctx, ref(L.agentChild), { outcome: 'done', summary: 'ok' }, agent);
     expect(await storage.list()).toEqual(['tasks/alpha.md']);
-    expect((await storage.read('tasks/logs/alpha.md')).content).toContain('ok');
+    expect((await storage.read('tasks/.stack/logs/alpha.md')).content).toContain('ok');
   });
 });
 
@@ -306,11 +306,11 @@ describe('redaction', () => {
 
 // @req FR:ai-triage-assist/result.path
 describe('storage path', () => {
-  it('accepts only tasks/logs/<name>.md and hides it from list', async () => {
+  it('accepts only tasks/.stack/logs/<name>.md and hides it from list', async () => {
     const s: Storage = new MemoryStorage();
-    await s.write('tasks/logs/alpha.md', 'x');
+    await s.write('tasks/.stack/logs/alpha.md', 'x');
     expect(await s.list()).toEqual([]);
-    for (const p of ['tasks/logs/.x.md', 'tasks/logs/a/b.md', 'tasks/logs/../x.md', 'tasks/logs/x.txt', 'logs/x.md', 'tasks/logs/README.md']) {
+    for (const p of ['tasks/.stack/logs/.x.md', 'tasks/.stack/logs/a/b.md', 'tasks/.stack/logs/../x.md', 'tasks/.stack/logs/x.txt', 'logs/x.md', 'tasks/.stack/logs/README.md']) {
       await expect(s.write(p, 'x')).rejects.toBeInstanceOf(PathError);
     }
   });
@@ -375,7 +375,7 @@ describe('hardening', () => {
     const real = storage.write.bind(storage);
     let inserted = false;
     storage.write = async (p, content, o) => {
-      if (!inserted && p.startsWith('tasks/logs/')) {
+      if (!inserted && p.startsWith('tasks/.stack/logs/')) {
         inserted = true;
         const cur = (await storage.read('tasks/alpha.md')).content;
         await real('tasks/alpha.md', cur.replace('- [ ] Plain task\n', '- [ ] Plain task\n- [ ] Squeezed in\n'));
@@ -388,10 +388,10 @@ describe('hardening', () => {
 
   it('a full log rolls to the next file and still records the hand-off', async () => {
     const { ctx, storage } = await setup();
-    await storage.write('tasks/logs/alpha.md', '# x\n'.padEnd(300 * 1024, 'y'));
+    await storage.write('tasks/.stack/logs/alpha.md', '# x\n'.padEnd(300 * 1024, 'y'));
     const r = await recordResult(ctx, ref(L.agentChild), { outcome: 'blocked', summary: 'stuck' }, agent);
     expect(r.human).toBeDefined();
-    expect((await storage.read('tasks/logs/alpha.2.md')).content).toContain('stuck');
+    expect((await storage.read('tasks/.stack/logs/alpha.2.md')).content).toContain('stuck');
   });
 
   it('logs project files with unusual names', async () => {
@@ -400,7 +400,7 @@ describe('hardening', () => {
     const c = { storage, config: getDefaults(), now: () => NOW };
     const r = { path: 'tasks/my project.md', line: 4 };
     await claimTask(c, r, agent);
-    expect((await storage.read('tasks/logs/my-project.md')).content).toContain('claimed');
+    expect((await storage.read('tasks/.stack/logs/my-project.md')).content).toContain('claimed');
     expect((await storage.read('tasks/my project.md')).content).toContain('🚧');
   });
 
@@ -469,12 +469,12 @@ describe('log rollover names', () => {
   it('does not collide with another project\'s primary log', async () => {
     const storage = new MemoryStorage();
     for (const n of ['foo', 'foo-2']) await storage.write(`tasks/${n}.md`, `# ${n}\n\n## Active\n\n- [ ] 🪄 t 🤖:assist\n`);
-    await storage.write('tasks/logs/foo.md', '# x\n'.padEnd(300 * 1024, 'y'));
+    await storage.write('tasks/.stack/logs/foo.md', '# x\n'.padEnd(300 * 1024, 'y'));
     const ctx = { storage, config: getDefaults(), now: () => NOW };
     await recordResult(ctx, { path: 'tasks/foo.md', line: 4 }, { outcome: 'partial', summary: 'a' }, agent);
     await recordResult(ctx, { path: 'tasks/foo-2.md', line: 4 }, { outcome: 'partial', summary: 'b' }, agent);
-    expect((await storage.read('tasks/logs/foo.2.md')).content).not.toContain('foo-2.md');
-    expect((await storage.read('tasks/logs/foo-2.md')).content).toContain('# foo-2 agent log');
+    expect((await storage.read('tasks/.stack/logs/foo.2.md')).content).not.toContain('foo-2.md');
+    expect((await storage.read('tasks/.stack/logs/foo-2.md')).content).toContain('# foo-2 agent log');
   });
 });
 
@@ -517,7 +517,7 @@ describe('log robustness and confusables', () => {
     const { ctx } = await setup() as any;
     const rs = await Promise.all(Array.from({ length: 8 }, (_, i) => recordResult(ctx, ref(L.agentChild), { outcome: 'partial', summary: `par ${i}` }, agent)));
     expect(rs).toHaveLength(8);
-    const log = (await ctx.storage.read('tasks/logs/alpha.md')).content;
+    const log = (await ctx.storage.read('tasks/.stack/logs/alpha.md')).content;
     for (let i = 0; i < 8; i++) expect(log).toContain(`par ${i}`);
   });
   it.each(['Passıword=zz', 'pаssword=zz', 'paſsword=zz'])('redacts %s', (s) => {

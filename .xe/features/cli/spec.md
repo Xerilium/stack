@@ -24,9 +24,9 @@ Owner needs one `stack` binary that finds the task repo and commits what it chan
 - **FR:run.@function** (P1): Interface: `run(argv: string[], io?: { out(s): void; err(s): void }): Promise<number>`
   - Returns the exit code and never calls `process.exit`
 - **FR:run.dir** (P1): `--dir <path>` MUST set the repo root (optional override)
-  - Task files are `<dir>/tasks/*.md`; config is `<dir>/.xe/config/stack.json` (defaults when missing)
+  - Task files are `.md` files under `<dir>/tasks/` (`FR:task-structure/tree.list`); config is `<dir>/.xe/config/stack.json` (defaults when missing)
     > - @req FR:config/load.@function
-- **FR:run.discover** (P1): Without `--dir`, every command except `init` MUST find the repo by walking up from the current directory to a folder with `.xe/config/stack.json` or `tasks/*.md`, then `$STACK_DIR`, then `dir` in `~/.config/stack/config.json`, else the current directory
+- **FR:run.discover** (P1): Without `--dir`, every command except `init` MUST find the repo by walking up from the current directory to a folder with `.xe/config/stack.json` or a `.md` file at any depth under `tasks/`, then `$STACK_DIR`, then `dir` in `~/.config/stack/config.json`, else the current directory
 - **FR:run.git** (P1): Every write MUST be a direct commit through `GitStorage`
   > - @req FR:storage-git/git.commit
   - **FR:run.git.worktree** (P1): A `--dir` that is not a git work tree MUST fail with exit 1 and a hint to run `stack init`

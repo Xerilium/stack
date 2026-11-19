@@ -1,5 +1,5 @@
 /**
- * Agent delivery: the reader of `tasks/inbox`. Runs the task's agent headlessly (`claude -p`) on each open owner message,
+ * Agent delivery: the reader of `tasks/.stack/inbox`. Runs the task's agent headlessly (`claude -p`) on each open owner message,
  * posts its reply in the thread as the agent, and handles the entry. Login trouble shows as `Not delivered` and one sign-in ask.
  * Every process start goes through an injected function, so tests start none.
  * @req FR:agent-delivery/pick.entries @req FR:agent-delivery/run.cli @req FR:agent-delivery/state.file @req NFR:agent-delivery/delivery.seam
@@ -8,7 +8,7 @@ import { spawn } from 'child_process';
 import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
-import { agentFor, listTeam, type ScannedAgent, type TeamAgent } from '../core/agents';
+import { agentFor, listTeam, scopeCovers, type ScannedAgent, type TeamAgent } from '../core/agents';
 import { handleAsk, putAsk, readAsk } from '../core/asks';
 import type { StackConfig } from '../core/config';
 import { currentRows, handleEntry, listInbox, replyFromAgent, type ListedEntry } from '../core/inbox';
@@ -350,7 +350,7 @@ async function runApprovals(d: DeliveryDeps, perms: Record<string, PendingPerm>,
 /** The agent Now's composer names: the most specific agent on the task, else the roll-up (same rule as the web `ownerOf`). @req FR:agent-delivery/pick.agent */
 export function deliveryAgent(team: TeamAgent[], project: string, section?: string): TeamAgent | undefined {
   const all = agentFor(team, project, section);
-  const fits = (a: TeamAgent) => a.scope.some((x) => x !== '*' && x.split('/')[0] === project);
+  const fits = (a: TeamAgent) => a.scope.some((x) => scopeCovers(x, project));
   return all.find((a, i) => !(i === 0 && a.scope.includes('*')) && fits(a)) ?? all[0];
 }
 

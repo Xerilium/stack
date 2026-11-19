@@ -1,5 +1,6 @@
 import type { TaskRef } from '../core/lifecycle';
 import { ApiError, invalid, type Issue } from './errors';
+import { PROJECT_ID, projectId, projectPath } from '../core/task-paths';
 
 export const MAX_BODY_BYTES = 64 * 1024;
 export const MAX_STR = 2000;
@@ -58,18 +59,18 @@ export type Spec =
   | { t: 'strs'; max?: number; commas?: boolean }
   | { t: 'caps' };
 
-export const REF_RE = /^(?![Rr][Ee][Aa][Dd][Mm][Ee]:)([^/\\:\0.][^/\\:\0]*):(\d{1,9})$/;
-const isReadme = (name: string) => name.toLowerCase() === 'readme';
+/** `<project-id>:<line>`; a `README` last segment (any case) is never a project. @req FR:task-structure/id.ref */
+export const REF_RE = new RegExp(`^(?!(?:[^:]*/)?[Rr][Ee][Aa][Dd][Mm][Ee]:)(${PROJECT_ID}):(\\d{1,9})$`);
 
-/** @req FR:api/input.ref */
+/** @req FR:api/input.ref @req FR:task-structure/id.ref */
 export function parseRef(v: unknown): TaskRef | null {
   if (typeof v !== 'string') return null;
   const m = REF_RE.exec(v);
-  return m && !isReadme(m[1]) ? { path: `tasks/${m[1]}.md`, line: Number(m[2]) } : null;
+  return m ? { path: projectPath(m[1]), line: Number(m[2]) } : null;
 }
 
-/** @req FR:api/input.ref */
-export const formatRef = (r: TaskRef): string => `${r.path.replace(/^.*\//, '').replace(/\.md$/, '')}:${r.line}`;
+/** @req FR:api/input.ref @req FR:task-structure/id.ref */
+export const formatRef = (r: TaskRef): string => `${projectId(r.path)}:${r.line}`;
 
 /** CR, LF, NEL, LS, PS: anything that can start a new markdown line. @req FR:api/input.line */
 const oneLine = (s: string) => !/[\r\n\u0085\u2028\u2029]/.test(s);
@@ -81,7 +82,7 @@ function check(spec: Spec, v: unknown): string | null {
       if (v.length > (spec.max ?? MAX_STR)) return `At most ${spec.max ?? MAX_STR} characters`;
       if (spec.line && !oneLine(v)) return 'Must be a single line';
       if (spec.pattern && !spec.pattern.test(v)) return 'Invalid format';
-      if (spec.noReadme && isReadme(v.replace(/\.md$/i, ''))) return 'Reserved name';
+      if (spec.noReadme && v.replace(/\.md$/i, '').toLowerCase() === 'readme') return 'Reserved name';
       return null;
     case 'enum':
       return typeof v === 'string' && spec.values.includes(v) ? null : 'Must be one of: ' + spec.values.join(' ');

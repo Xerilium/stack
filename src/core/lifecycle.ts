@@ -5,6 +5,7 @@
  */
 import { getDefaults, StackConfig } from './config';
 import { parseProject, Project } from './parser';
+import { isReadme, projectId } from './task-paths';
 import { rollRecurring } from './recurring';
 import { DEFAULT_ENGINE, daysUntilDue, getEngine, parseAliases, rankTasks, STALE_CAP, STALE_DAYS, type RankOptions, type ScoredTask, ScoringTask, type ScoringProject, type StaleInfo, toScoringProject } from './scoring';
 import { rowOwner } from './owner';
@@ -247,7 +248,7 @@ export function formatSuspendDate(at: Date, timeZone: string, dur: { days?: numb
 
 interface Doc {
   path: string;
-  /** File base name without `.md`. */
+  /** Project ID: the path under `tasks/` without `.md`. */
   name: string;
   content: string;
   version: string;
@@ -256,16 +257,16 @@ interface Doc {
 
 const cfg = (ctx: LifecycleContext) => ctx.config ?? getDefaults();
 const clock = (ctx: LifecycleContext) => (ctx.now ?? (() => new Date()))();
-const baseName = (path: string) => path.replace(/^.*\//, '').replace(/\.md$/, '');
+const baseName = projectId; // @req FR:task-structure/id.project
 
 async function loadDoc(storage: Storage, path: string): Promise<Doc> {
   const f = await storage.read(path);
   return { path, name: baseName(path), content: f.content, version: f.version, project: parseProject(f.content) };
 }
 
-/** @req FR:task-lifecycle/doc.load */
+/** @req FR:task-lifecycle/doc.load @req FR:task-structure/tree.readme */
 async function loadDocs(storage: Storage): Promise<Doc[]> {
-  const paths = (await storage.list()).filter((p) => baseName(p).toLowerCase() !== 'readme');
+  const paths = (await storage.list()).filter((p) => !isReadme(p));
   // @req FR:perf/load.parallel
   return Promise.all([...paths].sort().map((p) => loadDoc(storage, p)));
 }
@@ -751,7 +752,7 @@ function ancestorsAll(lines: string[]): string[][] {
 }
 
 /** @req FR:pri-first-ranking/$daily-row */
-export interface DailyRow { project: string; /** File base name. */ name?: string; done: boolean; pick?: { ref: TaskRef; text: string } }
+export interface DailyRow { project: string; /** Project ID. */ name?: string; done: boolean; pick?: { ref: TaskRef; text: string } }
 
 /**
  * Per project: today's pick (its first ranked task) and whether a checked row changed today; projects in pick order, then the rest.
@@ -886,7 +887,7 @@ export async function addProject(ctx: LifecycleContext, input: NewProject): Prom
 // ------------------------------------------------------------------ add task
 
 export interface NewTask {
-  /** File base name, project title, or alias. */
+  /** Project ID, project title, or alias. */
   project: string;
   text: string;
   /** Section heading text (default `Active`). */

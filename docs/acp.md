@@ -31,7 +31,7 @@ stack agent run --prompt "Summarize README.md" gemini -- --acp
 ```
 
 - `--acp` starts Gemini CLI in ACP mode (source 2). `--experimental-acp` is the old name. Stack flags go before `--`; the agent arguments go after it.
-- Each permission request becomes an ask `tasks/asks/perm-*.md`. Answer it in the web app or with `stack asks`. No answer by the deadline means deny.
+- Each permission request becomes an ask `tasks/.stack/asks/perm-*.md`. Answer it in the web app or with `stack asks`. No answer by the deadline means deny.
 - `Ctrl+C` cancels the run. A second `Ctrl+C` stops the agent at once.
 - `--timeout s` (default 600) cancels the run. When the agent does not stop in 3 s, Stack stops it.
 - Exit codes: 0 done, 1 error, cancel or timeout, 2 usage error.

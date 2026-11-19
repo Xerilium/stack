@@ -40,15 +40,15 @@ const def = (o: Partial<AgentDef> = {}): AgentDef => ({ slug: 'cid-manager', nam
 
 // @req FR:agent-team/agent.path
 describe('agent path', () => {
-  it('accepts tasks/agents/<slug>.md, lists the folder, never lists it as a project', async () => {
-    expect(validatePath('tasks/agents/cid-manager.md')).toBe('tasks/agents/cid-manager.md');
-    for (const bad of ['tasks/agents/../x.md', 'tasks/agents/.x.md', 'tasks/agents/README.md', 'tasks/agents/Upper.md', 'tasks/agents/a/b.md']) expect(() => validatePath(bad)).toThrow(PathError);
-    expect(agentsPath('cos')).toBe('tasks/agents/cos.md');
+  it('accepts tasks/.stack/agents/<slug>.md, lists the folder, never lists it as a project', async () => {
+    expect(validatePath('tasks/.stack/agents/cid-manager.md')).toBe('tasks/.stack/agents/cid-manager.md');
+    for (const bad of ['tasks/.stack/agents/../x.md', 'tasks/.stack/agents/.x.md', 'tasks/.stack/agents/README.md', 'tasks/.stack/agents/Upper.md', 'tasks/.stack/agents/a/b.md']) expect(() => validatePath(bad)).toThrow(PathError);
+    expect(agentsPath('cos')).toBe('tasks/.stack/agents/cos.md');
     expect(() => agentsPath('Bad Slug')).toThrow(LifecycleError);
     const { storage, ctx } = mk();
     await putAgent(ctx, 'cos', { name: 'CoS', scope: ['*'] });
     expect(await storage.list()).toEqual([]);
-    expect(await storage.listAgents()).toEqual(['tasks/agents/cos.md']);
+    expect(await storage.listAgents()).toEqual(['tasks/.stack/agents/cos.md']);
   });
 });
 
@@ -81,7 +81,7 @@ describe('agent format', () => {
     await expect(putAgent(ctx, 'a', { name: 'A', scope: ['bad/../x'] })).rejects.toThrow(/Bad scope/);
     expect(await putAgent(ctx, 'a', { name: 'A', scope: ['alpha'], prompt: 'hi' })).toEqual({ slug: 'a', created: true });
     expect(await putAgent(ctx, 'a', { mode: 'long-running' })).toEqual({ slug: 'a', created: false });
-    expect(parseAgent('a', (await storage.read('tasks/agents/a.md')).content)).toMatchObject({ name: 'A', scope: ['alpha'], prompt: 'hi', mode: 'long-running' });
+    expect(parseAgent('a', (await storage.read('tasks/.stack/agents/a.md')).content)).toMatchObject({ name: 'A', scope: ['alpha'], prompt: 'hi', mode: 'long-running' });
   });
 });
 
@@ -244,7 +244,7 @@ describe('reports-to', () => {
     expect(parseAgent('x', '- name: X\n- reports-to: Bad Slug\n').reportsTo).toBeUndefined();
     const { storage, ctx } = mk();
     await putAgent(ctx, 'a', { name: 'A', reportsTo: 'cos' });
-    expect(parseAgent('a', (await storage.read('tasks/agents/a.md')).content).reportsTo).toBe('cos');
+    expect(parseAgent('a', (await storage.read('tasks/.stack/agents/a.md')).content).reportsTo).toBe('cos');
     await expect(putAgent(ctx, 'b', { name: 'B', reportsTo: 'Bad Slug' })).rejects.toThrow(/reports-to/);
   });
 });

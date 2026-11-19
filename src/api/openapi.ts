@@ -66,7 +66,7 @@ const DOCS: Record<string, RouteDoc> = {
   'tasks.get': { operationId: 'getTask', summary: 'Get one task', responses: ok('Task', ref('Task')) },
   'tasks.add': {
     operationId: 'addTask', summary: 'Add a task',
-    desc: { project: 'File base name, title, or alias', section: 'Default Active', text: 'One line; cannot contain the 🤖 autonomy marker (only the owner sets autonomy)', expect: 'Expected current parent row text; 409 conflict when the parent row differs (stale line number)' },
+    desc: { project: 'Project ID (path under tasks/ without .md), title, or alias', section: 'Default Active', text: 'One line; cannot contain the 🤖 autonomy marker (only the owner sets autonomy)', expect: 'Expected current parent row text; 409 conflict when the parent row differs (stale line number)' },
     responses: mutation('201'),
   },
   // @req FR:design-review/api.route
@@ -139,7 +139,7 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Claimed', { type: 'object', properties: { changed: { type: 'boolean' }, ref: { type: 'string' } } }),
   },
   'tasks.result': {
-    operationId: 'recordResult', summary: 'Log an agent result in tasks/logs; completes only within autonomy, else defers to a 🙋 subtask',
+    operationId: 'recordResult', summary: 'Log an agent result in tasks/.stack/logs; completes only within autonomy, else defers to a 🙋 subtask',
     desc: { summary: 'One line; secrets are redacted', complete: 'Request completion; honored only within the task autonomy' },
     responses: ok('Logged', {
       type: 'object',
@@ -161,7 +161,7 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Removed count', { type: 'object', properties: { removed: { type: 'integer' }, files: { type: 'array', items: { type: 'string' } } } }),
   },
   'inbox.send': {
-    operationId: 'sendToInbox', summary: 'Send a reply or decision to the agent inbox of the task project (tasks/inbox). Owner session only: 403 for tokens',
+    operationId: 'sendToInbox', summary: 'Send a reply or decision to the agent inbox of the task project (tasks/.stack/inbox). Owner session only: 403 for tokens',
     desc: { text: 'Your words to the agent; secrets are redacted', expect: 'Expected current row text at ref; 409 conflict when the row differs', agent: 'Slug of the agent the message is for (the Now picker); default: the task agent' },
     responses: ok('Sent', { type: 'object', properties: { id: { type: 'string' }, path: { type: 'string' } } }, '201'),
   },
@@ -282,13 +282,13 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Asks', { type: 'object', properties: { items: { type: 'array', items: ref('Ask') }, total: { type: 'integer' }, latest: { type: 'string', format: 'date-time' }, snoozed: { type: 'integer' } } }),
   },
   'asks.put': {
-    operationId: 'putAsk', summary: 'Create or update an ask (tasks/asks/<key>.md). The key is stable, so writing it again updates the ask. A token gets 403 on an ask another writer created and on perm-* keys',
+    operationId: 'putAsk', summary: 'Create or update an ask (tasks/.stack/asks/<key>.md). The key is stable, so writing it again updates the ask. A token gets 403 on an ask another writer created and on perm-* keys',
     desc: { ask: 'The one exact ask, one line. Required on create', kind: 'Required on create', from: "Agent name; defaults to the token's name (the owner session writes as owner)", default: 'What happens if the owner stays silent', by: 'Deadline (ISO)', reopen: 'Open a done ask again', detail: 'Free markdown shown only when the owner expands the ask', flow: 'Quick triage: the flow this question belongs to (slug)', seq: 'Its place in the flow (1-99)', ref: 'The task this ask belongs to (project:line); the task must exist', apply: 'Action Stack runs on go: set prop=value…, due Mon d, suspend 7d, skip, complete, start, resume, note text', applies: 'One action per option (- for none)' },
     responses: ok('Written', { type: 'object', properties: { key: { type: 'string' }, created: { type: 'boolean' } } }),
   },
   rank: {
     operationId: 'rank', summary: 'The ranked tasks: engine order plus the owner and Chief of Staff overrides (`.stack/priorities.json`). `/next` is the first; `root` is the top-level row a leaf sits under. Only rows the owner must do: agent rows (🤖, 🪄, and unmarked rows under them) are left out. `stale: true` marks a row overdue 3+ days with no commit to it in 3+ days (score at most 500). `blocks=any` keeps tasks the current time block would hide',
-    responses: ok('Ranked tasks', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { ref: ref('Ref'), text: { type: 'string' }, project: { type: 'string' }, score: { type: 'number' }, rule: { type: 'string', description: 'The override that applied' }, root: ref('Ref'), stale: { type: 'boolean', description: 'True for a row overdue 3+ days with no commit to it in 3+ days; its score is at most 500' }, pri: { type: 'object', description: 'The owner priority the row ranked under; absent for an unlinked row', properties: { rank: { type: 'integer', description: 'Its rank for the day, 1 first' }, title: { type: 'string' } } } } } }, daily: { type: 'array', description: 'With daily=1: per project, its first ranked task and whether a task in it was done today', items: { type: 'object', properties: { project: { type: 'string' }, name: { type: 'string', description: 'Project file base name' }, done: { type: 'boolean' }, pick: { type: 'object', properties: { ref: ref('Ref'), text: { type: 'string' } } } } } } } }),
+    responses: ok('Ranked tasks', { type: 'object', properties: { items: { type: 'array', items: { type: 'object', properties: { ref: ref('Ref'), text: { type: 'string' }, project: { type: 'string' }, score: { type: 'number' }, rule: { type: 'string', description: 'The override that applied' }, root: ref('Ref'), stale: { type: 'boolean', description: 'True for a row overdue 3+ days with no commit to it in 3+ days; its score is at most 500' }, pri: { type: 'object', description: 'The owner priority the row ranked under; absent for an unlinked row', properties: { rank: { type: 'integer', description: 'Its rank for the day, 1 first' }, title: { type: 'string' } } } } } }, daily: { type: 'array', description: 'With daily=1: per project, its first ranked task and whether a task in it was done today', items: { type: 'object', properties: { project: { type: 'string' }, name: { type: 'string', description: 'Project ID (path under tasks/ without .md)' }, done: { type: 'boolean' }, pick: { type: 'object', properties: { ref: ref('Ref'), text: { type: 'string' } } } } } } } }),
   },
   'inboxItems.list': {
     operationId: 'listInboxItems', summary: 'All mail, unread Teams, Slack and GitHub items, each with a summary and a suggested action, plus the action catalog and the source status (as GET /inbox-sources). Owner session only: 403 for tokens',
@@ -469,7 +469,7 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Started', { type: 'object', properties: { started: { type: 'boolean' }, step: { type: 'string' } } }),
   },
   'inbox.reply': {
-    operationId: 'replyFromAgent', summary: "An agent's reply on a task (tasks/inbox, from: agent, named by the token). Tokens only: the owner session gets 403",
+    operationId: 'replyFromAgent', summary: "An agent's reply on a task (tasks/.stack/inbox, from: agent, named by the token). Tokens only: the owner session gets 403",
     desc: { text: 'One line to the owner; secrets are redacted', expect: 'Expected current row text; 409 when the row differs' },
     responses: ok('Written', { type: 'object', properties: { id: { type: 'string' }, path: { type: 'string' } } }, '201'),
   },
@@ -487,7 +487,7 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Sent', { type: 'object', properties: { id: { type: 'string' }, agent: { type: 'string' }, missing: { type: 'array', items: { type: 'string', enum: ['next', 'doneWhen', 'context', 'single'] } } } }, '202'),
   },
   'team.list': {
-    operationId: 'listTeam', summary: 'The team: tasks/agents/<slug>.md, .claude/agents/<slug>.md and project Agents lines, each with who it reports to; with project, the agents that cover it, the roll-up first',
+    operationId: 'listTeam', summary: 'The team: tasks/.stack/agents/<slug>.md, .claude/agents/<slug>.md and project Agents lines, each with who it reports to; with project, the agents that cover it, the roll-up first',
     desc: { project: 'Project name: only the agents whose scope covers it, the roll-up first then most specific first', section: 'Section heading, for section-scoped agents' },
     responses: ok('Team', { type: 'object', properties: { items: { type: 'array', items: ref('TeamAgent') } } }),
   },
@@ -530,7 +530,7 @@ const DOCS: Record<string, RouteDoc> = {
   },
 };
 
-const PATH_DESC: Record<string, string> = { name: 'File base name' };
+const PATH_DESC: Record<string, string> = { name: 'Project ID (path under tasks/ without .md; encode / as %2F)' };
 
 /** JSON Schema for one validation spec. */
 function schemaOf(spec: Spec, description?: string, extra: J = {}): J {
@@ -830,7 +830,7 @@ export function buildOpenApi(): J {
         },
         InboxEntry: {
           type: 'object',
-          description: 'One owner message in tasks/inbox/<project>.md. Agents act on open entries, then mark them handled.',
+          description: 'One owner message in tasks/.stack/inbox/<project>.md. Agents act on open entries, then mark them handled.',
           properties: {
             id: { type: 'string' }, at: { type: 'string', format: 'date-time' }, project: { type: 'string' }, ref: ref('Ref'), task: { type: 'string' },
             parent: { type: 'string', description: 'Title of the parent row; absent for top-level rows' },
@@ -841,7 +841,7 @@ export function buildOpenApi(): J {
         },
         Ask: {
           type: 'object',
-          description: 'One ask for the owner (tasks/asks/<key>.md) with its computed score and rank.',
+          description: 'One ask for the owner (tasks/.stack/asks/<key>.md) with its computed score and rank.',
           properties: {
             key: { type: 'string' }, state: { type: 'string', enum: ['open', 'answered', 'done'] }, ask: { type: 'string' }, kind: { type: 'string', enum: [...ASK_KINDS] }, from: { type: 'string' },
             project: { type: 'string' }, why: { type: 'string' }, recommend: { type: 'string' }, options: { type: 'array', items: { type: 'string' } }, default: { type: 'string' },
@@ -859,7 +859,7 @@ export function buildOpenApi(): J {
           properties: {
             slug: { type: 'string' }, name: { type: 'string' }, role: { type: 'string' }, scope: { type: 'array', items: { type: 'string' } }, model: { type: 'string' },
             tools: { type: 'array', items: { type: 'string' } }, mode: { type: 'string', enum: ['long-running', 'ad-hoc'] }, prompt: { type: 'string' }, defined: { type: 'boolean' }, projects: { type: 'array', items: { type: 'string' } },
-            reportsTo: { type: 'string', description: 'Slug of the agent this one reports to; absent on the roll-up' }, icon: { type: 'string', description: 'Avatar: an emoji, fluent:<name> (a Fluent Emoji file name), or a same-origin image path; absent means a monogram' }, source: { type: 'string', enum: ['stack', 'claude', 'metadata'], description: 'tasks/agents file, .claude/agents file, or a project Agents line' }, home: { type: 'string', description: 'Where an agent found outside the content repo lives: its owning project, else its repo folder; user for ~/.claude/agents' }, aliases: { type: 'array', items: { type: 'string' }, description: 'Older display names a session title may start with: the H1 text before its colon' },
+            reportsTo: { type: 'string', description: 'Slug of the agent this one reports to; absent on the roll-up' }, icon: { type: 'string', description: 'Avatar: an emoji, fluent:<name> (a Fluent Emoji file name), or a same-origin image path; absent means a monogram' }, source: { type: 'string', enum: ['stack', 'claude', 'metadata'], description: 'tasks/.stack/agents file, .claude/agents file, or a project Agents line' }, home: { type: 'string', description: 'Where an agent found outside the content repo lives: its owning project, else its repo folder; user for ~/.claude/agents' }, aliases: { type: 'array', items: { type: 'string' }, description: 'Older display names a session title may start with: the H1 text before its colon' },
           },
         },
         ThreadItem: {

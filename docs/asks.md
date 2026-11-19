@@ -49,12 +49,12 @@ Same operations as the CLI, for agents on the Stack MCP server: `asks_put` (`opt
 
 ## Wake on answer
 
-When the owner answers, Stack adds one line to `tasks/wake/<from>.md` (your `--from`, lowercased, odd characters as `-`): `- <iso> <key> <answer>`. It holds no answer text and sends nothing over the network. Watch or read this file, then run `stack asks list --state answered`. `handle` (or a retract) removes the line.
+When the owner answers, Stack adds one line to `tasks/.stack/wake/<from>.md` (your `--from`, lowercased, odd characters as `-`): `- <iso> <key> <answer>`. It holds no answer text and sends nothing over the network. Watch or read this file, then run `stack asks list --state answered`. `handle` (or a retract) removes the line.
 
 ## Keep the queue small
 
 ```bash
-stack asks archive            # moves done asks untouched for 14 days to tasks/asks/archive/
+stack asks archive            # moves done asks untouched for 14 days to tasks/.stack/asks/archive/
 stack asks archive --days 3   # sooner
 ```
 
@@ -73,7 +73,7 @@ Run it at the start of each run (one commit, nothing is lost). The archive is ne
 
 Use this paragraph instead of "message Michael":
 
-> When you need a decision, fact, approval, or human-only step from Michael, do not message him. Put one ask: `asks_put` (MCP) or `stack asks put <key> --from <you> ...`, with your recommendation and a default only if silence is safe. Then carry on with other work. Your wake file `tasks/wake/<you>.md` lists answered asks; at the start of each run read it (or `asks_list state=answered`), act, and close each with `asks_handle`. To block on one answer, call `asks_answer_wait`. Resolve asks that became moot.
+> When you need a decision, fact, approval, or human-only step from Michael, do not message him. Put one ask: `asks_put` (MCP) or `stack asks put <key> --from <you> ...`, with your recommendation and a default only if silence is safe. Then carry on with other work. Your wake file `tasks/.stack/wake/<you>.md` lists answered asks; at the start of each run read it (or `asks_list state=answered`), act, and close each with `asks_handle`. To block on one answer, call `asks_answer_wait`. Resolve asks that became moot.
 
 ## Quick triage: a few questions, answered in one sitting
 

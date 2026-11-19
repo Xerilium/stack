@@ -1,6 +1,6 @@
 # Agent instructions: pick up and reply
 
-The owner messages the task's agent from the composer under the task on Now. Each instruction is an open entry in `tasks/inbox/<project>.md` (`kind: instruction`). A scheduled agent reads them with the CLI. No server and no model tokens are needed to find the work.
+The owner messages the task's agent from the composer under the task on Now. Each instruction is an open entry in `tasks/.stack/inbox/<project>.md` (`kind: instruction`). A scheduled agent reads them with the CLI. No server and no model tokens are needed to find the work.
 
 ## Prompt snippet
 

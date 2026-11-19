@@ -10,6 +10,7 @@ import { currentRows, listInbox, sendToInbox, type ListedEntry } from '../core/i
 import { checkClaim, claimTask } from '../core/triage';
 import { LifecycleError, type LifecycleContext, type TaskRef } from '../core/lifecycle';
 import { parseProject, type Task } from '../core/parser';
+import { projectId } from '../core/task-paths';
 import { NotFoundError } from '../core/storage';
 import { recordResult, redact, TriageDenied } from '../core/triage';
 import { formatRef, parseRef } from '../api/validate';
@@ -37,7 +38,7 @@ export const QUICK_PROMPTS = {
 
 /** No cap: a task's questions must not drop out because unrelated asks sort first. */
 const ALL = Number.MAX_SAFE_INTEGER;
-const baseName = (p: string) => p.replace(/^.*\//, '').replace(/\.md$/, '');
+const baseName = projectId; // A project is named by its ID. @req FR:task-structure/id.project
 /** A 🙋 row is the owner's alone: no agent reviews or works it. */
 const HUMAN = /🙋/u;
 const oneLine = (s: string, max = 200) => { const t = redact(s).replace(/\s+/g, ' ').trim(); return t.length > max ? `${t.slice(0, max - 1)}…` : t; };

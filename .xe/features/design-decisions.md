@@ -152,7 +152,7 @@
 
 ## Replies go to a per-project inbox file, not the task file
 
-**Decision**: Today replies and decisions append to `tasks/inbox/<project>.md` (format in `.xe/features/agent-inbox/spec.md`). Only the owner session can write it; agents read it (file or `GET /inbox`) and mark entries handled.
+**Decision**: Today replies and decisions append to `tasks/.stack/inbox/<project>.md` (format in `.xe/features/agent-inbox/spec.md`). Only the owner session can write it; agents read it (file or `GET /inbox`) and mark entries handled.
 
 **Date**: 2026-10-28
 
@@ -182,7 +182,7 @@
 
 ## Asks are files; the page is the only interface
 
-**Decision**: Agents bring the owner decisions as one file per ask (`tasks/asks/<key>.md`). Stack ranks them with a deterministic score, pushes changes to the page over server-sent events, and writes the owner's answer back into the same file. The owner answers there instead of in chat. Stack never parses CoS state files and never applies a default itself.
+**Decision**: Agents bring the owner decisions as one file per ask (`tasks/.stack/asks/<key>.md`). Stack ranks them with a deterministic score, pushes changes to the page over server-sent events, and writes the owner's answer back into the same file. The owner answers there instead of in chat. Stack never parses CoS state files and never applies a default itself.
 
 **Date**: 2026-10-28
 

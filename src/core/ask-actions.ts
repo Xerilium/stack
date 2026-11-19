@@ -5,6 +5,7 @@
 import { completeTask, EFFORT, IMPACT, LifecycleError, PRIORITY, resumeTask, setProperties, skipTask, startTask, STATUS, suspendTask, type LifecycleContext, type LifecycleResult, type TaskProps, type TaskRef } from './lifecycle';
 import { ConflictError, NotFoundError } from './storage';
 import { rowKey } from './inbox';
+import { isReadme, PROJECT_ID, projectPath } from './task-paths';
 
 export type Action =
   | { kind: 'set'; props: TaskProps }
@@ -13,18 +14,18 @@ export type Action =
   | { kind: 'skip' } | { kind: 'complete' } | { kind: 'start' } | { kind: 'resume' }
   | { kind: 'note'; text: string };
 
-const REF = /^([^/\\:\0.][^/\\:\0]*):(\d{1,9})$/;
+const REF = new RegExp(`^(${PROJECT_ID}):(\\d{1,9})$`);
 const ROW = /^(\s*- )(\[[ xX]\] )(.+)$/;
 const DUE = /^([A-Z][a-z]{2}) (\d{1,2})(?:, (\d{4}))?$/;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DUE_MARK = /📅\s+[A-Za-z]{3}\s+\d{1,2}(?:,\s*\d{4})?:\s*/u;
 const PROPS: Record<string, readonly string[]> = { priority: PRIORITY, status: STATUS, effort: EFFORT, impact: IMPACT };
 
-/** `project:line` (the api ref: the 0-based line of the row in `tasks/<project>.md`). */
+/** `project:line` (the api ref: the 0-based line of the row in `tasks/<project>.md`; the project may be nested). @req FR:task-structure/id.ref */
 export function parseTaskRef(v: unknown): TaskRef {
   const m = typeof v === 'string' ? REF.exec(v) : null;
-  if (!m || /^readme$/i.test(m[1])) throw new LifecycleError(`ref must look like project:line: ${String(v)}`);
-  return { path: `tasks/${m[1]}.md`, line: Number(m[2]) };
+  if (!m || isReadme(m[1])) throw new LifecycleError(`ref must look like project:line: ${String(v)}`);
+  return { path: projectPath(m[1]), line: Number(m[2]) };
 }
 
 /** One action line; `-` means none (null). Anything outside the vocabulary throws. @req FR:quick-triage/flow.actions */

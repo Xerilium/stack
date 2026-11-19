@@ -1,5 +1,5 @@
 /**
- * Live ask queue core: one markdown file per ask (`tasks/asks/<key>.md`) that agents write, the owner answers, and agents handle.
+ * Live ask queue core: one markdown file per ask (`tasks/.stack/asks/<key>.md`) that agents write, the owner answers, and agents handle.
  * @req FR:ask-queue/ask.path @req FR:ask-queue/ask.format @req FR:ask-queue/ask.safe @req FR:ask-queue/ask.score @req FR:ask-queue/ask.rank
  * @req FR:ask-queue/flow.put @req FR:ask-queue/flow.answer @req FR:ask-queue/flow.handle @req FR:ask-queue/flow.default @req FR:ask-queue/flow.thread
  * @req FR:quick-triage/flow.fields @req FR:quick-triage/flow.apply @req FR:quick-triage/flow.text @req FR:quick-triage/flow.order
@@ -7,6 +7,7 @@
 import { LifecycleError, type LifecycleContext } from './lifecycle';
 import { ConflictError, NotFoundError, writeAll, type FileWrite } from './storage';
 import { redact } from './triage';
+import { ROOT_SYSTEM } from './task-paths';
 import { updateWake } from './ask-wake';
 import { currentRows, inboxTitle } from './inbox';
 import { applyAction, describe as describeAction, parseAction, parseTaskRef, readRow, type Action } from './ask-actions';
@@ -78,9 +79,10 @@ const CONTROL_RUN = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]+'
 const INVISIBLE = new RegExp('[\\uFE0E\\uFE0F\\u200B-\\u200F\\u2060\\uFEFF\\u00AD]', 'g');
 const HEADER = '<!-- stack-ask v1. Agents write with POST /asks/<key> or `stack asks put`. Stack writes the answer; the agent reads it, acts, then handles the ask. -->';
 
+/** The root path of a new ask; also checks the key. @req FR:task-structure/system.root */
 export function asksPath(key: string): string {
   if (typeof key !== 'string' || !KEY.test(key)) throw new LifecycleError('Invalid ask key (lower case letters, digits, . _ -; up to 80)');
-  return `tasks/asks/${key}.md`;
+  return `${ROOT_SYSTEM}/asks/${key}.md`;
 }
 
 /** One clean line: no control or invisible characters, secrets redacted, no markdown link or html syntax. */
@@ -174,15 +176,26 @@ export function scoreAsk(a: Ask, now: Date): number {
 
 const clock = (ctx: LifecycleContext) => (ctx.now ?? (() => new Date()))();
 
-export async function readAsk(ctx: LifecycleContext, key: string): Promise<{ ask: Ask; version: string } | null> {
+/**
+ * The file of an ask key at any `.stack` level (first in sort order), else the root path for a new ask.
+ * @req FR:task-structure/system.ask-key @req FR:task-structure/system.root
+ */
+export async function askFile(ctx: LifecycleContext, key: string): Promise<string> {
+  const root = asksPath(key);
+  const name = `/${key}.md`;
+  return ((await ctx.storage.listAsks?.()) ?? []).find((p) => p.endsWith(name)) ?? root;
+}
+
+export async function readAsk(ctx: LifecycleContext, key: string): Promise<{ ask: Ask; version: string; path: string } | null> {
+  const path = await askFile(ctx, key);
   try {
-    const f = await ctx.storage.read(asksPath(key));
-    return { ask: parseAsk(key, f.content), version: f.version };
+    const f = await ctx.storage.read(path);
+    return { ask: parseAsk(key, f.content), version: f.version, path };
   } catch (e) { if (e instanceof NotFoundError) return null; throw e; }
 }
 
-async function save(ctx: LifecycleContext, a: Ask, version: string | null, message: string): Promise<void> {
-  await ctx.storage.write(asksPath(a.key), formatAsk(a), { expectedVersion: version, message });
+async function save(ctx: LifecycleContext, path: string, a: Ask, version: string | null, message: string): Promise<void> {
+  await ctx.storage.write(path, formatAsk(a), { expectedVersion: version, message });
 }
 
 /** The api ref (`<project>:<line>`, 0-based) of a stored `tasks/<file>.md:<line>` (1-based). */
@@ -195,7 +208,7 @@ async function mutate<T>(ctx: LifecycleContext, key: string, fn: (cur: { ask: As
     const cur = await readAsk(ctx, key);
     const r = fn(cur);
     if ('skip' in r) return r.skip;
-    try { await save(ctx, r.next, cur ? cur.version : null, r.message); return r.result; }
+    try { await save(ctx, cur ? cur.path : asksPath(key), r.next, cur ? cur.version : null, r.message); return r.result; }
     catch (e) { if (!(e instanceof ConflictError) || tries >= 5) throw e; }
   }
 }
@@ -390,9 +403,13 @@ async function readAll(ctx: LifecycleContext): Promise<Ask[]> {
   if (!cache) { cache = new Map(); parsed.set(ctx.storage, cache); }
   const all: Ask[] = [];
   const seen = new Set<string>();
+  const keys = new Set<string>();
   for (const p of (await ctx.storage.listAsks?.()) ?? []) {
     const key = p.replace(/^.*\//, '').replace(/\.md$/, '');
     seen.add(p);
+    // A key in two folders: the first path in sort order wins. @req FR:task-structure/system.ask-key
+    if (keys.has(key)) continue;
+    keys.add(key);
     try {
       const f = await ctx.storage.read(p);
       const hit = cache.get(p);
@@ -409,11 +426,11 @@ async function exists(ctx: LifecycleContext, path: string): Promise<boolean> {
   try { await ctx.storage.read(path); return true; } catch (e) { if (e instanceof NotFoundError) return false; throw e; }
 }
 
-/** The archive folder for a key. @req FR:ask-queue/ask.archive */
-export const archivePath = (key: string): string => `tasks/asks/archive/${key}.md`;
+/** The archive path for a key in a `.stack` folder (the root one by default). @req FR:ask-queue/ask.archive @req FR:task-structure/system.ask-key */
+export const archivePath = (key: string, dir: string = ROOT_SYSTEM): string => `${dir}/asks/archive/${key}.md`;
 
 /**
- * Moves `done` asks untouched for `days` days to `tasks/asks/archive/`, one write (one commit) for all of them.
+ * Moves `done` asks untouched for `days` days to `archive/` in their own `.stack/asks/` folder, one write (one commit) for all of them.
  * The open list never reads the archive, so the queue stays small however many asks agents have closed.
  * @req FR:ask-queue/ask.archive
  */
@@ -427,12 +444,14 @@ export async function archiveAsks(ctx: LifecycleContext, o: { days?: number } = 
     const updated = Date.parse(a.updated);
     // An ask whose `updated` cannot be read is left alone rather than archived at once.
     if (a.state !== 'done' || !Number.isFinite(updated) || updated > cutoff) continue;
-    const f = await ctx.storage.read(asksPath(a.key));
+    const src = await askFile(ctx, a.key);
+    const dir = src.slice(0, src.lastIndexOf('/asks/'));
+    const f = await ctx.storage.read(src);
     // A key reused after an earlier archive (email threads come back) gets a dated name (key cut to keep the 80-char limit); nothing already archived is overwritten.
-    let dest = archivePath(a.key);
-    if (await exists(ctx, dest)) dest = archivePath(`${a.key.slice(0, 71)}.${new Date(updated).toISOString().slice(0, 10).replace(/-/g, '')}`);
+    let dest = archivePath(a.key, dir);
+    if (await exists(ctx, dest)) dest = archivePath(`${a.key.slice(0, 71)}.${new Date(updated).toISOString().slice(0, 10).replace(/-/g, '')}`, dir);
     if (await exists(ctx, dest)) continue;
-    writes.push({ path: dest, content: f.content, expectedVersion: null }, { path: asksPath(a.key), content: null, expectedVersion: f.version });
+    writes.push({ path: dest, content: f.content, expectedVersion: null }, { path: src, content: null, expectedVersion: f.version });
     archived.push(a.key);
   }
   if (writes.length) await writeAll(ctx.storage, writes, archived.length === 1 ? `Archive ask: ${archived[0]}` : `Archive ${archived.length} asks`);

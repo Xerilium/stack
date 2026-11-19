@@ -54,9 +54,10 @@ describe('priorities report', () => {
   // @req FR:priorities-tables/web.links.project @req FR:priorities-tables/web.links.agent @req FR:priorities-tables/web.links.refs @req FR:priorities-tables/web.links.gap
   it('links projects, agents and every ref; keeps the gap marker', () => {
     expect(projectHref('tasks/finops-toolkit.md')).toBe('#/list?project=finops-toolkit');
+    expect(projectHref('tasks/x/stack/goal.md')).toBe('#/list?project=x%2Fstack%2Fgoal'); // @req FR:task-structure/id.project
     expect(projectHref(null)).toBeNull();
     expect(agentHref({ name: 'a', link: 'claude://claude.ai/epitaxy/s1', file: null, session: null })).toBe('claude://claude.ai/epitaxy/s1');
-    expect(agentHref({ name: 'a', link: null, file: 'tasks/agents/a.md', session: null })).toBe('#/agents?file=tasks%2Fagents%2Fa.md');
+    expect(agentHref({ name: 'a', link: null, file: 'tasks/.stack/agents/a.md', session: null })).toBe('#/agents?file=tasks%2F.stack%2Fagents%2Fa.md');
     expect(agentHref({ name: 'a', link: null, file: null, session: null })).toBeNull();
     expect(safeHref('#/list?project=finops-toolkit')).toBe(true);
     expect(linkParts('Ship PR [119](https://github.com/o/r/issues/119) see https://x.test/a and 12 ⚠ no link')).toEqual([

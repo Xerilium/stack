@@ -74,14 +74,14 @@ describe('run manager', () => {
     expect(rm.sessionOf('run-1')).toBe('new-1');
     expect(rm.running('new-1')).toBe(true);
   });
-  it('records one redacted log line per finished run in tasks/logs/sessions.md', async () => {
+  it('records one redacted log line per finished run in tasks/.stack/logs/sessions.md', async () => {
     const { driver, feeds } = fakeDriver();
     const storage = new MemoryStorage();
     const rm = createRunManager({ driver, ctx: { storage, now: () => NOW } });
     await rm.prompt({ sessionId: S1.id, text: 'Push with ghp_abcdefghijklmnopqrstuvwxyz0123456789ab then ' + 'write the release notes '.repeat(12) });
     feeds.get('run-1')!.push(done); feeds.get('run-1')!.end();
     await wait(30);
-    const log = (await storage.read('tasks/logs/sessions.md')).content;
+    const log = (await storage.read('tasks/.stack/logs/sessions.md')).content;
     expect(log).toMatch(/^- 2026-10-29T10:00:00\.000Z a1b2c3d4 end_turn \$0\.12 300 tokens: Push with \(redacted\) then write the release notes/m);
     expect(log).not.toContain('ghp_');
     expect(log.split('\n').find((l) => l.startsWith('- '))!.length).toBeLessThan(200);

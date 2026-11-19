@@ -5,7 +5,7 @@
  * @req FR:live-deploy/gh.write @req FR:live-deploy/gh.race @req FR:live-deploy/gh.serial @req FR:live-deploy/gh.limits
  */
 import {
-  ASK_PATH, ConflictError, NotFoundError, StorageError, TASK_PATH, assertDistinct, checkExpected, validateAuxPath, validatePath, validateWritePath, versionOf,
+  AGENT_PATH, ASK_PATH, ConflictError, NotFoundError, StorageError, TASK_PATH, assertDistinct, checkExpected, validateAuxPath, validatePath, validateWritePath, versionOf,
   type AuxFiles, type FileWrite, type Storage, type StoredFile, type WriteOptions, type WriteResult,
 } from '../core/storage';
 
@@ -205,6 +205,8 @@ export class GitHubStorage implements Storage, AuxFiles {
   }
 
   list(): Promise<string[]> { return this.rel(TASK_PATH); }
+  /** @req FR:task-structure/system.list */
+  listAgents(): Promise<string[]> { return this.rel(AGENT_PATH); }
   listAsks(): Promise<string[]> { return this.rel(ASK_PATH); }
 
   /** A path absent from the tree is NotFoundError with no network call. @req FR:live-deploy/gh.snapshot.missing */

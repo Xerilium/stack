@@ -200,9 +200,11 @@ export function renderReport(r: BakeoffResult, recommendation: string): string {
  * @req FR:scoring-bakeoff/run.@function @req FR:scoring-bakeoff/run.readonly @req FR:scoring-bakeoff/run.load
  */
 export function runBakeoff(tasksDir: string, outFile: string, recommendation: string): BakeoffResult {
-  const files = fs.readdirSync(tasksDir).filter(n => n.toLowerCase().endsWith('.md')).sort();
+  // Every task file at any depth, never one under a dot folder; named by its project ID. @req FR:task-structure/tree.list @req FR:task-structure/id.project
+  const files = fs.readdirSync(tasksDir, { recursive: true }).map(n => String(n).split(path.sep).join('/'))
+    .filter(n => n.toLowerCase().endsWith('.md') && !n.split('/').some(s => s.startsWith('.'))).sort();
   const projects = files.map(n =>
-    toScoringProject(parseProject(fs.readFileSync(path.join(tasksDir, n), 'utf8')), path.basename(n, path.extname(n))));
+    toScoringProject(parseProject(fs.readFileSync(path.join(tasksDir, n), 'utf8')), n.slice(0, -path.extname(n).length)));
   const result = compareEngines(legacyEngine, balancedEngine, projects, parseConfig());
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
   fs.writeFileSync(outFile, renderReport(result, recommendation));

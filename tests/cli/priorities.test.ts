@@ -60,9 +60,9 @@ describe('stack priorities', () => {
   // @req FR:priorities-tables/cli.read @req FR:priorities-tables/tasks.store
   it('reads tiered tasks from the task files in the data folder', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'stack-pt-dir-'));
-    mkdirSync(join(dir, 'tasks', 'asks'), { recursive: true });
+    mkdirSync(join(dir, 'tasks', '.stack', 'asks'), { recursive: true });
     writeFileSync(join(dir, 'tasks', 'allyte.md'), ALLYTE);
-    writeFileSync(join(dir, 'tasks', 'asks', 'a1.md'), '- [ ] 1️⃣ not a project task');
+    writeFileSync(join(dir, 'tasks', '.stack', 'asks', 'a1.md'), '- [ ] 1️⃣ not a project task');
     const { tasks: t } = await liveDeps(home, dir, () => undefined, {}).tasks();
     expect(t.map((x) => [x.path, x.text])).toEqual([['tasks/allyte.md', 'Live-validate 430'], ['tasks/allyte.md', 'QM: approve plan']]);
   });

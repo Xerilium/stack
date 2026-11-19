@@ -25,7 +25,7 @@ const freshRepo = () => {
 /** Compiles the storage modules to CommonJS in a temp dir; returns the path of the compiled storage-git module. */
 const build = (): string => {
   const out = tmp();
-  for (const f of ['storage', 'storage-git', 'file-lock']) {
+  for (const f of ['storage', 'storage-git', 'file-lock', 'task-paths']) {
     const src = readFileSync(join(__dirname, '../../src/core', `${f}.ts`), 'utf8');
     const js = ts.transpileModule(src, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
     writeFileSync(join(out, `${f}.js`), js);

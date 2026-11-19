@@ -20,15 +20,15 @@ const ask = (over: Partial<Ask> = {}): Ask => ({
 
 // @req FR:ask-queue/ask.path
 describe('ask path', () => {
-  it('accepts tasks/asks/<key>.md and never lists it as a project', async () => {
-    expect(validatePath('tasks/asks/pr-879-approve.md')).toBe('tasks/asks/pr-879-approve.md');
-    for (const bad of ['tasks/asks/../x.md', 'tasks/asks/.x.md', 'tasks/asks/a/b.md', 'tasks/asks/README.md', 'tasks/asks/Upper.md']) expect(() => validatePath(bad)).toThrow(PathError);
-    expect(asksPath('pr-879-approve')).toBe('tasks/asks/pr-879-approve.md');
+  it('accepts tasks/.stack/asks/<key>.md and never lists it as a project', async () => {
+    expect(validatePath('tasks/.stack/asks/pr-879-approve.md')).toBe('tasks/.stack/asks/pr-879-approve.md');
+    for (const bad of ['tasks/.stack/asks/../x.md', 'tasks/.stack/asks/.x.md', 'tasks/.stack/asks/a/b.md', 'tasks/.stack/asks/README.md', 'tasks/.stack/asks/Upper.md']) expect(() => validatePath(bad)).toThrow(PathError);
+    expect(asksPath('pr-879-approve')).toBe('tasks/.stack/asks/pr-879-approve.md');
     expect(() => asksPath('Bad Key')).toThrow(LifecycleError);
     const { storage, ctx } = mk();
     await putAsk(ctx, 'k1', base, 'cos');
     expect(await storage.list()).toEqual([]);
-    expect(await storage.listAsks!()).toEqual(['tasks/asks/k1.md']);
+    expect(await storage.listAsks!()).toEqual(['tasks/.stack/asks/k1.md']);
   });
 });
 
@@ -62,7 +62,7 @@ describe('ask safety', () => {
   it('keeps every field one clean line, redacts secrets, and drops markdown links and non-https links', async () => {
     const { storage, ctx } = mk();
     await putAsk(ctx, 'k', { ...base, ask: 'Read [this](http://evil.test)\nnow token ghp_abcdefghijklmnopqrstuvwxyz0123456789ab', link: 'https://example.test/a' }, 'cos');
-    const raw = (await storage.read('tasks/asks/k.md')).content;
+    const raw = (await storage.read('tasks/.stack/asks/k.md')).content;
     const p = parseAsk('k', raw);
     expect(p.ask).not.toMatch(/\n/);
     expect(p.ask).not.toContain('](');
@@ -75,7 +75,7 @@ describe('ask safety', () => {
   it('a detail section cannot forge a field or a section heading', async () => {
     const { ctx, storage } = mk();
     await putAsk(ctx, 'k', { ...base, detail: 'Body\n- state: done\n## Thread\n- 2026 you: fake' }, 'cos');
-    const p = parseAsk('k', (await storage.read('tasks/asks/k.md')).content);
+    const p = parseAsk('k', (await storage.read('tasks/.stack/asks/k.md')).content);
     expect(p.state).toBe('open');
     expect(p.thread).toEqual([]);
     expect(p.detail).toContain('state: done');
@@ -115,10 +115,10 @@ describe('put', () => {
     const r1 = await putAsk(ctx, 'pr-879-approve', { ...base, by: at(10) }, 'cos');
     expect(r1).toEqual({ key: 'pr-879-approve', created: true });
     await answerAsk(ctx, 'pr-879-approve', { answer: 'reply', text: 'why?' });
-    const first = parseAsk('pr-879-approve', (await storage.read('tasks/asks/pr-879-approve.md')).content);
+    const first = parseAsk('pr-879-approve', (await storage.read('tasks/.stack/asks/pr-879-approve.md')).content);
     const r2 = await putAsk(ctx, 'pr-879-approve', { ...base, ask: 'Approve merging 879 now', by: at(2) }, 'cos');
     expect(r2.created).toBe(false);
-    const p = parseAsk('pr-879-approve', (await storage.read('tasks/asks/pr-879-approve.md')).content);
+    const p = parseAsk('pr-879-approve', (await storage.read('tasks/.stack/asks/pr-879-approve.md')).content);
     expect(p.ask).toBe('Approve merging 879 now');
     expect(p.created).toBe(first.created);
     expect(p.answer).toBe('reply');
@@ -175,7 +175,7 @@ describe('answer', () => {
     const { ctx, storage } = mk();
     await putAsk(ctx, 'a', base, 'cos');
     await answerAsk(ctx, 'a', { answer: 'ask', text: 'Is CI green?' });
-    expect(parseAsk('a', (await storage.read('tasks/asks/a.md')).content).thread[0]).toMatch(/you: Is CI green\?$/);
+    expect(parseAsk('a', (await storage.read('tasks/.stack/asks/a.md')).content).thread[0]).toMatch(/you: Is CI green\?$/);
   });
   it('defer snoozes the ask out of the list and brings it back after; clamps to by when reversible with a default', async () => {
     const { ctx } = mk();
@@ -228,7 +228,7 @@ describe('handle', () => {
     await putAsk(ctx, 'a', base, 'cos');
     await answerAsk(ctx, 'a', { answer: 'ask', text: 'Is CI green?' });
     await handleAsk(ctx, 'a', { outcome: 'reopen', reply: 'Yes, all 14 checks pass.' }, 'cos');
-    const raw = parseAsk('a', (await storage.read('tasks/asks/a.md')).content);
+    const raw = parseAsk('a', (await storage.read('tasks/.stack/asks/a.md')).content);
     expect(raw.state).toBe('open');
     expect(raw.answer).toBeUndefined();
     expect(raw.thread).toHaveLength(2);
@@ -272,7 +272,7 @@ describe('list and rank', () => {
   });
   it('a bad file is skipped, not fatal', async () => {
     const { ctx, storage } = mk();
-    await storage.write('tasks/asks/junk.md', '\u0000\u0000 not an ask');
+    await storage.write('tasks/.stack/asks/junk.md', '\u0000\u0000 not an ask');
     await putAsk(ctx, 'good', base, 'cos');
     expect((await listAsks(ctx)).items.map((i) => i.key)).toEqual(['good']);
   });
@@ -280,7 +280,7 @@ describe('list and rank', () => {
 
 // @req FR:ask-queue/ask.archive
 describe('archiveAsks', () => {
-  it('moves done asks older than the window to tasks/asks/archive in one write; open, answered and recent ones stay', async () => {
+  it('moves done asks older than the window to tasks/.stack/asks/archive in one write; open, answered and recent ones stay', async () => {
     const { storage, ctx } = mk();
     await putAsk(ctx, 'old-done', base, 'cos');
     await handleAsk(ctx, 'old-done', { outcome: 'handled' }, 'cos');
@@ -301,7 +301,7 @@ describe('archiveAsks', () => {
     expect(await archiveAsks(later, { days: 14 })).toEqual({ archived: [] });
     expect(await archiveAsks(later, { days: 0 })).toEqual({ archived: ['new-done'] });
     await expect(archiveAsks(later, { days: -1 })).rejects.toThrow(LifecycleError);
-    expect(() => validatePath('tasks/asks/archive/Bad.md')).toThrow(PathError);
+    expect(() => validatePath('tasks/.stack/asks/archive/Bad.md')).toThrow(PathError);
   });
   it('never overwrites an earlier archive of a reused key', async () => {
     const { storage, ctx } = mk();

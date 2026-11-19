@@ -106,7 +106,7 @@ describe('pull request status', () => {
 describe('log and replies', () => {
   it('uses the newest result log entry for the row and counts open replies', async () => {
     const { ctx, storage } = await mk(DOC.replace('  - [ ] 🙋 Approve the notes\n', ''));
-    await storage.write('tasks/logs/alpha.md', [
+    await storage.write('tasks/.stack/logs/alpha.md', [
       '# Alpha agent log', '',
       '## 2026-10-27T10:00:00.000Z', '', '- actor: token:a', '- ref: tasks/alpha.md:8', '- level: assist', '- action: claimed', '',
       '## 2026-10-28T09:00:00.000Z', '', '- actor: token:a', '- ref: tasks/alpha.md:8', '- level: assist', '- action: result', '- outcome: blocked', '- summary: Needs a secret', '',

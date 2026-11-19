@@ -12,7 +12,7 @@ dependencies: [agent-inbox, agent-thread, agent-team, acp-driver, ask-queue, ses
 
 ## Purpose
 
-A message to an agent (Now's composer, `FR:now-screen/now.compose`) lands in `tasks/inbox/<project>.md` (`FR:agent-inbox/inbox.send`). Without a reader it sits there and the owner hears nothing. This feature is the reader: the Stack host runs the task's agent headlessly through the owner's `claude` login, posts the agent's reply in the task thread, and marks the entry handled. When delivery cannot run (signed out, off, failed), the owner sees that on the message and in Notifications, never silence.
+A message to an agent (Now's composer, `FR:now-screen/now.compose`) lands in `tasks/.stack/inbox/<project>.md` (`FR:agent-inbox/inbox.send`). Without a reader it sits there and the owner hears nothing. This feature is the reader: the Stack host runs the task's agent headlessly through the owner's `claude` login, posts the agent's reply in the task thread, and marks the entry handled. When delivery cannot run (signed out, off, failed), the owner sees that on the message and in Notifications, never silence.
 
 ## Scope
 

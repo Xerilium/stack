@@ -35,7 +35,7 @@ describe("perm-* asks are reserved for the broker", () => {
     });
     expect(r.status).toBe(403);
     expect(
-      (await s.storage.read("tasks/asks/perm-abcd1234-0001.md")).content,
+      (await s.storage.read("tasks/.stack/asks/perm-abcd1234-0001.md")).content,
     ).toContain("rm -rf");
   });
 

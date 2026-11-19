@@ -29,7 +29,7 @@ function owner(d: string, answer: 'go' | 'no') {
   const loop = (async () => {
     while (!stop) {
       let files: string[] = [];
-      try { files = readdirSync(join(d, 'tasks/asks')); } catch { /* not yet */ }
+      try { files = readdirSync(join(d, 'tasks/.stack/asks')); } catch { /* not yet */ }
       for (const f of files.filter((x) => x.startsWith('perm-') && x.endsWith('.md'))) {
         const key = f.replace(/\.md$/, '');
         if (seen.has(key)) continue;
@@ -168,7 +168,7 @@ describe('stack agent run: cancel, timeout, crash', () => {
     expect(r.code).toBe(1);
     expect(r.err).toContain('error: Agent exited (code 4)');
     expect(r.err).toContain('agent stderr: fake agent died mid-ask');
-    const keys = readdirSync(join(d, 'tasks/asks')).filter((f) => f.startsWith('perm-'));
+    const keys = readdirSync(join(d, 'tasks/.stack/asks')).filter((f) => f.startsWith('perm-'));
     expect(keys).toHaveLength(1);
     await new Promise((res) => setTimeout(res, 100));
     const ask = await readAsk({ storage: new FsStorage(d) }, keys[0].replace(/\.md$/, ''));

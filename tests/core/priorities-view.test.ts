@@ -258,8 +258,8 @@ describe('link targets', () => {
   // @req FR:priorities-tables/rows.file @req FR:priorities-tables/agent.file
   it('names the project file (gap rows by project name) and the agent file when no session matches', () => {
     const files = [{ path: 'tasks/finops-toolkit.md', project: 'FinOps toolkit', aliases: ['ftk'], repo: null }, { path: 'tasks/arc.md', project: 'Arc', aliases: [], repo: null }];
-    const v = view([pri('ftk', { projects: ['ftk'] }), pri('arc', { projects: ['Arc'] }), pri('zzz', { projects: ['none'] })], [task('ftk', 1, 'x', { path: 'tasks/finops-toolkit.md', agent: '🧰 FTK RM' })], { files, agents: ['tasks/agents/ftk-rm.md', '.claude/agents/cos.md'] });
+    const v = view([pri('ftk', { projects: ['ftk'] }), pri('arc', { projects: ['Arc'] }), pri('zzz', { projects: ['none'] })], [task('ftk', 1, 'x', { path: 'tasks/finops-toolkit.md', agent: '🧰 FTK RM' })], { files, agents: ['tasks/.stack/agents/ftk-rm.md', '.claude/agents/cos.md'] });
     expect(v.now.rows.map((r) => [r.id, r.file])).toEqual([['ftk', 'tasks/finops-toolkit.md'], ['arc', 'tasks/arc.md'], ['zzz', null]]);
-    expect(v.now.rows[0].agent).toEqual({ name: '🧰 FTK RM', link: null, file: 'tasks/agents/ftk-rm.md', session: null });
+    expect(v.now.rows[0].agent).toEqual({ name: '🧰 FTK RM', link: null, file: 'tasks/.stack/agents/ftk-rm.md', session: null });
   });
 });

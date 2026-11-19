@@ -34,7 +34,7 @@ Stack System needs to read and write the owner's task repo through the GitHub AP
 - **FR:gh.fresh** (P1): Before a read the adapter MUST re-check the branch ref at most every `freshMs` (default 5000) with `If-None-Match`; a `304` keeps the snapshot (GitHub does not count it against the rate limit)
   - **FR:gh.fresh.sync** (P1): `sync()` MUST force a check
   - **FR:gh.fresh.fail** (P1): A failed check MUST serve the current snapshot; the next read retries
-- **FR:gh.paths** (P1): The adapter MUST keep the `FsStorage` path contract: `validatePath` and `validateAuxPath` rules, `list()` returns sorted `tasks/*.md` direct children (no dotfiles), `listAsks()` returns `tasks/asks/*.md` matching the ask key rule, `STACK_REPO_PATH` prefixes every path
+- **FR:gh.paths** (P1): The adapter MUST keep the `FsStorage` path contract: `validatePath` and `validateAuxPath` rules, `list()` returns sorted task files at any depth (no dot names), `listAsks()` returns ask files from every `.stack/asks/` level matching the ask key rule, `STACK_REPO_PATH` prefixes every path
   > - @req FR:storage-git/interface.paths
   > - @req FR:ask-queue/ask.path
   - **FR:gh.paths.links** (P1): Symlink (`120000`) and submodule entries MUST be refused (`StorageError`), never followed

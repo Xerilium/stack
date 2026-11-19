@@ -17,7 +17,7 @@ describe('asks belong to tasks', () => {
     const { storage, ctx } = mk();
     await storage.write('tasks/flantastic-4.md', F4);
     await putAsk(ctx, 'q1', { ask: 'Which cover?', kind: 'answer', from: 'cid-manager', ref: 'flantastic-4:4' }, 'cid-manager');
-    const raw = (await storage.read('tasks/asks/q1.md')).content;
+    const raw = (await storage.read('tasks/.stack/asks/q1.md')).content;
     expect(raw).toContain('- ref: flantastic-4:4');
     expect(raw).toContain('- reftext: Release the single 🟡');
     expect(parseAsk('q1', raw)).toMatchObject({ ref: 'flantastic-4:4', refText: 'Release the single 🟡' });

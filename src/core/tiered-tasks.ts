@@ -95,7 +95,7 @@ export function tieredTasks(path: string, src: string): TieredTask[] {
 }
 
 /**
- * The task files: tiered tasks, every project file and every agent file (`tasks/agents/`, `.claude/agents/`). Read only.
+ * The task files: tiered tasks, every project file and every agent file (`tasks/.stack/agents/`, `.claude/agents/`). Read only.
  * @req FR:priorities-tables/tasks.store @req FR:priorities-tables/agent.file @req FR:priorities-tables/rows.file
  */
 export async function readTaskFiles(storage: Pick<Storage, 'list' | 'read' | 'listAgents' | 'listClaudeAgents'>): Promise<{ tasks: TieredTask[]; files: ProjectFile[]; agents: string[] }> {
