@@ -80,6 +80,29 @@ export const toneOf = (r: PrRow) => `${r.mine ? (r.autopilot ? 'auto' : 'mine') 
 /** Small muted text, only when known. */
 export const specText = (r: PrRow) => (r.specLines === null || r.specLines === undefined ? '' : `${r.specLines} spec ${r.specLines === 1 ? 'line' : 'lines'}`);
 
+/** The Catalyst sweep command for one PR: update my own, review others. Run it in a checkout of the repo. @req FR:pr-page/menu.@function */
+export const sweepCommand = (r: Pick<PrRow, 'number' | 'mine'>) => `/catalyst:pr-sweep ${r.number} ${r.mine ? 'update' : 'review'}`;
+
+export type QuickId = 'sweep' | 'autopilot-on' | 'autopilot-off' | 'open' | 'copy';
+export interface QuickAction { id: QuickId; label: string; title: string; op?: 'add' | 'top' | 'remove'; href?: string; text?: string }
+/**
+ * The quick actions that fit a row, in menu order. Only existing routes and commands: the queue (`prs.queue`), the Autopilot label
+ * (`prs.label`), the PR link, and the Catalyst sweep command. No Ready: the Autopilot workflow derives it. @req FR:pr-page/menu.@function
+ */
+export function actionsOf(r: PrRow, b: PrBoard | null): QuickAction[] {
+  const out: QuickAction[] = [];
+  if (b?.queue) {
+    // First in its part of the queue: rank 1 when pinned, the first rank after the pinned rows when not.
+    const first = r.pinned ? 1 : b.rows.filter((x) => x.pinned).length + 1;
+    if (r.rank !== first) out.push({ id: 'sweep', label: 'Sweep next', title: 'Move it to the top of the Sweep Manager queue', op: r.rank === null ? 'add' : 'top' });
+  }
+  if (r.mine && !r.autopilot && !r.draft && r.group !== 'paused') out.push({ id: 'autopilot-on', label: 'Enable Autopilot', title: 'Add the Status: 🤖 Autopilot label', op: 'add' });
+  if (r.autopilot && (r.mine || r.group === 'processing')) out.push({ id: 'autopilot-off', label: 'Remove Autopilot', title: 'Remove the Status: 🤖 Autopilot label', op: 'remove' });
+  out.push({ id: 'open', label: 'Open on GitHub', title: 'Open the PR on GitHub', href: r.url });
+  out.push({ id: 'copy', label: 'Copy sweep command', title: `Copy ${sweepCommand(r)}; run it in a checkout of ${r.repo}`, text: sweepCommand(r) });
+  return out;
+}
+
 /** Moves `id` to place `to` (0 first). Null when nothing moves. The rank is the new place, 1 first. @req FR:pr-page/pin.drag */
 export function moveTo(order: string[], id: string, to: number): { order: string[]; rank: number } | null {
   const from = order.indexOf(id);

@@ -1,4 +1,5 @@
 /* PR page: icon, flyout (full screen on a phone), page, Summary, cards, details, Pinned. Tokens only, so light and dark both work.
+ * @req FR:pr-page/card.flag @req FR:pr-page/menu.shape @req FR:pr-page/menu.detail
  * @req FR:pr-page/flyout.shape @req FR:pr-page/flyout.a11y @req FR:pr-page/card.color @req FR:pr-page/card.space @req FR:pr-page/summary.layout @req FR:pr-page/detail.layout */
 .prs-btn { position: relative; }
 .prs-btn.compact { display: inline-flex; align-items: center; }
@@ -16,14 +17,14 @@
   --pr-auto: #e3eefa; --pr-auto-soft: #f5f8fc; --pr-auto-edge: #0f6cbd;
   --pr-mine: #e2f3e5; --pr-mine-soft: #f5faf6; --pr-mine-edge: #0e700e;
   --pr-other: #fbebd6; --pr-other-soft: #fcf8f2; --pr-other-edge: #a35200;
-  --pr-ink: #1d1d1f; --pr-ink2: #47474d; --pr-act: #0f5aa0; --pr-act-ink: #ffffff;
+  --pr-ink: #1d1d1f; --pr-ink2: #47474d;
 }
 @media (prefers-color-scheme: dark) {
   .prs-fly {
     --pr-auto: #133150; --pr-auto-soft: #1b222b; --pr-auto-edge: #479ef5;
     --pr-mine: #163a1e; --pr-mine-soft: #1b241d; --pr-mine-edge: #54b054;
     --pr-other: #3d2a10; --pr-other-soft: #262019; --pr-other-edge: #e8a24a;
-    --pr-ink: #f2f2f3; --pr-ink2: #cdcdd2; --pr-act: #479ef5; --pr-act-ink: #0b1a2b;
+    --pr-ink: #f2f2f3; --pr-ink2: #cdcdd2;
   }
 }
 
@@ -75,7 +76,9 @@
 .pr-card-top { grid-area: top; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; font-size: 12px; color: var(--pr-ink2); }
 .pr-repo { overflow-wrap: anywhere; }
 .pr-num { position: relative; z-index: 1; display: inline-flex; align-items: center; min-height: 24px; color: var(--pr-ink); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
-.pr-act { margin-left: auto; padding: 2px 10px; border-radius: var(--fl-r-pill); background: var(--pr-act); color: var(--pr-act-ink); font-weight: 600; font-size: 12px; white-space: nowrap; }
+/* The next action is a flag: icon + muted word, no fill, no border, no hover. @req FR:pr-page/card.flag */
+.pr-flag { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: var(--pr-ink2); font-size: 12px; font-weight: 500; white-space: nowrap; cursor: default; user-select: none; }
+.pr-flag-ic { flex: none; color: var(--pr-ink2); }
 /* The whole card selects; the link and Pin sit above the stretched target. @req FR:pr-page/card.select */
 .pr-open { grid-area: open; position: static; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title chev" "sub chev"; gap: 4px 8px; align-items: center; min-height: 32px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .pr-open::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
@@ -87,11 +90,24 @@
 .pr-spec { font-size: 11.5px; }
 .pr-chev { grid-area: chev; font-size: 20px; color: var(--pr-ink2); }
 .pr-card-tools { grid-area: tools; position: relative; z-index: 1; display: flex; flex-direction: column; gap: 4px; align-items: center; }
-.pr-pin, .pr-grip { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; border: 1px solid transparent; border-radius: var(--fl-r-md); background: transparent; color: var(--pr-ink2); cursor: pointer; }
-.pr-pin:hover:not(:disabled), .pr-grip:hover { background: rgb(127 127 127 / 14%); color: var(--pr-ink); }
+.pr-pin, .pr-grip, .pr-more-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; border: 1px solid transparent; border-radius: var(--fl-r-md); background: transparent; color: var(--pr-ink2); cursor: pointer; }
+.pr-pin:hover:not(:disabled), .pr-grip:hover, .pr-more-btn:hover, .pr-more-btn[aria-expanded="true"] { background: rgb(127 127 127 / 14%); color: var(--pr-ink); }
 .pr-pin[aria-pressed="true"] { color: var(--pr-ink); }
 .pr-grip { cursor: grab; touch-action: none; }
 .pr-card.dragging .pr-grip { cursor: grabbing; outline: 2px solid var(--focus); }
+
+/* Quick actions: one quiet button, a menu under it. The open card lifts above the cards below. @req FR:pr-page/menu.shape */
+.pr-more { position: relative; }
+.pr-card-tools:has(.pr-menu) { z-index: 30; }
+.pr-menu { left: auto; right: 0; top: calc(100% + 4px); min-width: 210px; z-index: 30; color: var(--ink); }
+.pr-menu.up { top: auto; bottom: calc(100% + 4px); }
+.pr-menu a.menu-item { text-decoration: none; color: inherit; }
+.pr-menu .menu-item:disabled { opacity: .5; cursor: default; }
+.pr-menu .menu-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+/* The same actions at the end of the details pane. @req FR:pr-page/menu.detail */
+.pr-qa { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.pr-qa .pr-d-sub { margin: 0; }
+.pr-qa a.fl-btn { text-decoration: none; }
 
 /* Am I missing anything? A short list. @req FR:pr-page/summary.missing */
 .pr-miss { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -160,7 +176,7 @@ body:has(.prs-scrim) .toasts { z-index: 70; }
 .pr-d a:not(.fl-btn) { display: inline-flex; align-items: center; min-height: 24px; }
 /* Touch: 44 px targets. @req FR:pr-page/flyout.a11y */
 @media (pointer: coarse), (max-width: 719px) {
-  .prs-tab, .prs-refresh, .prs-close, .pr-pin, .pr-grip, .pr-num, .pr-miss-open, .prs-fly .fl-btn, .prs-chip { min-height: var(--tap); min-width: var(--tap); }
+  .prs-tab, .prs-refresh, .prs-close, .pr-pin, .pr-grip, .pr-more-btn, .pr-menu .menu-item, .pr-num, .pr-miss-open, .prs-fly .fl-btn, .prs-chip { min-height: var(--tap); min-width: var(--tap); }
   .pr-open { min-height: var(--tap); }
   .pr-d a:not(.fl-btn) { display: inline-flex; align-items: center; min-height: var(--tap); }
 }

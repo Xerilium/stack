@@ -16,7 +16,7 @@ The owner has many open PRs across repos. Agents move most of them. He must see,
 
 ## Scope
 
-- In: the board model and its pure rules, the host poller, the GitHub sign-in, `GET /prs` and the owner-only write routes, the nav entry and the `#/prs` page, the top bar icon, the flyout, the Summary tab, the PR card, the details pane, the Pinned tab, the CLI `stack prs`.
+- In: the board model and its pure rules, the host poller, the GitHub sign-in, `GET /prs` and the owner-only write routes, the nav entry and the `#/prs` page, the top bar icon, the flyout, the Summary tab, the PR card, the quick actions menu, the details pane, the Pinned tab, the CLI `stack prs`.
 - Out: the GitHub read and write transport (`FR:github-pr-status/board.*`, `FR:github-pr-status/write.*`), the queue store and its CLI (`FR:pr-priority/*`), the escalation set writer (the Sweep Manager).
 - Never: merge, un-draft, close, or approve a PR. No UI control and no route does it. No AI call builds the page.
 
@@ -146,7 +146,7 @@ The owner needs the few PRs that need him, in clear sections, so that he acts wi
 
 The owner needs one card shape everywhere so that he reads each PR the same way, with one next action.
 
-- **FR:card.fields** (P1): A card shows only: the repo, the PR number as a link to the PR (new tab), the title, the author (`My Autopilot` for my Autopilot PR, `You` for my other PRs, else the login), the next action chip (none when null), the spec lines changed (small, muted; only when known), and the Pin toggle (`FR:pr-page/pin.toggle`). It has no other detail and no other action
+- **FR:card.fields** (P1): A card shows only: the repo, the PR number as a link to the PR (new tab), the title, the author (`My Autopilot` for my Autopilot PR, `You` for my other PRs, else the login), the next action flag (`FR:pr-page/card.flag`; none when null), the spec lines changed (small, muted; only when known), the Pin toggle (`FR:pr-page/pin.toggle`), and the quick actions button (`FR:pr-page/menu.shape`). It has no other detail and no other control
 - **FR:card.action** (P1): `nextActionOf(row, ctx)` is pure. The first match wins:
   1. `validate` (`Validate`): the row is the Live PR
   2. `signoff` (`Sign off`): the row has a sign-off thread
@@ -154,6 +154,7 @@ The owner needs one card shape everywhere so that he reads each PR the same way,
   4. `approve` (`Approve`): the row is `waiting`, not a draft, CI is `passing` or `none`, no merge conflict, and my latest review is not `APPROVED`
   5. `autopilot` (`Enable Autopilot`): I am the author, no Autopilot label, no Paused label, not a draft, and either every thread is resolved or exactly one unresolved thread waits for me (its last comment is not a human comment of mine; an agent note under my login waits for me)
   6. Else null
+- **FR:card.flag** (P1): The next action is a flag, not a control: a small icon and the action word in muted text. No fill, no pill, no border, no hover state, and the default cursor. It is not focusable and has no role of a button. Choice: the owner read the old filled chip as a button
 - **FR:card.color** (P1): The card background shows the owner: my Autopilot PR, my other PR, or someone else's PR. Each has two strengths: strong when the card has a next action, subdued when not. Text on every background meets WCAG AA (4.5:1), light and dark. The color is never the only signal: the author text says the same
 - **FR:card.space** (P1): Cards have at least 12 px between them and 12 px padding inside
 - **FR:card.select** (P1): A tap or click on the card (not on the PR link or Pin) selects it and shows its details (`FR:pr-page/detail.*`). Enter or Space on the focused card does the same. The card ends in a chevron (`›`). The selected card shows a selected state (`aria-current`)
@@ -168,8 +169,24 @@ The owner needs the facts for the next action next to the list so that he acts w
 - **FR:detail.signoff** (P1): `Sign off` shows one sign-off thread at a time: the file path, my ask (full text), how it was addressed (the replies after my ask, then the commits after it, or `No reply or commit since your ask.`), and two actions: `Resolve thread` (`FR:pr-page/api.resolve`; a toast with Undo, which reopens it) and `Re-review` (opens the PR files on GitHub). With more than one thread, `Previous` and `Next` and `Thread n of m` move between them
 - **FR:detail.approve** (P1): `Approve` shows a link to the PR files on GitHub. No approve control (`FR:pr-page/act.never`)
 - **FR:detail.publish** (P1): `Publish review` shows a link to my pending review on GitHub. When it has at most 5 comments, each at most 300 characters, it lists them (path and text)
-- **FR:detail.autopilot** (P1): `Enable Autopilot` shows a link to the PR and my earlier comments on the PR (`notes`), so I see why I did not enable it before. With none, it says `No earlier comments from you.`
+- **FR:detail.autopilot** (P1): `Enable Autopilot` shows the quick actions (`FR:pr-page/menu.detail`), which hold `Enable Autopilot`, and my earlier comments on the PR (`notes`), so I see why I did not enable it before. With none, it says `No earlier comments from you.`
 - **FR:detail.none** (P2): A card with no next action shows a link to the PR and `Nothing for you now.`
+
+### FR:menu: Quick actions
+
+The owner needs the few routine moves for a PR one tap away so that he does not open GitHub or a terminal for them.
+
+- **FR:menu.@function** (P1): `actionsOf(row, board)` is pure. It returns the actions that fit the row, in this order. Each comes from an existing label, route, or command; there are no others:
+  1. `sweep` (`Sweep next`): `prs.queue` `add` when the row has no rank, else `top`. Shown when `queue` is true and the row is not already first in its part of the queue (rank 1 when pinned; the first rank after the pinned rows when not). Choice: the Sweep Manager works the queue from the top (`FR:pr-priority/sm.*`); no route starts a sweep
+  2. `autopilot-on` (`Enable Autopilot`): `prs.label` `add`. Shown when the row is mine, has no Autopilot label, no Paused label, and is not a draft
+  3. `autopilot-off` (`Remove Autopilot`): `prs.label` `remove`. Shown when the row has the Autopilot label and is mine or in `processing`
+  4. `open` (`Open on GitHub`): a link to the PR, new tab. Always shown
+  5. `copy` (`Copy sweep command`): copies `/catalyst:pr-sweep <n> update` for my row, else `/catalyst:pr-sweep <n> review` (the Catalyst `pr-sweep` skill; run it in a checkout of the repo). Always shown
+
+  No action sets `Status: ✅ Ready`: the Autopilot workflow sets and clears it (`.github/scripts/autopilot-core.cjs`), so a hand-set Ready does not last
+- **FR:menu.shape** (P1): Each card ends its tools with one icon button `⋯` (name `Actions for <repo>#<n>`, `aria-haspopup="menu"`, `aria-expanded`). It opens a menu (`role=menu`) under the button, or above it when the screen bottom or the phone tab bar leaves no room, with one `menuitem` per action. Focus moves to the first item. ArrowUp and ArrowDown move, Home and End jump, Enter or Space runs, Escape or a tap outside closes and returns focus to the button. One menu is open at a time. The button is quiet: no fill until hover or open
+- **FR:menu.detail** (P1): The details pane ends with a `Quick actions` heading and the same actions as plain buttons and links, in the same order
+- **FR:menu.run** (P1): A label change or a queue move runs, then shows a toast and reloads the board. `Enable Autopilot` and `Remove Autopilot` toasts have Undo (the other op). `Sweep next` says `<repo>#<n> is next for the Sweep Manager`. `Copy sweep command` says `Copied`; when the clipboard fails, it shows the command in the toast. A failure shows the host message. Only the owner sees the menu (`FR:pr-page/act.owner`)
 
 ### FR:pin: Pin and the Pinned tab
 
@@ -185,7 +202,7 @@ The owner needs to pin PRs and set their order so that the Sweep Manager works t
 The owner needs only the actions that move a PR to its next step so that the page stays quiet.
 
 - **FR:act.owner** (P1): Only the owner session sees or calls actions. A token gets `403`
-- **FR:act.list** (P1): The page has only these actions: Pin, Unpin, and drag in Pinned (`FR:pr-page/pin.*`); Resolve thread with Undo, and Re-review (`FR:pr-page/detail.signoff`); the links of `FR:pr-page/detail.*`; Refresh; the project chips; sign-in. The routes `prs.label`, `prs.ack`, and `prs.rec` stay for agents and other clients; the page has no control for them
+- **FR:act.list** (P1): The page has only these actions: Pin, Unpin, and drag in Pinned (`FR:pr-page/pin.*`); Resolve thread with Undo, and Re-review (`FR:pr-page/detail.signoff`); the links of `FR:pr-page/detail.*`; the quick actions (`FR:pr-page/menu.*`); Refresh; the project chips; sign-in. The routes `prs.ack` and `prs.rec` stay for agents and other clients; the page has no control for them
 - **FR:act.never** (P1): No control merges, un-drafts, closes, or approves a PR
 
 ### FR:api: API
