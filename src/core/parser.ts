@@ -48,8 +48,11 @@ export function parseProject(src: string): Project {
     const l = clean(raw);
     if (metaOf) {
       const m = META_LINE.exec(l);
-      if (m && width(m[1]) > metaOf.depth) { metaOf.meta!.push([m[2], (m[3] ?? '').trim()]); return; }
-      metaOf = null;
+      if (m && width(m[1]) > metaOf.depth) {
+        metaOf.meta!.push([m[2], (m[3] ?? '').trim()]);
+        // Every metadata line but `id` stays a note too, so each reader of notes still sees it.
+        if (m[2] === 'id') return;
+      } else metaOf = null;
     }
     if (!project.title && l.startsWith('# ')) { project.title = l.slice(2).trim(); return; }
     if (l.startsWith('## ')) {

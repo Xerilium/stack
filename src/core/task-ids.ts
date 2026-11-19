@@ -5,7 +5,7 @@
 import { parseProject, type Task } from './parser';
 import { NotFoundError, writeAll, type FileWrite, type Storage } from './storage';
 import { inboxFile, isReadme, logFile, PROJECT_ID, projectId, projectPath, ROOT_SYSTEM, TASK_PATH } from './task-paths';
-import type { LintIssue } from './task-lint';
+import { fencedLines, type LintIssue } from './task-lint';
 
 /** The one place the prefix is spelled. @req FR:task-ids/id.format */
 export const TASK_ID_PREFIX = 'T:';
@@ -19,8 +19,11 @@ export const META_KEYS = ['id', 'owner', 'due', 'next', 'blocked_by', 'links', '
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** A `T:` ref in text: the project is greedy, so it splits at the last `.` that a valid slug follows. */
-const REF_IN_TEXT = new RegExp(`${esc(TASK_ID_PREFIX)}([A-Za-z0-9_][A-Za-z0-9_./-]*)\\.([a-z0-9]+(?:-[a-z0-9]+)*)(?![A-Za-z0-9_-])`, 'g');
+/** Nothing word-like or path-like may come right before the prefix (`PST:9.30` and `AT:x.y` are not refs). */
+const REF_IN_TEXT = new RegExp(`(?<![A-Za-z0-9_/.:-])${esc(TASK_ID_PREFIX)}([A-Za-z0-9_][A-Za-z0-9_./-]*)\\.([a-z0-9]+(?:-[a-z0-9]+)*)(?![A-Za-z0-9_-])`, 'g');
 const PROJECT = new RegExp(`^${PROJECT_ID}$`);
+/** Text a ref is never in: inline code and URLs (replaced by spaces, so columns hold). */
+const unref = (l: string) => l.replace(/`[^`]*`|https?:\/\/\S+/g, (m) => ' '.repeat(m.length));
 
 /** @req FR:task-ids/id.format */
 export const formatTaskId = (project: string, slug: string): string => `${TASK_ID_PREFIX}${project}.${slug}`;
@@ -39,11 +42,13 @@ export function parseTaskId(s: string): { project: string; slug: string } | null
 export const idOf = (t: Task): string | undefined => t.meta?.find(([k]) => k === 'id')?.[1];
 
 const walk = (tasks: Task[], f: (t: Task) => void): void => { for (const t of tasks) { f(t); walk(t.children, f); } };
-const rows = (src: string): { project: ReturnType<typeof parseProject>; tasks: Task[] } => {
+/** Every task row outside a code fence (a fenced row is an example, not a task). */
+const rows = (src: string): { project: ReturnType<typeof parseProject>; tasks: Task[]; fenced: Set<number> } => {
   const project = parseProject(src);
+  const fenced = fencedLines(project.lines);
   const tasks: Task[] = [];
-  for (const s of project.sections) walk(s.tasks, (t) => tasks.push(t));
-  return { project, tasks };
+  for (const s of project.sections) walk(s.tasks, (t) => { if (!fenced.has(t.line)) tasks.push(t); });
+  return { project, tasks, fenced };
 };
 
 export interface TaskFile { path: string; content: string }
@@ -113,7 +118,7 @@ export async function assignIds(ctx: Ctx, o: { project?: string; dryRun?: boolea
       if (idOf(t) !== undefined || t.text.trimStart().startsWith('🌐')) continue;
       const base = slugOf(t.text);
       let slug = base;
-      for (let n = 2; taken.has(slug); n++) slug = `${base.slice(0, SLUG_MAX - String(n).length - 1)}-${n}`;
+      for (let n = 2; taken.has(slug); n++) slug = `${base.slice(0, SLUG_MAX - String(n).length - 1).replace(/-+$/, '')}-${n}`;
       taken.add(slug);
       const row = project.lines[t.line];
       const indent = /^\s*/.exec(row)![0];
@@ -129,8 +134,9 @@ export async function assignIds(ctx: Ctx, o: { project?: string; dryRun?: boolea
   return { files: writes.map((w) => w.path), added };
 }
 
-/** The system files that may hold refs to a project: every log, inbox, ask, and agent file, and the session log. */
+/** Every file in every `.stack/` folder; adapters without `listSystem` fall back to the files Stack knows by name. */
 async function systemFiles(storage: Storage, projects: string[]): Promise<string[]> {
+  if (storage.listSystem) return storage.listSystem();
   const out = new Set<string>([...(await storage.listAsks?.()) ?? [], ...(await storage.listAgents?.()) ?? [], `${ROOT_SYSTEM}/logs/sessions.md`]);
   for (const p of projects) { for (let n = 0; n < 5; n++) out.add(logFile(p, n)); out.add(inboxFile(p)); }
   return [...out];
@@ -149,12 +155,13 @@ export async function moveProject(ctx: Ctx, from: string, to: string, o: { dryRu
   if (!cur) throw new NotFoundError(`Project not found: ${from}`);
   if (await readOrNull(ctx.storage, dst)) throw new Error(`Target exists: ${to}`);
   let refs = 0;
-  const rules: [RegExp, string][] = [
-    [new RegExp(esc(`${TASK_ID_PREFIX}${from}.`), 'g'), `${TASK_ID_PREFIX}${to}.`],
-    [new RegExp(esc(`${src}:`), 'g'), `${dst}:`],
-    [new RegExp(`(ref: )${esc(from)}:(\\d)`, 'g'), `$1${to}:$2`],
-  ];
-  const rewrite = (s: string) => rules.reduce((acc, [re, by]) => acc.replace(re, (...m) => { refs++; return by.replace('$1', String(m[1])).replace('$2', String(m[2])); }), s);
+  // Whole refs only: `T:a.x` moves with `a`, never `T:a.b.x` (project `a.b`) or `T:ab.x`.
+  const path = new RegExp(`(?<![A-Za-z0-9_/.-])${esc(src)}:(?=\\d)`, 'g');
+  const apiRef = new RegExp(`(^|\\s)(ref: )${esc(from)}:(?=\\d)`, 'gm');
+  const rewrite = (s: string) => s
+    .replace(REF_IN_TEXT, (m, p: string, slug: string) => { if (p !== from) return m; refs++; return formatTaskId(to, slug); })
+    .replace(path, () => { refs++; return `${dst}:`; })
+    .replace(apiRef, (_m, pre: string, key: string) => { refs++; return `${pre}${key}${to}:`; });
   const moves = new Map<string, string>([[src, dst], ...[0, 1, 2, 3, 4].map((n) => [logFile(src, n), logFile(dst, n)] as [string, string]), [inboxFile(src), inboxFile(dst)]]);
   const writes: FileWrite[] = [];
   const changed: string[] = [];
@@ -183,7 +190,7 @@ export function lintIds(files: TaskFile[], only?: Set<string>): LintIssue[] {
   const out: LintIssue[] = [];
   for (const f of files) {
     if (isReadme(f.path) || (only && !only.has(f.path))) continue;
-    const { project, tasks } = rows(f.content);
+    const { project, tasks, fenced } = rows(f.content);
     const seen = new Set<string>();
     for (const t of tasks) {
       (t.meta ?? []).forEach(([k, v], i) => {
@@ -197,7 +204,8 @@ export function lintIds(files: TaskFile[], only?: Set<string>): LintIssue[] {
       });
     }
     project.lines.forEach((l, i) => {
-      for (const m of l.matchAll(REF_IN_TEXT)) {
+      if (fenced.has(i)) return;
+      for (const m of unref(l).matchAll(REF_IN_TEXT)) {
         const id = formatTaskId(m[1], m[2]);
         if (!index.has(id)) { out.push({ path: f.path, line: i + 1, rule: 'id-dangling', message: `Task ref ${id} does not resolve.` }); break; }
       }

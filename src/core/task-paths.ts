@@ -54,3 +54,6 @@ export const logName = (path: string): string => {
 export const logFile = (path: string, n: number): string => `${systemDir(path)}/logs/${logName(path)}${n === 0 ? '' : `.${n + 1}`}.md`;
 /** The inbox of a project, beside it. @req FR:task-structure/system.beside */
 export const inboxFile = (path: string): string => `${systemDir(path)}/inbox/${logName(path)}.md`;
+
+/** @req FR:task-ids/mv.refs: any file Stack keeps in a `.stack/` folder. */
+export const SYSTEM_PATH = new RegExp([LOG_PATH, INBOX_PATH, WAKE_PATH, ASK_PATH, ARCHIVE_PATH, AGENT_PATH].map((re) => `(?:${re.source})`).join('|'));

@@ -78,6 +78,7 @@ function lazyStorage(open: () => Promise<Storage>, now: () => number, cooldownMs
     // Optional listings pass through: without them the host api lists no asks or agents.
     listAsks: async () => (await (await get()).listAsks?.()) ?? [],
     listAgents: async () => (await (await get()).listAgents?.()) ?? [],
+    listSystem: async () => (await (await get()).listSystem?.()) ?? [],
     listClaudeAgents: async () => (await (await get()).listClaudeAgents?.()) ?? [],
     read: async (path) => (await get()).read(path),
     write: async (path, content, opts) => (await get()).write(path, content, opts),

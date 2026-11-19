@@ -25,7 +25,7 @@ const indent = (n: number) => ' '.repeat(n);
 function emojiTask(t: Task, depth: number, out: string[]): void {
   out.push(`${indent(depth)}- [${t.checked ? 'x' : ' '}] ${t.text}`);
   // Metadata first, right under the row, so it parses back as metadata. @req FR:task-ids/meta.roundtrip
-  for (const [k, v] of t.meta ?? []) out.push(`${indent(depth + 2)}> ${k}: ${v}`);
+  for (const [k, v] of t.meta ?? []) if (k === 'id') out.push(`${indent(depth + 2)}> ${k}: ${v}`); // other metadata is also in notes
   for (const n of t.notes) out.push(`${indent(depth + 2)}${n}`);
   for (const c of t.children) emojiTask(c, depth + 2, out);
 }
@@ -100,7 +100,7 @@ function cleanOut(t: Task): Obj {
     text: t.text,
     done: t.checked,
     // Metadata has no clean field: it rides as `> key: value` notes, which the emoji parser reads back as metadata. @req FR:task-ids/meta.roundtrip
-    ...(t.notes.length || t.meta?.length ? { notes: [...(t.meta ?? []).map(([k, v]) => `> ${k}: ${v}`), ...t.notes] } : {}),
+    ...(t.notes.length || t.meta?.some(([k]) => k === 'id') ? { notes: [...(t.meta ?? []).filter(([k]) => k === 'id').map(([k, v]) => `> ${k}: ${v}`), ...t.notes] } : {}),
     ...(t.children.length ? { subtasks: t.children.map(cleanOut) } : {}),
   };
 }

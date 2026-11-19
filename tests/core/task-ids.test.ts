@@ -27,7 +27,7 @@ describe('blockquote metadata', () => {
   it('reads consecutive > key: value lines under a row, keeps unknown keys, and leaves notes alone', () => {
     const t = first(FILE);
     expect(t.meta).toEqual([['id', 'ship-v2'], ['owner', 'stack-architect'], ['color', 'blue']]);
-    expect(t.notes).toEqual(['> Context: not metadata because the key is not lower case']);
+    expect(t.notes).toEqual(['> owner: stack-architect', '> color: blue', '> Context: not metadata because the key is not lower case']);
     expect(t.children[0].meta).toEqual([]);
     expect(serializeProject(parseProject(FILE))).toBe(FILE);
   });
@@ -112,6 +112,19 @@ describe('stack ids assign', () => {
     expect(await assignIds({ storage: s })).toEqual({ files: [], added: 0 });
   });
 
+  it('never ends a cut slug with a dash and skips fenced rows', async () => {
+    const s = new MemoryStorage();
+    const long = `${'a'.repeat(37)} bb`;
+    s.seed('tasks/g.md', `# G\n\n## A\n\n- [ ] ${long}\n- [ ] ${long}\n\n\`\`\`md\n- [ ] Example row\n\`\`\`\n`);
+    await assignIds({ storage: s });
+    const out = (await s.read('tasks/g.md')).content;
+    expect(out).toContain(`  > id: ${'a'.repeat(37)}-bb\n`);
+    expect(out).toContain(`  > id: ${'a'.repeat(37)}-2\n`);
+    expect(out).not.toMatch(/--2/);
+    expect(out).toContain('```md\n- [ ] Example row\n```');
+    expect(lintIds([{ path: 'tasks/g.md', content: out }])).toEqual([]);
+  });
+
   it('honors --project and --dry-run', async () => {
     const s = new MemoryStorage();
     s.seed('tasks/a.md', '# A\n\n## S\n\n- [ ] One\n');
@@ -146,6 +159,19 @@ describe('stack mv', () => {
     await expect(s.read('tasks/.stack/logs/stack.md')).rejects.toThrow();
   });
 
+  it('rewrites whole refs only, in every .stack file', async () => {
+    const s = new MemoryStorage();
+    s.seed('tasks/a.md', '# A\n');
+    s.seed('tasks/a.b.md', '# AB\n');
+    s.seed('tasks/n.md', '# N\n\n## S\n\n- [ ] T:a.one T:a.b.two T:ab.three XT:a.four\n- [ ] see tasks/a.md:3 and xtasks/a.md:3\n');
+    s.seed('tasks/.stack/asks/archive/k.md', '- ref: a:3\n- ref: ab:3\n');
+    s.seed('tasks/.stack/wake/cos.md', '- T:a.one\n');
+    await moveProject({ storage: s }, 'a', 'z');
+    expect((await s.read('tasks/n.md')).content).toContain('T:z.one T:a.b.two T:ab.three XT:a.four\n- [ ] see tasks/z.md:3 and xtasks/a.md:3');
+    expect((await s.read('tasks/.stack/asks/archive/k.md')).content).toBe('- ref: z:3\n- ref: ab:3\n');
+    expect((await s.read('tasks/.stack/wake/cos.md')).content).toBe('- T:z.one\n');
+  });
+
   it('writes nothing on --dry-run', async () => {
     const s = new MemoryStorage();
     s.seed('tasks/a.md', '# A\n');
@@ -177,6 +203,14 @@ describe('ID lint', () => {
     expect(lintIds(files).map((i) => `${i.path}:${i.line} ${i.rule}`)).toEqual([
       'tasks/a.md:8 id-duplicate', 'tasks/a.md:10 id-slug', 'tasks/b.md:5 id-dangling', 'tasks/b.md:6 id-dangling',
     ]);
+  });
+});
+
+// @req FR:task-ids/lint.dangling
+describe('ID lint false positives', () => {
+  it('ignores prefixes inside words, code, URLs, and fences', () => {
+    const src = '# A\n\n## S\n\n- [ ] Meet 9 PST:9.30 and AT:x.y\n- [ ] Code `T:a.gone` and https://x.y/T:a.gone\n\n```\nT:a.gone\n```\n';
+    expect(lintIds([{ path: 'tasks/a.md', content: src }])).toEqual([]);
   });
 });
 

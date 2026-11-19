@@ -97,7 +97,7 @@ function proseLines(lines: string[], task: Pick<Task, 'line' | 'depth'>, fenced:
 }
 
 /** The lines of every code fence (three backticks or three tildes), fence lines included, 0-based. A fence closes on its own marker. @req FR:task-lint/rule.nesting.allowed */
-function fencedLines(lines: string[]): Set<number> {
+export function fencedLines(lines: string[]): Set<number> {
   const out = new Set<number>();
   let open: string | null = null;
   lines.forEach((l, i) => {
