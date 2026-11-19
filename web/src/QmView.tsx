@@ -1,6 +1,6 @@
 /**
  * `#/qm`: the weekly QM plan as one plain, sortable table. Read only; agents write it with `stack qm put`.
- * @req FR:qm-plan/ui.route @req FR:qm-plan/ui.table @req FR:qm-plan/ui.sort @req FR:qm-plan/ui.back @req FR:qm-plan/ui.stamp @req FR:qm-plan/ui.style @req FR:qm-plan/live.reload
+ * @req FR:qm-plan/ui.route @req FR:qm-plan/ui.table @req FR:qm-plan/ui.sort @req FR:qm-plan/ui.back @req FR:qm-plan/ui.stamp @req FR:qm-plan/ui.style @req FR:qm-plan/ui.phone @req FR:qm-plan/live.reload
  */
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { createClient } from './api';
@@ -15,6 +15,8 @@ export type QmLive = (onChange: (kinds: string[]) => void) => () => void;
 const hostLive: QmLive = (onChange) => connectLive({ onChange, onStatus: () => undefined });
 /** A plan write (`qm`), a poll with no event stream, or a full refresh after a reconnect (`state`) may change the plan. @req FR:qm-plan/live.reload */
 const RELOAD = new Set(['qm', 'poll', 'state']);
+/** Column labels by id: each value cell names its column, so the stacked phone layout can show it. @req FR:qm-plan/ui.phone */
+const LABEL = Object.fromEntries(COLS.map((c) => [c.id, c.label])) as Record<QmCol, string>;
 
 export function QmView({ fetchFn, live = hostLive }: { fetchFn?: typeof fetch; live?: QmLive } = {}) {
   const [plan, setPlan] = useState<QmPlan | null | undefined>(undefined);
@@ -43,11 +45,11 @@ export function QmView({ fetchFn, live = hostLive }: { fetchFn?: typeof fetch; l
       {!error && plan === null && <p class="qm-empty">{broken ? 'The plan file is broken. An agent must write it again.' : 'No plan yet.'}</p>}
       {plan && (
         <div class="qm-scroll" role="region" aria-label="QM plan table" tabIndex={0}>
-          <table class="qm-table">
-            <thead>
-              <tr>
+          <table class="qm-table" role="table">
+            <thead role="rowgroup">
+              <tr role="row">
                 {COLS.map((c) => (
-                  <th key={c.id} scope="col" class={c.num ? 'num' : undefined} aria-sort={sort.col === c.id ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                  <th key={c.id} scope="col" role="columnheader" class={c.num ? 'num' : undefined} aria-sort={sort.col === c.id ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
                     <button type="button" class="qm-sort" title={`Sort by ${c.label}`} onClick={() => by(c.id)}>
                       {c.label}<span class="qm-arrow" aria-hidden="true">{sort.col === c.id ? (sort.dir === 'asc' ? '▲' : '▼') : ''}</span>
                     </button>
@@ -55,14 +57,14 @@ export function QmView({ fetchFn, live = hostLive }: { fetchFn?: typeof fetch; l
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody role="rowgroup">
               {sortRows(plan.projects, sort.col, sort.dir).map((r) => (
-                <tr key={r.project}>
-                  <th scope="row">{r.project}</th>
-                  <td class="qm-agent" title={r.agent.sessionId}>
+                <tr key={r.project} role="row">
+                  <th scope="row" role="rowheader">{r.project}</th>
+                  <td role="cell" data-label={LABEL.agent} class="qm-agent" title={r.agent.sessionId}>
                     {r.agent.url ? <a href={r.agent.url} target="_blank" rel="noopener noreferrer">{r.agent.name}</a> : r.agent.name}
                   </td>
-                  <td class="num qm-tasks">
+                  <td role="cell" data-label={LABEL.tasks} class="num qm-tasks">
                     {r.tasks.length ? (
                       <details>
                         <summary>{r.tasks.length}<span class="qm-chev" aria-hidden="true">›</span></summary>
@@ -70,9 +72,9 @@ export function QmView({ fetchFn, live = hostLive }: { fetchFn?: typeof fetch; l
                       </details>
                     ) : '0'}
                   </td>
-                  <td class={`num qm-tokens${r.weeklyTokens === null ? ' pending' : ''}`} title={r.weeklyTokens === null ? undefined : numText(r.weeklyTokens)}>{tokText(r.weeklyTokens)}</td>
-                  <td class={`num${r.preAckMin === null ? ' pending' : ''}`}>{numText(r.preAckMin)}</td>
-                  <td class={`num${r.postReviewMin === null ? ' pending' : ''}`}>{numText(r.postReviewMin)}</td>
+                  <td role="cell" data-label={LABEL.weeklyTokens} class={`num qm-tokens${r.weeklyTokens === null ? ' pending' : ''}`} title={r.weeklyTokens === null ? undefined : numText(r.weeklyTokens)}>{tokText(r.weeklyTokens)}</td>
+                  <td role="cell" data-label={LABEL.preAckMin} class={`num${r.preAckMin === null ? ' pending' : ''}`}>{numText(r.preAckMin)}</td>
+                  <td role="cell" data-label={LABEL.postReviewMin} class={`num${r.postReviewMin === null ? ' pending' : ''}`}>{numText(r.postReviewMin)}</td>
                 </tr>
               ))}
             </tbody>
