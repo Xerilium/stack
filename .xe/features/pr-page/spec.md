@@ -161,7 +161,7 @@ The owner needs one card shape everywhere so that he reads each PR the same way,
   - **FR:card.color.edge** (P1): A 3 px left edge in a muted tone MUST show the owner: my Autopilot PR, my other PR, or someone else's PR. The author text says the same, so the edge is never the only signal
   - **FR:card.color.strong** (P1): A card with a next action MUST be strong: elevation (`--fl-shadow4`) only, no fill
   - **FR:card.color.contrast** (P1): Text on every card MUST meet WCAG AA (4.5:1), light and dark
-- **FR:card.phone** (P1): On a phone (under 720 px) the card tools (Pin, Actions, the drag handle) MUST sit in the top row, so the title uses at least 85% of the card width at 375 px
+- **FR:card.phone** (P1): On a phone (under 720 px) the card tools (Pin, Actions, the drag handle) MUST sit in the top row, so the title spans the whole card except the shared chevron column (`FR:ui-kit/card.chev`)
 - **FR:card.space** (P1): Cards have at least 12 px between them and 12 px padding inside
 - **FR:card.select** (P1): A tap or click on the card (not on the PR link or Pin) selects it and shows its details (`FR:pr-page/detail.*`). Enter or Space on the focused card does the same. The card ends in a chevron (`›`). The selected card shows a selected state (`aria-current`)
 

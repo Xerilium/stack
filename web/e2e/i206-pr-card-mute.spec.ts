@@ -61,13 +61,15 @@ for (const scheme of ['light', 'dark'] as const) {
   });
 }
 
-test('at 375 px the title uses at least 85% of the card width; Pin sits in the top row', async ({ page }, info) => {
+test('at 375 px the title spans the card but the chevron column; Pin sits in the top row', async ({ page }, info) => {
   test.skip(info.project.name !== 'mobile', 'phone layout');
   const pg = await open(page);
   const c = pg.locator('.pr-card[data-number="3"]');
   const card = (await c.boundingBox())!;
   const title = (await c.locator('.ui-card-title').boundingBox())!;
-  expect(title.width / card.width).toBeGreaterThanOrEqual(0.85);
+  // only the left padding, the edge and the shared 44 px chevron column are left: no tools column beside the title
+  expect(card.x + card.width - (title.x + title.width)).toBeLessThanOrEqual(48);
+  expect(title.width / card.width).toBeGreaterThanOrEqual(0.8);
   const pin = (await c.getByRole('button', { name: /^Pin / }).boundingBox())!;
   const top = (await c.locator('.ui-card-top').boundingBox())!;
   expect(pin.y).toBeLessThan(top.y + top.height);
