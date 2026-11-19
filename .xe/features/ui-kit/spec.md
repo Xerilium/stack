@@ -116,7 +116,23 @@ The owner needs a failed load to say what happened so that the owner can fix it 
 
 - **FR:a11y** (P1): Every target is at least 44 px on touch and 24 px on desktop. Axe finds no serious or critical violation where a view uses them
 
+### FR:guard: Reuse guard
+
+Developer needs a failing test when a view builds markup a shared component owns, so that one-off copies never reach the owner.
+
+- **FR:guard.owns** (P2): Each component file in `web/src/ui/` MUST name the classes and roles it owns with `@owns` tags (`@owns class:ui-chip`, `@owns role:tablist`)
+- **FR:guard.fail** (P2): Guard MUST fail when a view file outside `web/src/ui/` writes an owned class or role in its markup
+  - **FR:guard.fail.legacy** (P3): Guard MUST allow a view the count its `legacy:` entry on the tag names (`legacy: PrsPanel.tsx=1`)
+  - **FR:guard.fail.message** (P3): Guard MUST name the file, the markup, and the component to use
+
+### FR:catalog: Component catalog
+
+Developer needs one page that says which component to use so that he finds it before he builds a copy.
+
+- **FR:catalog** (P3): `docs/ui-components.md` MUST say what each shared component is for
+  - **FR:catalog.current** (P3): Catalog MUST name only components that exist in `web/src/ui/`
+
 ## Architecture Constraints
 
-- Each component is its own file in `web/src/ui/` with tests in `web/tests/ui-kit.test.tsx`. Styles live in `web/src/ui/ui.css`, tokens only.
+- Each component is its own file in `web/src/ui/` with tests in `web/tests/ui-kit.test.tsx`. The reuse guard is `web/tests/ui-reuse.test.ts`. Styles live in `web/src/ui/ui.css`, tokens only.
 - A view adds a component here when it needs new UI that another view could use. Only UI that no other view could use stays in the view.

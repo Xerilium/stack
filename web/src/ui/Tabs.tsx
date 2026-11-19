@@ -2,7 +2,13 @@ import type { ComponentChildren } from "preact";
 import { useRef } from "preact/hooks";
 import "./ui.css";
 
-/** Tabs (ARIA tabs pattern): arrows, Home and End move; `aside` sits at the right end of the bar. @req FR:ui-kit/tabs */
+/**
+ * Tabs (ARIA tabs pattern): arrows, Home and End move; `aside` sits at the right end of the bar.
+ * @req FR:ui-kit/tabs @req FR:ui-kit/guard.owns
+ * @owns role:tablist legacy: PrsPanel.tsx=1 SessionsView.tsx=1
+ * @owns class:ui-tabs
+ * @owns class:ui-tab
+ */
 export function Tabs<K extends string>({
   items,
   current,

@@ -9,6 +9,7 @@ Applies to every view in `web/`. The design language (color, type, space, compon
 - When a view needs a change to a shared component, change the component (for every view), not a copy.
 - Exception: an element that is truly unique and can never be reused elsewhere. Say why in a comment on it.
 - Reviews MUST flag view code that rebuilds a card, chip, tab bar or detail pane by hand.
+- The reuse guard (`web/tests/ui-reuse.test.ts`, `FR:ui-kit/guard`) fails when a view writes a class or role that a component owns. The catalog is `docs/ui-components.md`.
 
 ## Look
 

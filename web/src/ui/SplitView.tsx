@@ -4,7 +4,8 @@ import "./ui.css";
 
 /**
  * A list with a detail pane: side by side when wide; when narrow the detail replaces the list, with Back.
- * @req FR:ui-kit/split
+ * @req FR:ui-kit/split @req FR:ui-kit/guard.owns
+ * @owns class:ui-split
  */
 export function SplitView({
   wide,
