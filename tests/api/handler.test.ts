@@ -112,7 +112,7 @@ describe('routing', () => {
 describe('next', () => {
   it('returns null when empty', async () => {
     const r = await mk().call('GET', '/api/next');
-    expect(r.json).toEqual({ task: null });
+    expect(r.json).toEqual({ task: null, action: null });
   });
   it('returns the top task with ref', async () => {
     const m = mk();

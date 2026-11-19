@@ -53,6 +53,15 @@ describe('api client', () => {
     expect(e).toBeInstanceOf(ApiFailure);
     expect(e.status).toBe(502);
   });
+  // @req FR:now-screen/now.action @req FR:pri-first-ranking/api.next
+  it('nextStep reads the answer of stack next: the first priority action and the first owner task', async () => {
+    const action = { pri: { id: 'fh', rank: 4, title: 'FH 0.11' }, text: 'answer the interview', score: 2400 };
+    const { client, calls } = rec(() => res(200, { task: null, action }));
+    expect(await client.nextStep()).toEqual({ task: null, action });
+    expect(calls.map((c) => c.url)).toEqual(['/api/next']);
+    const old = rec(() => res(200, { task: null })); // a host that has no action field yet
+    expect(await old.client.nextStep()).toEqual({ task: null, action: null });
+  });
   it('covers the other calls', async () => {
     const { client, calls } = rec((url) => res(200, url.includes('/projects') ? { items: [] } : url.includes('/next') ? { task: null } : { changed: true }));
     await client.next(); await client.projects(); await client.action('start', 'a:1'); await client.edit('a:1', 'x');

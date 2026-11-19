@@ -52,8 +52,8 @@ const ok = (description: string, schema: J, status = '200'): J => ({
 const SOURCES_PROPS = { sources: { type: 'array', items: { type: 'object', properties: { kind: { type: 'string', enum: ['email', 'github', 'teams', 'slack'] }, account: { type: 'string' }, state: { type: 'string', enum: ['not-connected', 'connecting', 'ok', 'error', 'stale'] }, lastSyncAt: { type: 'string', format: 'date-time' }, error: { type: 'string' }, needs: { type: 'string' }, command: { type: 'string' }, connect: { type: 'boolean', description: 'The step is the in-app Connect panel, not a command' }, doc: { type: 'string' }, mode: { type: 'string', enum: ['read-only', 'drafts'] }, planned: { type: 'boolean' } } } }, summary: { type: 'object', properties: { connected: { type: 'integer' }, total: { type: 'integer' }, fresh: { type: 'integer' }, attention: { type: 'boolean' }, canClaimZero: { type: 'boolean' }, headline: { type: 'string', nullable: true } } } };
 const DOCS: Record<string, RouteDoc> = {
   next: {
-    operationId: 'next', summary: 'Top-ranked task',
-    responses: ok('`task` is null when nothing is active.', { type: 'object', properties: { task: { allOf: [ref('NextTask')], nullable: true } } }),
+    operationId: 'next', summary: 'What the owner does next: the answer of `stack next`',
+    responses: ok('`action` is the first priority action (it comes before any task), null with none. `task` is the first owner task, null when nothing is active.', { type: 'object', properties: { task: { allOf: [ref('NextTask')], nullable: true }, action: { type: 'object', nullable: true, required: ['pri', 'text', 'score'], properties: { pri: { type: 'object', required: ['id', 'rank', 'title'], properties: { id: { type: 'string' }, rank: { type: 'integer' }, title: { type: 'string' } } }, text: { type: 'string' }, score: { type: 'number' } } } } }),
   },
   'tasks.list': {
     operationId: 'listTasks', summary: 'List tasks',

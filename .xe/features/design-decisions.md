@@ -346,3 +346,13 @@
 **Why**: Two token sets gave two accents (indigo shell, blue pages), two ink scales, and two focus colors on one screen. One source makes every page read as one app, and old names keep working, so no view file changes.
 
 **Rejected**: Fluent blue as the accent (the app icon and shell are indigo); a third token prefix (more names, same values); a rename of every token (large diff while other work is open on the pages).
+
+## Next: one function for `stack next` and `GET /next`
+
+**Decision**: `nextStep` (core) gives the first priority action and the first owner task. `stack next` and `GET /next` both call it. `GET /next` returns `{task, action}`; `GET /rank` stays task rows only.
+
+**Date**: 2026-11-19
+
+**Why**: `stack next` printed a priority action first, and `GET /next` did not know the actions. The two answers were different when a priority had an action.
+
+**Rejected**: An action row in `task` (it has no `ref`, so `Done` and `Defer` on Now would break); action rows in `GET /rank` (My day and Home place rows by `ref`).

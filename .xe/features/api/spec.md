@@ -53,7 +53,9 @@ One HTTP surface over the core so the web app, quick capture, chat bots, and the
 
 ### FR:routes: Endpoints
 
-- **FR:routes.next** (P1): `GET /next` returns `{task}`, where `task` is `{ref,text,project,score}` (the first of `GET /rank`) or `null` when nothing is active
+- **FR:routes.next** (P1): `GET /next` returns `{task,action}`: `task` is `{ref,text,project,score}` (the first of `GET /rank`) or `null` when nothing is active
+  > - @req FR:pri-first-ranking/api.next
+  - **FR:routes.next.action** (P1): `action` is `{pri:{id,rank,title},text,score}` (the first priority action, which `stack next` prints first) or `null`
 - **FR:routes.rank** (P1): `GET /rank?limit=&blocks=` (limit 1-200, default 20; `blocks` is `now`, the default, or `any` to keep tasks the current time block would hide, for surfaces that place tasks across the day) returns `{items}`, the ranked tasks (@req FR:task-lifecycle/rank.output), each `{ref,text,project,score,rule?,root?,stale?,pri?}` (`stale: true` for a stale row, `FR:task-lifecycle/rank.stale`; `pri: {rank,title}` for a row linked to an owner priority, `FR:pri-first-ranking/api.pri`); only the owner queue (`FR:task-lifecycle/rank.owner`)
   > - @req FR:task-lifecycle/rank.order
 - **FR:routes.add** (P1): `POST /tasks` `{project,text,section?,parent?}` adds a task (201); `POST /projects` `{name,description?,repositoryUrl?,aliases?,priority?,capacity?,weeklyCapacity?,fileName?,force?}` adds a project (201 `{path,project}`)

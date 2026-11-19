@@ -9,7 +9,7 @@ stack next --top 5    # the first five, one line each: ref score project text
 
 The order is the `stack` scoring engine (score, due dates, blockers, time block), then your overrides.
 
-The web replaces the `/next` skill's table (`FR:top-asks/top.next`): **Now** (`#/now`) shows `stack next` as the one task, and **Top asks** (`#/home`, `g h`) lists the top of every other project, live. `GET /next`, `GET /rank` and `stack next` do not change.
+The web replaces the `/next` skill's table (`FR:top-asks/top.next`): **Now** (`#/now`) shows `stack next` as the one task, and **Top asks** (`#/home`, `g h`) lists the top of every other project, live. `GET /next` and `stack next` call one function (`nextStep`): `action` is the first priority action (`stack next` prints it first), and `task` is the first task. Both give owner rows only: an agent row (🤖, 🪄) or a mixed row never shows.
 
 ## Overrides: `.stack/priorities.json`
 

@@ -11,7 +11,7 @@ import { rowOwner } from './owner';
 import { applyTags, formatExplain, matchTruth, parseTruth, type ExplainRow, type Tags, type TruthMatch } from './autopri-tags';
 import { autopriEngine, autopriParts, registerAutopriEngine } from './autopri';
 import type { Pri } from './pris';
-import { linkAll, linkCounts, priActions, priFirst, priOrder, type PriLink, prisEngine, prisParts, registerPrisEngine, setPris } from './pris-rank';
+import { linkAll, linkCounts, priActions, priFirst, priOrder, type PriAction, type PriLink, prisEngine, prisParts, registerPrisEngine, setPris } from './pris-rank';
 import { applyOverrides, matcherFor, parsePriorities, PRIORITIES_PATH } from './priorities';
 import { ConflictError, NotFoundError, Storage, writeAll, type AuxFiles } from './storage';
 
@@ -445,6 +445,17 @@ export async function rankStack(ctx: LifecycleContext, at?: Date, limit?: number
 /** @req FR:task-lifecycle/next.@function @req FR:task-lifecycle/next.rank @req FR:task-lifecycle/next.map @req FR:task-lifecycle/next.none */
 export async function nextTask(ctx: LifecycleContext, at?: Date): Promise<NextTask | null> {
   return (await findNext(ctx, at))?.next ?? null;
+}
+
+/** What the owner does next: the first priority action (it comes before any task), and the first owner task. */
+export interface NextStep { action: PriAction | null; task: NextTask | null }
+
+/**
+ * The one answer to "what is next" for `stack next` and `GET /next`: same priorities of the day, same ranking, owner rows only.
+ * @req FR:pri-first-ranking/api.next.one @req FR:pri-first-ranking/api.next.owner @req FR:pri-first-ranking/action.first
+ */
+export async function nextStep(ctx: LifecycleContext, at?: Date): Promise<NextStep> {
+  return { action: priActions(dayPris(ctx, at))[0] ?? null, task: await nextTask(ctx, at) };
 }
 
 interface Target { doc: Doc; ref: TaskRef; row: RegExpExecArray }
