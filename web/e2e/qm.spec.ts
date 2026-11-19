@@ -33,17 +33,17 @@ test('sorts by a column; a second click reverses', async ({ page }) => {
   await page.getByRole('button', { name: 'Weekly tokens' }).click();
   await expect(page.getByRole('columnheader', { name: 'Weekly tokens' })).toHaveAttribute('aria-sort', 'ascending');
   expect(await projects(page)).toEqual(['Stack', 'FOCUS']);
-  await page.getByRole('button', { name: 'Project' }).click();
-  await page.getByRole('button', { name: 'Project' }).click();
+  await page.getByRole('button', { name: 'Project', exact: true }).click();
+  await page.getByRole('button', { name: 'Project', exact: true }).click();
   await expect(page.getByRole('columnheader', { name: 'Project' })).toHaveAttribute('aria-sort', 'descending');
   expect(await projects(page)).toEqual(['Stack', 'FOCUS']);
 });
 
-test('a long plan scrolls inside the page (the shell body never scrolls)', async ({ page }) => {
+test('a long plan scrolls in the main region (the shell body never scrolls)', async ({ page }) => {
   const projects = Array.from({ length: 50 }, (_, i) => ({ ...PLAN.projects[1], project: `P${String(i).padStart(2, '0')}` }));
   await open(page, { plan: { ...PLAN, projects } });
   const last = page.getByRole('rowheader', { name: 'P49' });
-  await page.mouse.move(100, 300);
+  await page.mouse.move(page.viewportSize()!.width - 60, 300); // over the main region, not the rail
   await page.mouse.wheel(0, 20000);
   await expect(last).toBeInViewport();
 });
@@ -61,6 +61,7 @@ test('axe: no violations, light and dark; the page never scrolls sideways', asyn
   await open(page);
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
+    await page.waitForTimeout(200); // the shell's nav colors ease over .12 s: check the settled colors
     const { violations } = await new AxeBuilder({ page }).analyze();
     expect(violations.map((v) => v.id)).toEqual([]);
   }

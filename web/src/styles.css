@@ -738,3 +738,9 @@ body:not(.keyed) .main kbd:not(.always) { display: none; }
 .md hr { border: 0; border-top: 1px solid var(--line); }
 .md pre { padding: 8px 10px; border-radius: 8px; background: var(--chip); font-size: 12px; overflow-x: auto; white-space: pre; }
 .md code { font-size: .92em; }
+
+/* A palette-only page inside the shell (the QM plan): the main region scrolls and pads it, so the rail and tab bar stay. @req FR:web-shell/nav.pages */
+.main:has(> .qm) { --measure: 1040px; }
+.main > .qm { height: auto; overflow: visible; padding: 0; background: transparent; }
+/* Desktop hides the phone brand: an empty header is no landmark at all. */
+@media (min-width: 720px) { .shell-head:not(:has(.banner)) { display: none; } }

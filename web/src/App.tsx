@@ -5,7 +5,7 @@
  * @req FR:web-app/edit.notes @req FR:web-app/host.auth @req FR:web-app/host.nosecrets
  * @req FR:web-app/ux.feedback @req FR:web-app/ux.responsive
  */
-import { Fragment } from 'preact';
+import { Fragment, type ComponentChildren } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, createClient } from './api';
 import { errText, UserError } from './errtext';
@@ -22,6 +22,8 @@ import { calendarRange, dayFrame, needsRefresh, wallMinutes, withProjects, type 
 import { allDay, busyIntervals, joinable, type CalEvent } from './meetings';
 import { budgetOf, clampBudget, dateKey, loadSaved, saveBudget, STEP, store } from './day';
 import { AsksView } from './AsksView';
+import { QmView } from './QmView';
+import { isQmHash } from './qm';
 import { PageNote, SessionsBlock } from './PrisSessions';
 import { usePrisSessions } from './usePrisSessions';
 import { InboxView } from './InboxView';
@@ -43,7 +45,7 @@ import { createInstall, isStandalone, type InstallEvent } from './install';
 import { blockedHelp, loadNotify, noteFor, notifySupported, raise, saveNotify } from './notify';
 import { fromDecisions, fromNeeds, staleNeeds, type NeedItem } from './needs';
 import { repliesFor } from './agents';
-import { CHORDS, HINT, LABEL, RAIL, TABBAR } from './nav';
+import { CHORDS, HINT, LABEL, RAIL, TABBAR, type TabSlot } from './nav';
 import { SettingsView } from './SettingsView';
 import { briefOf } from './brief';
 import { enrich, expandWeekly, type Rule } from './weekly';
@@ -119,6 +121,9 @@ export function App() {
   const [justDone, setJustDone] = useState<Set<string>>(new Set());
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
   const [{ view, filters }, setNav] = useState(() => parseHash(location.hash));
+  /** `#/qm` (palette only) shows inside the shell; no nav item is current there. @req FR:web-shell/nav.pages */
+  const [qm, setQm] = useState(() => isQmHash(location.hash));
+  const at = (v: View | TabSlot) => !qm && view === v;
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [next, setNext] = useState<NextTask | null>(null);
@@ -431,7 +436,7 @@ export function App() {
   }, []);
   // The priorities tables on Now: read while Now is open. @req FR:priorities-tables/web.live
   // Settings draws the context links from the same report; nothing is read on other views. @req FR:settings/priorities.live
-  const pri = usePriorities(api, asks.liveTick, view === 'now' || view === 'settings');
+  const pri = usePriorities(api, asks.liveTick, !qm && (view === 'now' || view === 'settings'));
   /** A message from the priorities report resumes the agent session. @req FR:priorities-tables/web.message */
   const sendToSession = useCallback(async (session: string, text: string) => { await api.promptSession(session, text); }, [api]);
   const briefBusy = useMemo(() => {
@@ -503,6 +508,7 @@ export function App() {
   // ---- navigation (hash)
   const go = useCallback((v: View, f: Filters = filters) => {
     setNav({ view: v, filters: f });
+    setQm(false); // any nav leaves the QM page
     document.querySelector('.main')?.scrollTo(0, 0); // the content region scrolls, never the document
     const h = buildHash(v, f);
     if (location.hash !== h) history.replaceState(null, '', h);
@@ -510,7 +516,13 @@ export function App() {
   // An old Needs you address opens Notifications and the address changes to match. @req FR:notifications/list.route
   const fixHash = () => { const to = redirectHash(location.hash); if (to) history.replaceState(null, '', to); };
   useEffect(fixHash, []);
-  useEffect(() => { const on = () => { fixHash(); setNav(parseHash(location.hash)); }; window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on); }, []);
+  useEffect(() => { const on = () => { fixHash(); setNav(parseHash(location.hash)); setQm(isQmHash(location.hash)); }; window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on); }, []);
+  /** Opening the QM page closes what sat over the old view. @req FR:web-shell/nav.pages.overlays */
+  const closeDrawer = useRef(sessions.closeDrawer); closeDrawer.current = sessions.closeDrawer;
+  useEffect(() => {
+    if (qm) { setFocusRef(null); setSelected(new Set()); closeDrawer.current(); } // no bulk bar over a page with no rows
+    document.querySelector('.main')?.scrollTo(0, 0); // in and out, each page opens at its top
+  }, [qm]);
   const setFilters = (patch: Partial<Filters>) => go('list', { ...filters, ...patch });
 
   // ---- writes
@@ -853,8 +865,8 @@ export function App() {
   const allCommands = [...commands, ...goTo, ...projectCmds];
 
   // ---- keyboard (reads latest state through a ref)
-  const latest = useRef({ positions, rows, cursor, view, selected, editing, open, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft, tomorrowOn: !!tmr });
-  latest.current = { positions, rows, cursor, view, selected, editing, open, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft, tomorrowOn: !!tmr };
+  const latest = useRef({ positions, rows, cursor, view, qm, selected, editing, open, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft, tomorrowOn: !!tmr });
+  latest.current = { positions, rows, cursor, view, qm, selected, editing, open, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft, tomorrowOn: !!tmr };
   const doMoveLatest = useRef(doMove); doMoveLatest.current = doMove;
   const teamRef = useRef(team); teamRef.current = team;
   const act = useRef({ doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget, notNow, delegate, setHave }); act.current = { doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget, notNow, delegate, setHave };
@@ -903,6 +915,7 @@ export function App() {
       if (k === '?') { e.preventDefault(); setHelp(true); return; }
       if (k === 'c' && L.view !== 'sessions') { e.preventDefault(); setCaptureOpen(true); return; } // Sessions uses c for costs
       if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
+      if (L.qm) return; // the QM page has no row keys: the Now task under it is not on screen @req FR:web-shell/nav.pages.keys
       // @req FR:now-screen/now.actions: d done, n defer, Shift+A delegate, on the one task
       if (L.view === 'now') { const r = L.rows[0]?.ref; if (r && !e.metaKey && !e.ctrlKey) { if (k === 'd') { e.preventDefault(); void A.doAct('done', r); } else if (k === 'n') { e.preventDefault(); void A.notNow(r); } else if (k === 'A') { e.preventDefault(); void A.delegate(r); } else if (k === 'm') { e.preventDefault(); document.getElementById('now-msg')?.focus(); } } return; }
       if (L.view === 'asks' || L.view === 'settings' || L.view === 'inventory' || L.view === 'sessions' || L.view === 'inbox' || L.view === 'prs') return; // these views own their keys @req FR:pr-page/nav.page
@@ -965,7 +978,7 @@ export function App() {
         <a class="btn" href="/.auth/logout" onClick={(e) => { e.preventDefault(); void signOut(); }}>Sign out</a></main>
     );
   }
-  if (phase === 'error') {
+  if (phase === 'error' && !qm) { // the QM plan needs no task data
     return <main class="gate"><h1>Cannot load tasks</h1><p>{loadError}</p><button type="button" class="btn primary" onClick={() => void refresh()}>Retry</button></main>;
   }
   const toggleSet = (set: 'expanded' | 'flipped') => (k: string) => (set === 'expanded' ? setExpanded : setFlipped)((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
@@ -1001,8 +1014,12 @@ export function App() {
   const badge = (v: View) => (v === 'asks' && asks.countReady && notices > 0 ? <span class="badge" aria-label={`${notices} open`}>{notices}</span> : v === 'inbox' ? inboxDot : null);
   /** Each rail item names its chord in the tooltip; no key badge shows. @req FR:web-shell/nav.keys.hint @req FR:task-detail-design/rules.nokeys */
   // The PR entry renders itself: absent only where the host has no board; the board loads at app start. @req FR:pr-page/nav.rail @req FR:pr-page/icon.absent @req FR:pr-page/nav.load
-  const nav = () => RAIL.map((v) => v === 'prs' ? <PrsNavItem key={v} api={api} active={view === v} label={LABEL[v]} hint={HINT[v]} onGo={() => go(v)} /> : (
-    <button type="button" key={v} class={`tab${view === v ? ' on' : ''}`} aria-current={view === v ? 'page' : undefined} title={HINT[v] ? `${LABEL[v]} (${HINT[v]})` : LABEL[v]} data-testid={v === 'asks' ? 'nav-notifications' : undefined} onClick={() => go(v)}><span class="tab-label">{v === 'asks' && <Bell />}{LABEL[v]}{badge(v)}</span></button>
+  /** On `#/qm` the page brings its own `<main>`: the shell region is a plain box then, so there is one main landmark. @req FR:web-shell/nav.pages */
+  const Main = qm ? 'div' : 'main';
+  /** There the offline banner and the phone brand need a landmark of their own: a header. */
+  const shellHead = (c: ComponentChildren) => (qm ? <header class="shell-head">{c}</header> : c);
+  const nav = () => RAIL.map((v) => v === 'prs' ? <PrsNavItem key={v} api={api} active={at(v)} label={LABEL[v]} hint={HINT[v]} onGo={() => go(v)} /> : (
+    <button type="button" key={v} class={`tab${at(v) ? ' on' : ''}`} aria-current={at(v) ? 'page' : undefined} title={HINT[v] ? `${LABEL[v]} (${HINT[v]})` : LABEL[v]} data-testid={v === 'asks' ? 'nav-notifications' : undefined} onClick={() => go(v)}><span class="tab-label">{v === 'asks' && <Bell />}{LABEL[v]}{badge(v)}</span></button>
   ));
   return (
     <div class="shell">
@@ -1028,9 +1045,12 @@ export function App() {
           {updateChip}
         </div>
       </nav>
-      <main class="main" title={offline ? 'Offline' : undefined}>
+      <Main class="main" title={offline ? 'Offline' : undefined}>
+        {shellHead(<>
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
         <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}{updateChip}<FeedbackButton compact /><PrsButton api={api} where="phone" /></div>
+        </>)}
+        {qm ? <QmView /> : <>
         {phase === 'loading' && view !== 'asks' && view !== 'inventory' && view !== 'inbox' && view !== 'sessions' && view !== 'prs' && view !== 'settings' && <Skeleton status label="Loading" rows={['big', '', '', '']} />}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} />}
         {/* Pages with one h1 and a labelled region each. @req FR:notifications/pris.route @req FR:notifications/sessions.route @req NFR:notifications/a11y.axe */}
@@ -1055,7 +1075,8 @@ export function App() {
             onFilters={setFilters} onSelect={(ref) => setSelected((s) => { const n = new Set(s); if (n.has(ref)) n.delete(ref); else n.add(ref); return n; })} onSection={toggleSet('flipped')} />
         )}
         {phase === 'ready' && view === 'projects' && <ProjectsView week={week} rows={capRows} onOpen={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })} />}
-      </main>
+        </>}
+      </Main>
       {/* The session drawer from a row, outside the Sessions view. @req FR:agent-team/web.talk */}
       {view !== 'sessions' && sessions.open && <div class="sess-scrim" onClick={sessions.closeDrawer} />}
       {view !== 'sessions' && sessions.open && <Drawer key={sessions.open} s={sessions} item={sessions.items.find((i) => i.id === sessions.open) ?? null} cursorItem={null} team={team.team} onClose={sessions.closeDrawer} />}
@@ -1076,7 +1097,7 @@ export function App() {
           ? <button type="button" key="new" class="tab add-fab" onClick={openCapture} aria-label="New task"><span class="fab" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg></span></button>
           : slot === 'more'
             ? <button type="button" key="more" class="tab" onClick={() => setPalette(true)} aria-label={`More: open command palette${inboxAttention ? '. Inbox: an account needs attention' : ''}`}><TabIcon v="more" /><span>More</span>{inboxDot}</button>
-            : <button type="button" key={slot} class={`tab${view === slot ? ' on' : ''}`} aria-current={view === slot ? 'page' : undefined} data-testid={slot === 'asks' ? 'nav-notifications' : undefined} onClick={() => go(slot)}><TabIcon v={slot} /><span>{LABEL[slot]}</span>{badge(slot)}</button>)}
+            : <button type="button" key={slot} class={`tab${at(slot) ? ' on' : ''}`} aria-current={at(slot) ? 'page' : undefined} data-testid={slot === 'asks' ? 'nav-notifications' : undefined} onClick={() => go(slot)}><TabIcon v={slot} /><span>{LABEL[slot]}</span>{badge(slot)}</button>)}
       </nav>
       {focusTask && <TaskDetail task={focusTask} all={tasks} busy={busy} project={titles.get(focusTask.project)} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onSave={(next, prev, label) => saveText(focusTask.ref, next, prev, label)} onSet={(props, prev, label) => setProps(focusTask.ref, focusTask.text, props, prev, label)} onBack={() => { setFocusRef(null); setComposeRef(null); }} extra={<ThreadView t={focusTask} th={thread} team={team} now={clockNow} focus={composeRef === focusTask.ref} />} />}
       {picker && <Picker groups={picker.groups} count={picker.refs.length} onClose={() => setPicker(null)} onChoose={(g, e) => void applyPick(picker.refs, g, e)} />}
