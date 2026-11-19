@@ -57,7 +57,7 @@ const run = (mod: string, dir: string, file: string, n: number) => new Promise<{
 });
 
 describe('GitStorage across processes', () => {
-  // @req FR:storage-git/git.concurrency @req FR:storage-git/git.concurrency.turn
+  // @req FR:storage-git/git.concurrency @req FR:storage-git/git.concurrency.lock @req FR:storage-git/git.concurrency.turn
   it('serializes writes from two processes on one repo: no failures, one commit per write, every line kept', async () => {
     const mod = build();
     const d = freshRepo();

@@ -66,8 +66,9 @@ Stack System needs every write to be a direct commit on the task repo so that hi
   - **FR:git.failure.rollback** (P1): A failed commit MUST roll back the path while keeping the user's own staged edit of it
   - **FR:git.failure.mask** (P1): A failed post-rollback resync MUST NOT mask the original error
 - **FR:git.branch** (P1): With a remote or explicit `branch`, `write` and `sync` MUST throw `StorageError` when the configured branch is not checked out
-- **FR:git.concurrency** (P2): `GitStorage` `write`, `writeMany` and `sync` MUST serialize across adapter instances and processes on one repo. Each call MUST hold `<git-dir>/stack-write.lock` (same lock rules as `FR:status-ingest/store.lock`) for the whole check, write, commit and push
-  - **FR:git.concurrency.busy** (P2): When the lock stays held for 10 s, `GitStorage` MUST throw `StorageError` `Another Stack process is writing; try again`
+- **FR:git.concurrency** (P2): `GitStorage` `write`, `writeMany`, `writeAux` and `sync` MUST serialize across adapter instances and processes on one repo
+  - **FR:git.concurrency.lock** (P2): Each such call MUST hold `<git-dir>/stack-write.lock`, which holds the writer pid, for the whole check, write, commit and push
+  - **FR:git.concurrency.busy** (P2): When the lock stays held past the wait (`lockWaitMs`, default 10 s), `GitStorage` MUST throw `StorageError` `Another Stack process is writing; try again`
   - **FR:git.concurrency.busy.clean** (P2): A busy write MUST leave every file and commit as it was
   - **FR:git.concurrency.stale** (P2): `GitStorage` MUST take over a lock whose writer process is gone
   - **FR:git.concurrency.turn** (P2): After it lets go of the lock, a `GitStorage` writer MUST wait 50 ms before it takes the lock again
