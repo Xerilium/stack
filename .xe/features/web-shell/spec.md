@@ -47,7 +47,8 @@ Owner needs the same few places reachable the same way on every screen so that m
 - **FR:nav.tabbar** (P1): The phone tab bar MUST have five equal slots: Home, My day, New task (the raised circle, in the middle), Needs you (count badge), More (opens the palette)
   - **FR:nav.tabbar.glyph** (P2): The `+` glyph MUST be optically centered in its circle (its box center within 1px of the circle's center)
   - Projects and Full stack are reached through More / the palette
-- **FR:nav.pages** (P1): A page reached only from the palette (the QM plan, `#/qm`) MUST show inside the shell: the rail on desktop and the tab bar on phones stay
+- **FR:nav.pages** (P1): A page reached only from the palette (the QM plan, `#/qm`) MUST show inside the shell
+  - The rail on desktop and the tab bar on phones stay
   - **FR:nav.pages.current** (P1): The nav MUST mark no item current on such a page
   - **FR:nav.pages.leave** (P1): Each nav item MUST leave the page
   - **FR:nav.pages.scroll** (P1): The main region MUST be the only scroll container
