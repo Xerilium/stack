@@ -1,6 +1,6 @@
 /** @req FR:inbox-page/web.view */
 import { describe, expect, it } from 'vitest';
-import { actionsFor, emptyText, SOURCE, statusLine, tomorrow, type ActionInfo, type InboxRow, type SourcesSummary } from '../src/inbox';
+import { actionsFor, doneText, emptyText, SOURCE, statusLine, tomorrow, type ActionInfo, type InboxRow, type SourcesSummary } from '../src/inbox';
 
 const cat: ActionInfo[] = [{ id: 'reply-draft', label: 'Draft reply', ready: true }, { id: 'mark-done', label: 'Mark done', ready: true }, { id: 'unsubscribe', label: 'Unsubscribe', ready: false }];
 const row = (o: Partial<InboxRow>): InboxRow => ({ id: 'mail-a', source: 'email', account: 'a', from: 'x', subject: 's', receivedAt: '2026-01-01', unread: true, summary: '', suggested: 'unsubscribe', actions: ['unsubscribe', 'reply-draft', 'mark-done'], ...o });
@@ -36,5 +36,19 @@ describe('inbox status', () => {
     expect(statusLine(sum({ headline: 'Email sign-in expired: a@x.com' }))).toBe('Email sign-in expired: a@x.com');
     expect(statusLine(sum({ attention: false, headline: null }))).toBeNull();
     expect(statusLine(undefined)).toBeNull();
+  });
+});
+
+// @req FR:inbox-page/web.toast
+describe('inbox toast words', () => {
+  it('says the result in plain words for each ready action', () => {
+    expect(doneText({ id: 'mark-done', label: 'Mark done', ready: true })).toBe('Marked done');
+    expect(doneText({ id: 'snooze', label: 'Snooze', ready: true })).toBe('Snoozed until tomorrow');
+    expect(doneText({ id: 'ask-me-later', label: 'Ask me later', ready: true })).toBe('Deferred until tomorrow');
+    expect(doneText({ id: 'create-task', label: 'Create task', ready: true })).toBe('Task created');
+  });
+  it('falls back to the label for an action it does not know, and never says "Mark done: done"', () => {
+    expect(doneText({ id: 'archive', label: 'Archive', ready: true })).toBe('Archive: Done');
+    expect(cat.map(doneText)).not.toContain('Mark done: done');
   });
 });

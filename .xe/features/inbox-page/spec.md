@@ -87,6 +87,7 @@ The owner needs to scan mail and act on it. Inbox holds mail and messages only. 
   - **FR:web.view.unread** (P1): Row MUST mark an unread item with a bold subject and a small dot.
   - **FR:web.view.border** (P1): Row MUST use the same border on every side.
   - **FR:web.view.button** (P1): Row MUST draw its primary action in the default button style.
+- **FR:web.toast** (P1): After an action runs, the toast says the result in plain words: `Marked done`, `Snoozed until tomorrow`, `Deferred until tomorrow`, `Task created`. Any other action says `<Label>: Done`. The toast never repeats the button label as `<Label>: done`.
 - **FR:web.draft** (P1): `reply-draft` opens an editable text area first. Confirming creates the draft and shows an "Open in Outlook" link. The page has no send button.
 - **FR:web.phone** (P1): At 375 px width rows stack and nothing scrolls sideways. Every control is at least 44 px tall on a phone.
 - **FR:web.empty** (P1): Page MUST say "Inbox zero. Nothing needs you." with no items only when `canClaimZero`.
