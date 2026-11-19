@@ -56,6 +56,8 @@
 
 /* One card: the shared SelectCard (ui/ui.css) on the neutral panel; the owner is a 3 px muted edge, strong is elevation only. @req FR:pr-page/card.fields @req FR:pr-page/card.space @req FR:pr-page/card.color */
 .ui-card.pr-card { border: 1px solid var(--line); border-left: 3px solid var(--ui-edge, var(--line)); }
+/* The card has a 1 px border: the chevron strip covers it, so it is as tall as the card. @req FR:ui-kit/card.chev */
+.ui-card.pr-card .ui-card-chev { top: -1px; bottom: -1px; right: -1px; }
 .pr-card.tone-auto { --ui-edge: var(--pr-auto-edge); }
 .pr-card.tone-mine { --ui-edge: var(--pr-mine-edge); }
 .pr-card.tone-other { --ui-edge: var(--pr-other-edge); }

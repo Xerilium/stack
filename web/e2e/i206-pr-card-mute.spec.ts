@@ -61,19 +61,16 @@ for (const scheme of ['light', 'dark'] as const) {
   });
 }
 
-test('at 375 px the title spans the card but the chevron column; Pin sits in the top row', async ({ page }, info) => {
+test('at 375 px the title spans the card but the chevron column; Pin is in the menu, not on the card', async ({ page }, info) => {
   test.skip(info.project.name !== 'mobile', 'phone layout');
   const pg = await open(page);
   const c = pg.locator('.pr-card[data-number="3"]');
   const card = (await c.boundingBox())!;
   const title = (await c.locator('.ui-card-title').boundingBox())!;
-  // only the left padding, the edge and the shared 44 px chevron column are left: no tools column beside the title
-  expect(card.x + card.width - (title.x + title.width)).toBeLessThanOrEqual(48);
-  expect(title.width / card.width).toBeGreaterThanOrEqual(0.8);
-  const pin = (await c.getByRole('button', { name: /^Pin / }).boundingBox())!;
-  const top = (await c.locator('.ui-card-top').boundingBox())!;
-  expect(pin.y).toBeLessThan(top.y + top.height);
-  expect(pin.y + pin.height).toBeGreaterThan(top.y);
+  // only the left padding, the edge, the border and the 44 px chevron column are left: no tools column beside the title
+  expect(card.x + card.width - (title.x + title.width)).toBeLessThanOrEqual(56);
+  expect(title.width / card.width).toBeGreaterThanOrEqual(0.75);
+  await expect(c.getByRole('button', { name: /^(Pin|Unpin) / })).toHaveCount(0);
 });
 
 test('one accent: primary buttons and the selected tab use the app accent, never the Fluent brand blue', async ({ page }) => {
