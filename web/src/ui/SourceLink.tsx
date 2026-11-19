@@ -10,7 +10,7 @@ export interface Source { kind: SourceKind; /** The words on the link, for examp
 /** Mail web apps only: a suite's other sites (office.com, onedrive.live.com) are not mail. */
 const MAIL = /^(outlook\.(office|office365|live)\.com|mail\.google\.com|mail\.proton\.me|app\.fastmail\.com)$/;
 
-/** Name a link by its source. Returns null for text that is not a link. Pure. */
+/** Name a link by its source. Returns null for text that is not a link. Pure. @req FR:ui-kit/source.name */
 export function sourceOf(href: string | undefined): Source | null {
   let u: URL;
   try { u = new URL(href ?? ''); } catch { return null; }
@@ -23,7 +23,7 @@ export function sourceOf(href: string | undefined): Source | null {
   return { kind: 'site', label: u.hostname.replace(/^www\./, '') };
 }
 
-/** The link, in a new tab. Draws nothing when `href` is not a link. A click never reaches the row under it. */
+/** The link, in a new tab. Draws nothing when `href` is not a link. A click never reaches the row under it. @req FR:ui-kit/source.tab @req FR:ui-kit/source.click @req FR:ui-kit/source.empty */
 export function SourceLink({ href }: { href: string | undefined }) {
   const s = sourceOf(href);
   if (!s) return null;

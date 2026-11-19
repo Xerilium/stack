@@ -31,7 +31,7 @@ describe('Flag', () => {
   });
 });
 
-// @req FR:ui-kit/source
+// @req FR:ui-kit/source @req FR:ui-kit/source.name @req FR:ui-kit/source.tab @req FR:ui-kit/source.click @req FR:ui-kit/source.empty
 describe('SourceLink', () => {
   it('sourceOf names a link by its kind', () => {
     expect(sourceOf('https://github.com/Xerilium/stack/pull/158')).toEqual({ kind: 'pr', label: 'PR stack#158' });

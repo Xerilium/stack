@@ -4,7 +4,9 @@
  * @req FR:notifications/list.route @req FR:notifications/list.what @req FR:notifications/list.not @req FR:notifications/list.empty @req FR:notifications/list.words
  * @req FR:notifications/bell.item @req FR:notifications/bell.count @req FR:notifications/pris.route
  * @req FR:notifications/sessions.route @req FR:notifications/sessions.more @req FR:notifications/nav.rail @req FR:notifications/nav.tabbar
- * @req FR:notifications/list.context @req FR:notifications/list.source @req FR:notifications/list.rowactions @req FR:notifications/list.drop
+ * @req FR:notifications/list.context @req FR:notifications/list.context.why @req FR:notifications/list.context.pick @req FR:notifications/list.context.read
+ * @req FR:notifications/list.context.card @req FR:notifications/list.source @req FR:notifications/list.source.task @req FR:notifications/list.rowactions @req FR:notifications/list.rowactions.items @req FR:notifications/list.rowactions.context
+ * @req FR:notifications/list.rowactions.select @req FR:notifications/list.rowactions.focus @req FR:notifications/list.rowactions.card @req FR:notifications/list.drop @req FR:notifications/list.drop.count
  * @req NFR:notifications/a11y.axe @req NFR:notifications/calm
  */
 import AxeBuilder from '@axe-core/playwright';
@@ -83,7 +85,7 @@ test.describe('Notifications: context and actions on every row', () => {
     { ...ask('top', 'Pick the launch date', 90), kind: 'answer', from: 'allyte-cos', why: 'Marketing needs a date' },
     { ...ask('pr', 'Approve merging PR 158 into main', 80), kind: 'approve', from: 'stack-architect', project: 'stack', why: 'CI is green; one review is in', link: 'https://github.com/Xerilium/stack/pull/158' },
     { ...ask('mail', 'Review draft reply to Dana', 70), kind: 'review', from: 'email-triage', why: 'Dana asked for the contract terms', link: 'https://outlook.office.com/mail/id/1' },
-    { ...ask('sess', 'Unblock the deploy session', 60), from: 'cos', why: 'It waits on a permission', link: 'https://claude.ai/code/session_1' },
+    { ...ask('sess', 'Unblock the deploy session', 60), from: 'cos', why: 'It waits on a permission', link: 'https://claude.ai/code/session_1', row: 'stack:3' },
     { ...ask('rec', 'Merge the release branch', 55), kind: 'approve', from: 'Chief of Staff', recommend: 'Merge it today', link: 'https://github.com/Xerilium/stack/issues/152' },
     { ...ask('bare', 'Rename the repo', 50) },
     { ...ask('dead', 'Pick one', 40), kind: 'decide' }, // no options: nothing to do
@@ -104,13 +106,18 @@ test.describe('Notifications: context and actions on every row', () => {
     const pr = row(page, 'pr');
     await expect(pr.locator('.ask-who')).toHaveText('stack-architect');
     await expect(pr.locator('.ask-ctx-why')).toHaveText('CI is green; one review is in');
+    // a screen reader reads who and why with the row
+    await expect(pr.locator('.ask-row')).toHaveAccessibleDescription(/stack-architect.*CI is green; one review is in/);
     await expect(pr.getByRole('link', { name: /PR stack#158/ })).toHaveAttribute('href', 'https://github.com/Xerilium/stack/pull/158');
     await expect(row(page, 'mail').getByRole('link', { name: /Email/ })).toHaveAttribute('target', '_blank');
     await expect(row(page, 'sess').getByRole('link', { name: /Session/ })).toBeVisible();
+    await expect(row(page, 'sess').getByRole('button', { name: 'Task' })).toBeVisible(); // an ask with a task row opens it in the app
     await expect(row(page, 'bare').locator('.ask-ctx-why')).toHaveText('No reason given');
     await expect(row(page, 'bare').locator('.ui-source')).toHaveCount(0);
     // the selected notification (the details) has Ask for context too, when it has none; an answer ask never has it
     await expect(page.locator('.ask-card').getByRole('button', { name: 'Ask for context' })).toHaveCount(0);
+    await row(page, 'pr').locator('.ask-ctx-why').click(); // a click on who and why selects the row
+    await expect(row(page, 'pr').locator('.ask-card .ask-why')).toHaveText('CI is green; one review is in');
     await row(page, 'bare').locator('.ask-ctx-why').click();
     await expect(row(page, 'bare').locator('.ask-card').getByRole('button', { name: 'Ask for context' })).toBeVisible();
     await row(page, 'top').locator('.ask-row').click();
@@ -135,6 +142,12 @@ test.describe('Notifications: context and actions on every row', () => {
     await page.getByRole('menuitem', { name: 'Approve' }).click();
     await expect.poll(() => m.calls.find((c) => c.path === '/asks/pr/answer')?.body).toEqual({ answer: 'go' });
     await expect(row(page, 'pr')).toHaveCount(0);
+    // focus moves to the selected notification, never to the page body
+    await expect(page.locator('.ask-card')).toBeFocused();
+    await row(page, 'bare').getByRole('button', { name: /^Actions for/ }).click();
+    await page.getByRole('menuitem', { name: 'Defer' }).click();
+    await expect(row(page, 'bare').locator('.ask-card')).toBeFocused();
+    await expect(row(page, 'bare').getByRole('group', { name: 'Defer until' })).toBeVisible();
   });
 
   test('Reply from the row opens that notification with the reply box; Ask for context asks the sender', async ({ page }) => {

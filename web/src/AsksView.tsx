@@ -73,22 +73,24 @@ function verbOf(a: AskItem): string | undefined {
 
 /**
  * A notification that is not selected: what it asks, then who sent it, why, and its source; its actions are in the menu.
- * @req FR:notifications/list.context @req FR:notifications/list.source @req FR:notifications/list.rowactions
+ * @req FR:notifications/list.context @req FR:notifications/list.context.why @req FR:notifications/list.context.pick @req FR:notifications/list.context.read
+ * @req FR:notifications/list.source @req FR:notifications/list.source.task @req FR:notifications/list.source.row @req FR:notifications/list.rowactions
  */
 function Row({ a, n, now, fresh, leaving, loud, onPick, onAct, onOpenTask }: { a: AskItem; n: number; now: Date; fresh: boolean; leaving?: boolean; loud?: boolean; onPick: () => void; onAct?: (x: RowAction) => void; onOpenTask?: (ref: string) => void }) {
   const verb = verbOf(a);
   const taskRef = a.source === 'task' ? a.ref : a.row;
   const reason = reasonOf(a);
+  const ctx = `ask-ctx-${a.key}`;
   return (
     <li class={`ask-li ask-li-row${fresh ? ' fresh' : ''}${leaving ? ' leaving' : ''}`} data-key={a.key}>
-      <button type="button" class="ask-row" onClick={onPick} aria-label={[`${n}. ${a.ask}`, verb, rowDeadline(deadline(a.by, now)), a.project].filter(Boolean).join(', ')}>
+      <button type="button" class="ask-row" onClick={onPick} aria-label={[`${n}. ${a.ask}`, verb, rowDeadline(deadline(a.by, now)), a.project].filter(Boolean).join(', ')} aria-describedby={`${ctx}-who ${ctx}-why`}>
         <span class="row-title">{a.ask}</span>
         {fresh && <span class="new" aria-label="New">New</span>}
         <span class="row-meta"><span class="verb">{verb ?? ''}</span>{a.by ? <DeadlineChip by={a.by} now={now} quiet={!loud} /> : <span class="dl empty" aria-hidden="true" />}<span class="proj">{a.project ?? ''}</span></span>
       </button>
       <p class="ask-ctx" onClick={(e) => { if (!(e.target as HTMLElement).closest('a, button')) onPick(); }}>
-        <span class="ask-who">{a.from}</span>
-        <span class={`ask-ctx-why${reason ? '' : ' none'}`}>{reason ? <Md text={reason} project={a.project} links={false} /> : 'No reason given'}</span>
+        <span class="ask-who" id={`${ctx}-who`}>{a.from}</span>
+        <span class={`ask-ctx-why${reason ? '' : ' none'}`} id={`${ctx}-why`}>{reason ? <Md text={reason} project={a.project} links={false} /> : 'No reason given'}</span>
         {a.source !== 'task' && <SourceLink href={a.link} />}
         {taskRef && onOpenTask && <button type="button" class="ui-source ask-task-link" onClick={() => onOpenTask(taskRef)}>Task</button>}
       </p>
@@ -126,7 +128,7 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
   const replying = (asks.panel === 'reply' || isAnswer) && asks.panel !== 'defer';
   return (
     <li class={`ask-li${asks.fresh.has(a.key) ? ' fresh' : ''}`} data-key={a.key}>
-      <article class="ask-card" data-kind={a.kind} data-panel={asks.panel} aria-label={`Ask ${n} of ${total}`}>
+      <article class="ask-card" tabIndex={-1} data-kind={a.kind} data-panel={asks.panel} aria-label={`Ask ${n} of ${total}`}>
         <div class="ask-eyebrow">
           {flow ? <span class="of flow" data-testid="flow-step">Quick triage · {flow.step} of {flow.total}</span> : <span class="of" aria-hidden="true">{n} of {total}</span>}
           {a.project && <span class="proj">{a.project}</span>}
@@ -140,6 +142,7 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
         <h2 class="ask-title"><Md text={a.ask} project={a.project} /></h2>
         {/* The task the ask belongs to: opens it (focus mode carries the thread). @req FR:agent-thread/ask.cli */}
         {a.row && a.source !== 'task' && <a class="ask-task" href={`#/list?project=${encodeURIComponent(a.row.slice(0, a.row.lastIndexOf(':')))}`} onClick={(e) => { e.preventDefault(); asks.openTask(a.row!); }} title="Open the task">↗ {a.task ? <Md text={parseRow(a.task).title || a.task} links={false} /> : a.row}</a>}
+        {/* @req FR:notifications/list.context.card */}
         {a.why && <p class="ask-why"><Md text={a.why} project={a.project} /></p>}
         {a.refText && <p class="ask-row-target" title="The task this answer changes">on <span>{a.refText}</span></p>}
         {a.agentReply && <p class="ask-reply"><strong>{a.from}</strong>{a.agentReply}</p>}
@@ -161,7 +164,7 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
               <span class="grow" />
               <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd aria-hidden="true">z</kbd></button>
               <button type="button" class="btn quiet" onClick={() => asks.setPanel(asks.panel === 'reply' ? 'none' : 'reply')} aria-expanded={asks.panel === 'reply'}>Reply<kbd aria-hidden="true">r</kbd></button>
-              {/* The selected notification has the row's actions too. @req FR:notifications/list.rowactions */}
+              {/* The selected notification has the row's actions too. @req FR:notifications/list.rowactions.card */}
               {needsContext(a) && <button type="button" class="btn quiet" onClick={() => void asks.reply(a, CONTEXT_ASK)}>Ask for context</button>}
             </div>
           )
@@ -233,8 +236,17 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
 
   useEffect(() => { document.querySelector('.ask-card[data-kind]')?.scrollIntoView({ block: 'nearest' }); }, [asks.cursor]);
 
-  /** A row menu action: select the row, then act on it. @req FR:notifications/list.rowactions */
+  /** After a row menu action, focus goes to the selected notification (the next one when the ask leaves), never to the page body. @req FR:notifications/list.rowactions.focus */
+  const focusCard = useRef(false);
+  useEffect(() => {
+    if (!focusCard.current) return;
+    focusCard.current = false;
+    const card = document.querySelector<HTMLElement>('.ask-card[data-kind]');
+    if (card && !card.contains(document.activeElement)) card.focus({ preventScroll: true });
+  });
+  /** A row menu action: select the row, then act on it. @req FR:notifications/list.rowactions.select */
   const act = (a: AskItem, x: RowAction) => {
+    focusCard.current = true;
     asks.setCursor(a.key); asks.setDetail(false);
     if (x.context) { asks.setPanel('none'); void asks.reply(a, CONTEXT_ASK); return; }
     asks.setPanel(x.panel ?? 'none');

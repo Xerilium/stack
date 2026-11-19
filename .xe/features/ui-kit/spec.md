@@ -32,7 +32,11 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 ### FR:source: Source link
 
-- **FR:source** (P1): `SourceLink` is a link to where an item came from, named by its kind: `PR {repo}#{n}` and `Issue {repo}#{n}` for GitHub, `Session` for a Claude session, `Email` for a mail link, else the site name without `www.`. It opens in a new tab (`noopener`), ends in `↗`, and a click on it does not reach the row under it. Text that is not a link draws nothing. `sourceOf` is the pure naming
+- **FR:source** (P1): A source link opens where an item came from
+  - **FR:source.name** (P1): The link is named by its kind: `PR {repo}#{n}` and `Issue {repo}#{n}` for GitHub, `Session` for a Claude session, `Email` for a mail web app or `mailto:` link, else the site name without `www.`
+  - **FR:source.tab** (P1): The link opens in a new tab with no opener and ends in `↗`
+  - **FR:source.click** (P1): A click on the link does not reach the row under it
+  - **FR:source.empty** (P1): Text that is not a link draws nothing
 
 ### FR:chip: Status chip
 

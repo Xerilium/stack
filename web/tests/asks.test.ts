@@ -172,7 +172,7 @@ describe('loudRow: at most one row uses the warn color', () => {
   });
 });
 
-// @req FR:notifications/list.rowactions @req FR:notifications/list.drop
+// @req FR:notifications/list.rowactions.items @req FR:notifications/list.rowactions.context @req FR:notifications/list.rowactions.nocontext @req FR:notifications/list.drop
 describe('row actions', () => {
   const labels = (o: Partial<AskItem>) => rowActions(ask(o)).map((x) => x.label);
   it('lists the actions for the state, then Reply and Defer', () => {
@@ -190,7 +190,7 @@ describe('row actions', () => {
     expect(labels({ kind: 'go-do', why: 'w' })).not.toContain('Ask for context');
     expect(labels({ kind: 'approve', source: 'task', ref: 'a:1', recommend: 'Ship it' })).not.toContain('Ask for context'); // a task row is its own context
   });
-  // @req FR:notifications/list.context
+  // @req FR:notifications/list.context.why
   it('reasonOf: the reason; with none, the recommendation; else nothing', () => {
     expect(reasonOf(ask({ why: 'CI is green', recommend: 'Approve' }))).toBe('CI is green');
     expect(reasonOf(ask({ recommend: 'Merge it today' }))).toBe('Recommends: Merge it today');
