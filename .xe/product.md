@@ -25,6 +25,7 @@ Stack is built with Catalyst. It is the rebuild of Michael's markdown task syste
 
 - **Owner**: The single user who captures, prioritizes, and completes tasks and wants to know what to do next.
 - **AI Agent**: An assistant (MCP client, bot, or Claude Code) that adds, triages, and works tasks within the task's autonomy level.
+- **Chief of Staff (CoS) Agent**: An agent that tracks the owner's projects, routes work to other agents, and brings the owner only the decisions, as asks. The Sweep Manager is the CoS agent that works open PRs in the owner's order.
 - **Stack System**: The core, storage, and API components that parse, score, and commit tasks.
 
 ## Scenarios
@@ -56,6 +57,30 @@ AI Agent needs token-efficient tools to read the next task, add tasks, and compl
 ### FR:parity: Legacy parity
 
 Owner needs the same scoring, formats, and files as the legacy system so that migration loses nothing.
+
+### FR:needs-you: Needs you
+
+Owner needs one ranked list of what only the owner can decide so that agents and messages never bury a decision. Features: [ask-queue](features/ask-queue/spec.md), [cos-view](features/cos-view/spec.md), [now-screen](features/now-screen/spec.md).
+
+### FR:my-day: My day
+
+Owner needs a plan for the day around meetings, from wake to bed, so that the next task fits the time until the next commitment. Features: [home](features/home/spec.md), [schedule](features/schedule/spec.md), [day-inputs](features/day-inputs/spec.md), [web-app](features/web-app/spec.md) (`FR:today`).
+
+### FR:priorities: Owner priorities
+
+Owner needs their ordered priorities to rank first in every list so that the most important work is always next. Features: [pri-first-ranking](features/pri-first-ranking/spec.md), [pris-aware-ranking](features/pris-aware-ranking/spec.md), [pris-sessions-ui](features/pris-sessions-ui/spec.md).
+
+### FR:inbox-zero: Inbox zero
+
+Owner needs mail to become asks or reply drafts, never sent mail, so that the inbox reaches zero without a manual pass. Features: [email-triage](features/email-triage/spec.md), [email-inbox-zero](features/email-inbox-zero/spec.md), [email-runner](features/email-runner/spec.md), [email-voice](features/email-voice/spec.md), [inbox-page](features/inbox-page/spec.md).
+
+### FR:pr-review: PR review
+
+Owner needs to see only the PRs that need the owner, each with one next action and an order the Sweep Manager follows, so that agent PRs move without a manual sweep. Features: [pr-page](features/pr-page/spec.md), [pr-priority](features/pr-priority/spec.md), [github-pr-status](features/github-pr-status/spec.md), [pr-review-lane](features/pr-review-lane/spec.md).
+
+### FR:sessions: Agent sessions
+
+Owner needs to see the agent sessions that wait on the owner or are stuck, with a link to each, so that no agent stalls on a prompt. Features: [agent-sessions](features/agent-sessions/spec.md), [session-inventory](features/session-inventory/spec.md), [pris-sessions-ui](features/pris-sessions-ui/spec.md).
 
 ## Customer Journey
 
