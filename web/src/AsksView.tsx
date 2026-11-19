@@ -6,7 +6,7 @@
 import { Avatar } from './AgentAvatar';
 import { nameBeside } from './avatar';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { actionsFor, deadline, freshness, ifSilent, loudLate, splitTop, type Action, type AskItem } from './asks';
+import { actionsFor, deadline, freshness, ifSilent, loudRow, splitTop, type Action, type AskItem } from './asks';
 import { blockedHelp } from './notify';
 import { Md } from './parts';
 import { parseRow } from './row';
@@ -55,12 +55,12 @@ function rowDeadline(d: ReturnType<typeof deadline>): string | undefined {
   return d.tone === 'late' ? `${d.label} · ${d.rel}` : d.label;
 }
 
-/** `quiet`: a late row that is not the loud one (`loudLate`) shows in ink with a clock, not the warn color. @req FR:ask-queue/web.card */
+/** `quiet`: a late or soon row that is not the loud one (`loudRow`) shows in ink with a clock, not the warn color. @req FR:ask-queue/web.card */
 function DeadlineChip({ by, now, long, quiet }: { by?: string; now: Date; long?: boolean; quiet?: boolean }) {
   const d = deadline(by, now);
   if (!d) return null;
   const late = d.tone === 'late';
-  const hush = late && quiet;
+  const hush = d.tone !== 'calm' && !!quiet;
   return <span class={`dl ${d.tone}${hush ? ' quiet' : ''}`} title={d.rel}>{(long || hush) && Icon.clock}<span>{d.label}</span>{(long || late) && <span class="rel">· {d.rel}</span>}</span>;
 }
 
@@ -203,7 +203,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
   const [openSent, setOpenSent] = useState(false);
   const [openSnoozed, setOpenSnoozed] = useState(false);
   const { shown, more } = splitTop(items, TOP, asks.showAll);
-  const loud = loudLate(shown.filter((a) => a.key !== cursor), asks.now);
+  const loud = loudRow(shown.filter((a) => a.key !== cursor), asks.now);
   const live = useRef('');
   const [announce, setAnnounce] = useState('');
   // announce a changed count politely, never on the first load and never by moving focus

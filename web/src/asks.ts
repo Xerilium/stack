@@ -41,17 +41,24 @@ export function deadline(by: string | undefined, now: Date): { label: string; re
 }
 
 /**
- * The one overdue row that keeps the warn color: the most recently late (ties: the first in rank order). Other late rows stay quiet.
+ * The one row whose deadline keeps the warn color: the most recently late (ties: the first in rank order); with none late, the soonest due within 24 h. Other rows stay quiet.
  * @req FR:ask-queue/web.card
  */
-export function loudLate(items: Pick<AskItem, 'key' | 'by'>[], now: Date): string | null {
+export function loudRow(items: Pick<AskItem, 'key' | 'by'>[], now: Date): string | null {
   let best: { key: string; t: number } | null = null;
   for (const a of items) {
     const t = a.by ? new Date(a.by).getTime() : NaN;
     if (Number.isNaN(t) || t >= now.getTime()) continue;
     if (!best || t > best.t) best = { key: a.key, t };
   }
-  return best?.key ?? null;
+  if (best) return best.key;
+  let soon: { key: string; t: number } | null = null;
+  for (const a of items) {
+    const t = a.by ? new Date(a.by).getTime() : NaN;
+    if (Number.isNaN(t) || t < now.getTime() || t - now.getTime() >= 86400_000) continue;
+    if (!soon || t < soon.t) soon = { key: a.key, t };
+  }
+  return soon?.key ?? null;
 }
 
 /** The silent-default line. The default is shown only when it is safe to apply: reversible and stated. */

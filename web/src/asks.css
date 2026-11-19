@@ -43,9 +43,8 @@
 .dl.soon { color: var(--warn); }
 .dl.late { color: var(--warn); font-weight: 650; }
 .dl .rel { color: inherit; opacity: .85; }
-/* a late row that is not the loud one: ink, a clock, no warn color. @req FR:ask-queue/web.card */
-/* rows: a soon deadline is muted too; only the loud late row is orange. */
-.ask-row .dl.soon, .dl.late.quiet { color: var(--ink2); font-weight: 450; }
+/* a late or soon row that is not the loud one: ink, a clock, no warn color. @req FR:ask-queue/web.card */
+.dl.quiet { color: var(--ink2); font-weight: 450; }
 .dl.quiet svg { flex: none; width: 12px; height: 12px; color: var(--muted); }
 
 /* the focal card */

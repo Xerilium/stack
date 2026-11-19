@@ -1,6 +1,6 @@
 /** @req FR:ask-queue/web.home @req FR:ask-queue/web.card @req FR:ask-queue/web.actions @req FR:ask-queue/web.optimistic @req FR:ask-queue/web.empty @req FR:ask-queue/live.quiet */
 import { describe, expect, it } from 'vitest';
-import { actionsFor, approveLabel, deadline, loudLate, deferChoices, freshness, ifSilent, keepCursor, newKeys, pageTitle, replyKind, splitTop, type AskItem } from '../src/asks';
+import { actionsFor, approveLabel, deadline, loudRow, deferChoices, freshness, ifSilent, keepCursor, newKeys, pageTitle, replyKind, splitTop, type AskItem } from '../src/asks';
 
 const at = (h: number, m = 0, d = 28) => new Date(2026, 9, d, h, m);
 const ask = (o: Partial<AskItem> = {}): AskItem => ({
@@ -158,15 +158,16 @@ describe('approveLabel: the primary button names the action', () => {
 });
 
 // @req FR:ask-queue/web.card
-describe('loudLate: at most one overdue row uses the warn color', () => {
+describe('loudRow: at most one row uses the warn color', () => {
   const now = at(12);
   it('picks the most recently late row; ties go to the first in rank order', () => {
     const items = [ask({ key: 'old', by: at(9, 0, 22).toISOString() }), ask({ key: 'new', by: at(10).toISOString() }), ask({ key: 'soon', by: at(15).toISOString() }), ask({ key: 'none' })];
-    expect(loudLate(items, now)).toBe('new');
+    expect(loudRow(items, now)).toBe('new');
     const same = at(10, 0, 22).toISOString();
-    expect(loudLate([ask({ key: 'x', by: same }), ask({ key: 'y', by: same })], now)).toBe('x');
+    expect(loudRow([ask({ key: 'x', by: same }), ask({ key: 'y', by: same })], now)).toBe('x');
   });
-  it('is null with no late row', () => {
-    expect(loudLate([ask({ by: at(15).toISOString() }), ask({})], now)).toBeNull();
+  it('with none late, is the soonest due within 24 h; null when none is', () => {
+    expect(loudRow([ask({ key: 'b', by: at(18).toISOString() }), ask({ key: 'a', by: at(15).toISOString() }), ask({})], now)).toBe('a');
+    expect(loudRow([ask({ by: at(9, 0, 30).toISOString() }), ask({})], now)).toBeNull();
   });
 });
