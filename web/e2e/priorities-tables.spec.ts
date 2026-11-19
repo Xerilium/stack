@@ -71,7 +71,8 @@ test.describe('Priorities report', () => {
     await expect(fh.locator('.ui-card-sub')).toContainText('FH backend');
     await expect(cards(page, 'now').nth(2).locator('.ui-card-title')).toContainText('Gap: No tiered task in tasks/');
     await expect(page.getByText('Waiting on you')).toHaveCount(0);
-    await expect(page.getByRole('navigation').getByText(/priorit/i)).toHaveCount(0);
+    // The report adds no nav item; the one Priorities item is the Priorities page (FR:notifications/nav.rail).
+    expect(await page.getByRole('navigation').getByText(/priorit/i).count()).toBeLessThanOrEqual(1);
   });
 
   // @req FR:priorities-tables/web.links @req FR:priorities-tables/web.links.project @req FR:priorities-tables/web.links.agent @req FR:priorities-tables/web.links.refs @req FR:priorities-tables/web.links.gap @req FR:priorities-tables/web.links.none

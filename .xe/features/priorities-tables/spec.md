@@ -138,7 +138,7 @@ Agents need the same rows in JSON so that they report the owner's priorities wit
 
 Owner needs the report on the Now page so that he sees it without a new screen.
 
-- **FR:web.place** (P1): Now MUST show the report in place of the Waiting on you block, with no new nav item, rail item or card.
+- **FR:web.place** (P1): Now MUST show the report in place of the Waiting on you block, with no new nav item, rail item or card (the Priorities page item is `FR:notifications/nav.rail`).
 - **FR:web.tabs** (P1): Now MUST show the sections as tabs, one table at a time, in this order: QM (when the list has one), **Now**, **PRs**, **Today**, **Next 3 days**.
   - **FR:web.tabs.count** (P1): Each tab title MUST end with its count of real rows (`Now (3)`). Gap rows MUST NOT count.
   - **FR:web.tabs.default** (P1): The first tab shown MUST be QM when QM is a priority today, else Now.

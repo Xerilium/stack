@@ -68,10 +68,12 @@ test.describe('Notifications', () => {
     await expect(item(page).locator('.badge')).toHaveText('1');
   });
 
+  // Now shows the priorities report, not ask cards (FR:priorities-tables/web.place); the nav names Notifications.
   test('Now names Notifications', async ({ page }) => {
     await setup(page, [ask('k1', 'One'), ask('k2', 'Two'), ask('k3', 'Three'), ask('k4', 'Four')]);
     await page.goto('/#/now');
-    await expect(page.getByRole('button', { name: /more in Notifications/ })).toBeVisible();
+    await expect(item(page)).toContainText('Notifications');
+    await expect(page.getByText('Needs you')).toHaveCount(0);
   });
 });
 
