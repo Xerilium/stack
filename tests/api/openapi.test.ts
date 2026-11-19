@@ -420,6 +420,7 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('inbox.reply', 'POST', '/inbox/reply', { ref: 'alpha:4', text: 'x' }, 403);
     await go('tasks.thread', 'GET', `/tasks/${encodeURIComponent(ref)}/thread`, undefined, 200);
     await go('tasks.assign', 'POST', `/tasks/${encodeURIComponent(ref)}/assign`, {}, 404);
+    await go('tasks.enrich', 'POST', `/tasks/${encodeURIComponent(ref)}/enrich`, {}, 404); // no agent on this team
     expect([...seen].sort()).toEqual(ROUTES.map((r) => r.name).sort());
   });
 

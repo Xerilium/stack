@@ -30,11 +30,12 @@ import { QueueRefused, QueueUnavailable, type PrQueue } from './pr-queue';
 import { ITEM_OPS, LiveError, type ItemOp, type LiveStore } from '../core/live-lane';
 import { briefViews, type BriefStore, type FactsStore } from '../core/pr-review';
 import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handleAsk, LIST_STATES, listAsks, putAsk, type AnswerInput, type AskPut, type HandleInput } from '../core/asks';
-import { currentRows, handleEntry, INBOX_KINDS, INBOX_STATES, listInbox, replyFromAgent, sendToInbox, type InboxKind } from '../core/inbox';
+import { currentRows, handleEntry, INBOX_STATES, SEND_KINDS, listInbox, replyFromAgent, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
 import type { AgentRuns } from '../agents/runs';
 import { agentFor, listTeam, type ScannedAgent } from '../core/agents';
 import { agentPromptOptions, assignTask, listReviews, reviewTask, startAgentRun, taskThread } from '../agents/team';
+import { enrichTask } from '../agents/enrich';
 import { existsSync, statSync } from 'fs';
 import { isAbsolute } from 'path';
 import { generateSummaries } from '../core/summaries';
@@ -208,7 +209,7 @@ const RESULT_BODY = {
   required: ['ref', 'outcome', 'summary'],
 };
 const INBOX_BODY = {
-  schema: { ref: REF, text: { t: 'str', required: true, max: 1000, line: true }, kind: { t: 'enum', values: INBOX_KINDS }, expect: { t: 'str', max: 2000, line: true }, agent: { t: 'str', max: 64, line: true } } satisfies Record<string, Spec>,
+  schema: { ref: REF, text: { t: 'str', required: true, max: 1000, line: true }, kind: { t: 'enum', values: SEND_KINDS }, expect: { t: 'str', max: 2000, line: true }, agent: { t: 'str', max: 64, line: true } } satisfies Record<string, Spec>,
   required: ['ref', 'text'],
 };
 const CAL_Q: Record<string, Spec> = { from: { t: 'str', max: 40 }, to: { t: 'str', max: 40 } };
@@ -1360,6 +1361,16 @@ export const ROUTES: Route[] = [
       ownerOnly(c, 'Only the owner assigns a task');
       const b = validate<{ agent?: string; note?: string }>(await readBody(c.req), ASSIGN_BODY.schema, ASSIGN_BODY.required);
       return json(202, await assignTask(agents, c.life, formatRef(ref), b.agent, b.note));
+    },
+  },
+  {
+    // Ask the task agent to fill in a row that fails the quality gate. @req FR:product-reset/api.enrich @req FR:product-reset/quality.enrich
+    method: 'POST', doc: '/tasks/{ref}/enrich', name: 'tasks.enrich',
+    async run(c) {
+      noQuery(c);
+      const ref = refParam(c);
+      ownerOnly(c, 'Only the owner asks an agent to fill in a task');
+      return json(202, await enrichTask(c.life, ref));
     },
   },
   {

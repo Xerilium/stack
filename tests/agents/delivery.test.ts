@@ -66,6 +66,7 @@ describe('pendingDeliveries', () => {
     const b = await sendToInbox(ctx, ref(6), 'Also the cover', 'reply');
     await sendToInbox(ctx, ref(6), 'Approved', 'decision');
     await sendToInbox(ctx, ref(7), 'I will sign', 'instruction'); // 🙋 row: to human
+    await sendToInbox(ctx, ref(6), 'Fill in: doneWhen', 'enrich'); // a scheduled agent handles enrich
     await replyFromAgent(ctx, ref(6), 'Noted', 'cid');
     const w = await sendToInbox(ctx, ref(6), 'oops', 'instruction');
     await handleEntry(ctx, w.id, 'owner', undefined, { withdrawn: true });

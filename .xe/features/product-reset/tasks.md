@@ -31,10 +31,12 @@ One PR per group. Tests first in each PR. `@req FR:product-reset/...` on every t
 
 ## Stage 3: quality-gate
 
-- [ ] `src/core/verbs.ts`; checks and score (`FR:quality.rules`, `FR:quality.score`)
-- [ ] `stack task check` (`FR:cli.check`)
-- [ ] Single and bulk enrich routes and batching (`FR:api.enrich`, `FR:quality.enrich`, `FR:quality.enrich.batch`)
-- [ ] `docs/task-rubric.md`; link from CoS agent files (`FR:quality.rubric`)
+- [x] `src/core/verbs.ts`; checks and score (`FR:quality.rules`, `FR:quality.score`)
+- [x] `stack check` (`FR:cli.check`)
+- [x] Single enrich route (`FR:api.enrich`, `FR:quality.enrich`)
+- [ ] Bulk enrich route and batching (`FR:api.enrich.batch`, `FR:quality.enrich.batch`)
+- [x] `docs/task-rubric.md`; link from agent instructions
+- [ ] Link `docs/task-rubric.md` from CoS agent files (`FR:quality.rubric`)
 - [ ] Ranker: owner field, gate, blocked, `Checked:` and activity sources (`FR:rank.*`); `GET /rank` fields (`FR:api.rank`)
 - [ ] Needs-context item on an empty Now (`FR:rank.needs-context`)
 - [ ] Routes for Keep, Update date, Drop (`FR:rank.stale.prompt`)

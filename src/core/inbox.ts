@@ -9,11 +9,13 @@ import { parseProject, type Task } from './parser';
 import { ConflictError, NotFoundError } from './storage';
 import { logName, md, redact } from './triage';
 
-/** `instruction`: work the owner asks of the agent on a row. @req FR:agent-inbox/inbox.kinds */
-export type InboxKind = 'reply' | 'decision' | 'instruction';
+/** `instruction`: work the owner asks of the agent on a row. `enrich`: add the missing context to the row (always to the agent). @req FR:agent-inbox/inbox.kinds @req FR:product-reset/quality.enrich */
+export type InboxKind = 'reply' | 'decision' | 'instruction' | 'enrich';
 export type InboxTo = 'agent' | 'human' | 'none';
 export type InboxState = 'open' | 'handled';
-export const INBOX_KINDS = ['reply', 'decision', 'instruction'] as const;
+export const INBOX_KINDS = ['reply', 'decision', 'instruction', 'enrich'] as const;
+/** Kinds the owner sends with `POST /inbox`; `enrich` comes only from the enrich route, after the quality check. @req FR:product-reset/quality.enrich */
+export const SEND_KINDS = ['reply', 'decision', 'instruction'] as const;
 export const INBOX_STATES = ['open', 'handled', 'all'] as const;
 
 export type InboxFrom = 'owner' | 'agent';
@@ -204,10 +206,10 @@ function makeRoom(content: string, need: number): string {
  * `handled`: the entry is written already handled in the same write (a record, never queue work), e.g. a note sent with Do it.
  * @req FR:agent-inbox/inbox.send @req FR:agent-inbox/inbox.id @req FR:agent-inbox/inbox.cap
  */
-/** `agent`: the slug of the agent the message is for (the Now picker); without it the task's agent reads it. */
-export async function sendToInbox(ctx: LifecycleContext, ref: TaskRef, text: string, kind: InboxKind, expect?: string, handled?: { actor: string; note?: string }, agent?: string): Promise<{ id: string; path: string }> {
+/** `agent`: the slug of the agent the message is for (the Now picker); without it the task's agent reads it. `once`: when an open entry of this kind is already on this row, return it instead of appending (checked inside the version-checked write, so concurrent sends agree). */
+export async function sendToInbox(ctx: LifecycleContext, ref: TaskRef, text: string, kind: InboxKind, expect?: string, handled?: { actor: string; note?: string }, agent?: string, once?: boolean): Promise<{ id: string; path: string }> {
   if (agent !== undefined && (typeof agent !== 'string' || !AGENT_SLUG.test(agent))) throw new LifecycleError('agent must be an agent slug');
-  return appendEntry(ctx, ref, text, kind, expect, agent ? { agent } : {}, handled);
+  return appendEntry(ctx, ref, text, kind, expect, agent ? { agent } : {}, handled, once);
 }
 
 /** An agent's reply on a task: `from: agent`, to the owner, never a queue item for anyone (state handled). @req FR:agent-thread/reply.entry */
@@ -217,7 +219,7 @@ export async function replyFromAgent(ctx: LifecycleContext, ref: TaskRef, text: 
   return appendEntry(ctx, ref, text, 'reply', expect, { from: 'agent', agent: name });
 }
 
-async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, kind: InboxKind, expect: string | undefined, who: { from?: InboxFrom; agent?: string }, handled?: { actor: string; note?: string }): Promise<{ id: string; path: string }> {
+async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, kind: InboxKind, expect: string | undefined, who: { from?: InboxFrom; agent?: string }, handled?: { actor: string; note?: string }, once?: boolean): Promise<{ id: string; path: string }> {
   if (typeof text !== 'string') throw new LifecycleError('text must be a string');
   const t = text.replace(INVISIBLE, '').trim();
   if (t === '' || t.length > MAX_TEXT) throw new LifecycleError(`text must be 1-${MAX_TEXT} characters`);
@@ -235,13 +237,18 @@ async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, ki
   for (let tries = 0; ; tries++) {
     const now = iso(ctx);
     const cur = await readOrNull(ctx, path);
+    if (once && cur) {
+      const task = inboxTitle(row.text);
+      const same = parseInbox(cur.content).find((e) => e.kind === kind && e.state === 'open' && e.ref === `${ref.path}:${ref.line + 1}` && e.task === task);
+      if (same) return { id: same.id, path };
+    }
     const used = new Set(cur ? parseInbox(cur.content).map((e) => e.id) : []);
     let id = newId(now);
     while (used.has(id)) id = newId(now);
     const agentSide = who.from === 'agent';
     const done = handled ? { handled: `${now.toISOString()} by ${/^[A-Za-z0-9._:-]{1,64}$/.test(handled.actor) ? handled.actor : 'api'}`, ...(handled.note?.trim() ? { note: field(handled.note).slice(0, MAX_NOTE) } : {}) } : {};
     const entry = formatEntry({
-      id, at: now.toISOString(), state: agentSide || handled ? 'handled' : 'open', kind, to: agentSide ? 'human' : toOf(row.text), ...(agentSide ? { from: 'agent' as const, agent: who.agent } : who.agent ? { agent: who.agent } : {}), ref: `${ref.path}:${ref.line + 1}`,
+      id, at: now.toISOString(), state: agentSide || handled ? 'handled' : 'open', kind, to: agentSide ? 'human' : kind === 'enrich' ? 'agent' : toOf(row.text), ...(agentSide ? { from: 'agent' as const, agent: who.agent } : who.agent ? { agent: who.agent } : {}), ref: `${ref.path}:${ref.line + 1}`,
       task: inboxTitle(row.text), ...(parent ? { parent: inboxTitle(parent.text) } : {}), text: field(t), ...done, extra: [],
     });
     const head = cur ? makeRoom(cur.content, entry.length + 1).replace(/\n*$/, '\n\n') : INBOX_HEADER(field(project.title || baseName(ref.path)));

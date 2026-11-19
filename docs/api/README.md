@@ -86,6 +86,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/inbox/reply` | POST an agent's reply on a task (tokens only; `from: agent`) |
 | `/tasks/{ref}/thread` | GET one task's thread: owner messages, agent replies, its asks (`ref`), the review verdict, agent-owned subtasks, its newest session |
 | `/tasks/{ref}/assign` | POST hand the task to its agent: claims the row and starts a session (owner only; 404 without a runner) |
+| `/tasks/{ref}/enrich` | POST ask the task agent to fill in a row that fails the quality gate (owner only; 409 when it scores 4; [task-rubric.md](../task-rubric.md)) |
 | `/tasks/review` | POST ask the task's agent whether it can do it (owner only; 404 without a runner); the verdict lands in the result log and its needs become asks |
 
 Token admin (`/auth/tokens`, `/auth/tokens/{id}/revoke`) is owner-session only and is not in the OpenAPI file. See the [threat model](../security/threat-model.md).

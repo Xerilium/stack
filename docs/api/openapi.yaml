@@ -3093,6 +3093,39 @@ paths:
                     type: boolean
         default:
           $ref: "#/components/responses/Error"
+  /tasks/{ref}/enrich:
+    post:
+      summary: "Ask the task agent to fill in a row that fails the quality gate (docs/task-rubric.md): one open enrich message on the row, delivered even on a 🙋 row. Owner session only; returns the open message when one exists; 409 when the row already scores 4"
+      operationId: enrichTask
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Ref"
+      responses:
+        "202":
+          description: Sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  agent:
+                    type: string
+                  missing:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - next
+                        - doneWhen
+                        - context
+                        - single
+        default:
+          $ref: "#/components/responses/Error"
   /team:
     get:
       summary: "The team: tasks/agents/<slug>.md, .claude/agents/<slug>.md and project Agents lines, each with who it reports to; with project, the agents that cover it, the roll-up first"
@@ -4510,6 +4543,7 @@ components:
             - reply
             - decision
             - instruction
+            - enrich
         to:
           type: string
           enum:

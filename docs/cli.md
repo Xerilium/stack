@@ -19,6 +19,7 @@ Global flags: `--dir <path>` (optional; default: found by walking up from the cu
 - `complete`: check off (rolls recurring rows). `complete [ref] [--summary t] [--remove] [--expect t] [--queries] [--no-update]`
 - `skip`: park a task (alias: park). `skip [ref] [--expect t] [--queries] [--no-update]`
 - `retitle`: edit a task row text in place; checkbox, indent, children, notes, history, and old status/priority/effort/impact marks at the row start or end stay unless the new text has the same kind there (pass tags like `📅 Nov 5` in `--text`). Agents use it instead of add + `complete --remove`. Exit 3 when `--expect` differs. `retitle <ref> --text t [--expect t] [--no-update]`
+- `check`: the task quality gate on one row: prints `<ref> <score>/4 actionable` or `<ref> <score>/4 missing: <checks>` (`next`, `doneWhen`, `context`, `single`); exit 0 at 4, else 1; never writes. Agents run it after they create or edit a task ([task-rubric.md](task-rubric.md)). `check <ref> [--json]`
 - `note`: append a nested note bullet under a task; children stay; no summary refresh; exit 3 when `--expect` differs. `note add <ref> --text t [--expect t]`
 - `triage`: show/set autonomy, add 🪄/🙋 subtasks. `triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]`
 - `park`: same as skip. `park [ref] [--expect t] [--queries] [--no-update]`
