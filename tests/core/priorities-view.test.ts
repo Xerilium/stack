@@ -192,3 +192,15 @@ describe('freshness', () => {
     expect(v.today).toMatchObject({ at: AT, stale: false });
   });
 });
+
+describe('PR live links and Sweep Manager', () => {
+  // @req FR:priorities-tables/pr.cols.live @req FR:priorities-tables/pr.manager
+  it('gives live rows their server and details links, and names the Sweep Manager session', () => {
+    const rows = [prow(1, 'validate', { server: 'https://dev.example.test', details: 'https://github.com/o/r/pull/1#issuecomment-9' }), prow(2, 'approve', { server: 'https://x.test' })];
+    const sessions = { at: AT, sessions: [{ id: 'sm', title: '👩‍💻 Sweep Manager', link: 'claude://claude.ai/epitaxy/sm' }] };
+    const v = view([], [], { board: { at: AT, rows }, sessions });
+    expect(v.prs.manager).toEqual({ name: 'Sweep Manager', link: 'claude://claude.ai/epitaxy/sm' });
+    expect(v.prs.rows.map((r) => [r.number, r.server, r.details])).toEqual([[2, null, null], [1, 'https://dev.example.test', 'https://github.com/o/r/pull/1#issuecomment-9']]);
+    expect(view([], [], { board: undefined }).prs.manager).toBeNull();
+  });
+});

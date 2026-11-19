@@ -25,6 +25,7 @@ import { PrisInvalid, type PriStore } from '../core/pris';
 import { blockedText, DECISIONS, MOVE_TO, QUEUE_OPS, type PrPriorityStore, type QueueOp } from '../core/pr-priority';
 import { LABELS, sameLabel, type PrRow } from '../core/pr-board';
 import { boardInput, prioritiesView, type BoardInput, type SessionsInput } from '../core/priorities-view';
+import { readTieredTasks } from '../core/tiered-tasks';
 import type { PrBoardService } from './pr-board-service';
 import type { PrAuth } from './pr-page';
 import { AI_PREFIX, GitHubWriteDenied, type GitHubWrites } from './github-write';
@@ -886,7 +887,7 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // The priorities tables, live: the store, the inventory and the PR board. @req FR:priorities-tables/api.@api @req FR:priorities-tables/api.read @req FR:priorities-tables/api.read.none
+    // The priorities report, live: the store, the task files, the inventory and the PR board. @req FR:priorities-tables/api.@api @req FR:priorities-tables/api.read @req FR:priorities-tables/api.read.none
     method: 'GET', doc: '/priorities', name: 'priorities.get',
     async run(c) {
       noQuery(c);
@@ -898,7 +899,8 @@ export const ROUTES: Route[] = [
       // A first GitHub poll can take long: wait at most 2 s, then show the tables with the PR table stale. @req FR:priorities-tables/pr.stale
       try { if (c.deps.prBoard && (!c.deps.prAuth || await c.deps.prAuth.ready())) { const b = await Promise.race([c.deps.prBoard.get(), new Promise<undefined>((ok) => { setTimeout(() => ok(undefined), BOARD_WAIT_MS).unref?.(); })]); if (b) board = boardInput(b); } } catch { board = undefined; }
       const now = (c.deps.now ?? (() => new Date()))();
-      return json(200, prioritiesView({ pris: c.deps.pris.read().pris, now, timeZone: c.deps.config?.timezone, ...(sessions ? { sessions } : {}), ...(board ? { board } : {}) }));
+      const tasks = await readTieredTasks(c.deps.storage);
+      return json(200, prioritiesView({ pris: c.deps.pris.read().pris, tasks, now, timeZone: c.deps.config?.timezone, ...(sessions ? { sessions } : {}), ...(board ? { board } : {}) }));
     },
   },
   {

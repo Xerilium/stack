@@ -100,7 +100,9 @@ Owner needs one PR table, quickest first, so that he clears PRs in short gaps.
   - **FR:pr.cols.time** (P1): Time MUST be the minutes the owner needs: 5 for promote, approve and sign off, 10 for publish review, 15 for live validate, plus 1 for each 20 changed spec lines.
   - **FR:pr.cols.agent** (P1): Agent MUST be the agent of the priority the PR links to, else `--`.
   - **FR:pr.cols.emoji** (P1): Repo emoji MUST come from the repo name: 🏦 finops-hubs, 🧰 finops-toolkit, 👓 FOCUS_Spec, 🎧 f4-music, 🖨️ printer, 🥞 stack, ⚛️ catalyst, 🌐 allyte-web, 🏭 prime; else none.
+  - **FR:pr.cols.live** (P1): A live validate row MUST link the test server and the details (agent thread or comment): `Live: [server](url), [details](url)`.
 - **FR:pr.order** (P1): Report MUST sort PR rows by Time, then the board order.
+- **FR:pr.manager** (P1): Report MUST link the Sweep Manager session (title contains `Sweep Manager`) above the PR table, when the inventory has one.
 
 ### FR:fresh: Stamp the report
 
@@ -152,8 +154,8 @@ Owner needs the report on the Now page so that he sees it without a new screen.
 - **FR:$window** (P1): **`PriWindow`** — `days` (optional list of `mon`..`sun`), `from` and `to` (optional `HH:MM`, local time). A `pris.json` priority gets `windows` (optional, at most 7), `label` (optional, at most 40 characters), `action` (optional, at most 200 characters), `session` (optional session id) and `perProject` (optional boolean).
 - **FR:$tiered** (P1): **`TieredTask`** — `path`, `line` (0-based), `project`, `aliases`, `tier` (1, 2 or 3), `text`, `agent` (string or null), `more` (count of more agents), `status` (`working`, `pairing`, `done`, `idle`, `blocked`, `queued`, `unknown`, or null with no agent).
 - **FR:$row** (P1): **`PriRow`** — `id`, `project`, `agent` (`{ name, link }`, link null when unlinked, or null), `status` (as in `TieredTask`), `action`, `gap` (boolean), `ref` (`path:line` or null), `at`, `stale`.
-- **FR:$pr** (P1): **`PrRow`** — `emoji`, `number`, `url`, `agent` (as in `PriRow`), `action`, `minutes`.
-- **FR:$view** (P1): **`PrioritiesView`** — `at` (the clock), `qm` (a `PriTable` with `title`, or null), `now`, `today`, `next` (each a `PriTable`: `at`, `stale`, `rows`) and `prs` (a `PrTable`: `at`, `stale`, `verified`, `rows`).
+- **FR:$pr** (P1): **`PrRow`** — `emoji`, `number`, `url`, `agent` (as in `PriRow`), `action`, `minutes`, `server` and `details` (links, null unless a live row).
+- **FR:$view** (P1): **`PrioritiesView`** — `at` (the clock), `qm` (a `PriTable` with `title`, or null), `now`, `today`, `next` (each a `PriTable`: `at`, `stale`, `rows`) and `prs` (a `PrTable`: `at`, `stale`, `verified`, `manager`, `rows`).
 
 ## Architecture Constraints
 

@@ -47,7 +47,7 @@ describe('stack priorities', () => {
     expect(j.ok).toBe(true);
     expect(j.at).toBe(NOW);
     expect(j.now.rows[0]).toMatchObject({ id: 'fh', project: 'FH.com', agent: { name: 'FH backend', link: 'claude://claude.ai/epitaxy/s1' }, status: 'working', stale: false });
-    expect(j.prs.rows).toEqual([{ emoji: '🏦', number: 1142, url: 'https://github.com/allytehq/finops-hubs/pull/1142', agent: { name: 'FH backend', link: 'claude://claude.ai/epitaxy/s1' }, action: 'Autopilot: promote', minutes: 5 }]);
+    expect(j.prs.rows).toEqual([{ emoji: '🏦', number: 1142, url: 'https://github.com/allytehq/finops-hubs/pull/1142', agent: { name: 'FH backend', link: 'claude://claude.ai/epitaxy/s1' }, action: 'Autopilot: promote', minutes: 5, server: null, details: null }]);
   });
   // @req FR:priorities-tables/cli.read.board @req FR:priorities-tables/pr.live.none
   it('builds the report with no board when there is no GitHub sign-in', async () => {

@@ -55,7 +55,7 @@ test.describe('shell and security', () => {
     const m = await mockApi(page);
     // A host with a priority store (a 404 logs a console error). @req FR:priorities-tables/web.live
     const t = { at: new Date().toISOString(), stale: false, rows: [] };
-    m.priorities = { at: t.at, now: t, autopilot: t, today: t, next: t };
+    m.priorities = { at: t.at, qm: null, now: t, prs: { ...t, verified: true, manager: null }, today: t, next: t };
     await page.goto('/#/list');
     await expect(rows(page).first()).toBeVisible();
     await page.goto('/#/projects');

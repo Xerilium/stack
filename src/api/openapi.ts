@@ -351,8 +351,8 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Priorities', ref('PrisFile')),
   },
   'priorities.get': {
-    operationId: 'getPrioritiesTables', summary: 'Owner only. The priorities as tables: now (top 3 open), autopilot (PRs ready to promote to Autopilot, fewest spec lines first), today, next 3 days. Priority rows: project, agent session link, next action; every row has its last live check (stale after 30 min). 404 on hosts with no store',
-    responses: ok('Priorities tables', ref('PrioritiesView')),
+    operationId: 'getPrioritiesTables', summary: 'Owner only. The priorities report: qm (one row per project, null with no perProject priority), now (top 3 open), prs (live PRs that need the owner, quickest first), today, next 3 days. Project rows come only from tiered tasks (1️⃣ 2️⃣ 3️⃣) in tasks/*.md; a priority with none is a gap row. Every row has its last live check (stale after 30 min). 404 on hosts with no store',
+    responses: ok('Priorities report', ref('PrioritiesView')),
   },
   'pris.put': {
     operationId: 'putPriorities', summary: 'Owner only. Replace the priorities list. Send the rev you read: a stale rev is 409. 400 lists every issue',
@@ -662,20 +662,25 @@ export function buildOpenApi(): J {
             action: { type: 'string', minLength: 1, maxLength: 200, description: 'Fixed next action; wins over the note' },
             session: { type: 'string', pattern: '^[A-Za-z0-9_-]{1,128}$', description: 'Claude session id of the agent' },
             windows: { type: 'array', maxItems: 7, description: 'Local hours the owner can work it; none means all day', items: { type: 'object', additionalProperties: false, properties: { days: { type: 'array', items: { type: 'string', enum: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] } }, from: { type: 'string', pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' }, to: { type: 'string', pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' } } } },
+            perProject: { type: 'boolean', description: 'One row per project in its own first section (QM); tasks that match its terms link to it first' },
           },
         },
+        PriAgent: { type: 'object', nullable: true, required: ['name', 'link'], properties: { name: { type: 'string' }, link: { type: 'string', nullable: true, description: 'Session link; null when no session matches' } } },
         PriRow: {
-          type: 'object', required: ['id', 'project', 'agent', 'action', 'at', 'stale'],
+          type: 'object', required: ['id', 'project', 'agent', 'status', 'action', 'gap', 'ref', 'at', 'stale'],
           properties: {
-            id: { type: 'string' }, project: { type: 'string' }, action: { type: 'string', description: 'At most 20 words; -- when none' },
-            agent: { type: 'object', nullable: true, properties: { name: { type: 'string' }, link: { type: 'string' } } },
+            id: { type: 'string' }, project: { type: 'string' }, agent: ref('PriAgent'),
+            status: { type: 'string', nullable: true, enum: ['working', 'pairing', 'done', 'idle', 'blocked', 'queued', 'unknown'], description: 'Agent status from the task line; null with no agent' },
+            action: { type: 'string', description: 'The owner next action, at most 20 words; ⏳ first for tier 2 or 3' },
+            gap: { type: 'boolean', description: 'No tiered task linked (or QM off today)' }, ref: { type: 'string', nullable: true, description: 'tasks/<file>.md:<line> of the task' },
             at: { type: 'string', format: 'date-time', description: 'The oldest live check the row used' }, stale: { type: 'boolean' },
           },
         },
         PriTable: { type: 'object', required: ['at', 'stale', 'rows'], properties: { at: { type: 'string', format: 'date-time' }, stale: { type: 'boolean' }, rows: { type: 'array', items: ref('PriRow') } } },
-        PrTableRow: { type: 'object', required: ['project', 'number', 'url', 'title', 'at', 'stale'], properties: { project: { type: 'string' }, number: { type: 'integer' }, url: { type: 'string' }, title: { type: 'string' }, at: { type: 'string', format: 'date-time' }, stale: { type: 'boolean' } } },
-        PrTable: { type: 'object', required: ['at', 'stale', 'rows'], properties: { at: { type: 'string', format: 'date-time' }, stale: { type: 'boolean' }, rows: { type: 'array', items: ref('PrTableRow') } } },
-        PrioritiesView: { type: 'object', required: ['at', 'now', 'autopilot', 'today', 'next'], properties: { at: { type: 'string', format: 'date-time' }, now: ref('PriTable'), autopilot: ref('PrTable'), today: ref('PriTable'), next: ref('PriTable') } },
+        QmTable: { type: 'object', nullable: true, required: ['title', 'at', 'stale', 'rows'], properties: { title: { type: 'string' }, at: { type: 'string', format: 'date-time' }, stale: { type: 'boolean' }, rows: { type: 'array', items: ref('PriRow') } } },
+        PrTableRow: { type: 'object', required: ['emoji', 'number', 'url', 'agent', 'action', 'minutes', 'server', 'details'], properties: { emoji: { type: 'string' }, number: { type: 'integer' }, url: { type: 'string' }, agent: ref('PriAgent'), action: { type: 'string', enum: ['Autopilot: promote', 'Live: validate', 'Thread: sign off', 'Approve', 'Publish review'] }, minutes: { type: 'integer' }, server: { type: 'string', nullable: true, description: 'Live test server (live rows only)' }, details: { type: 'string', nullable: true, description: 'What to validate: agent thread or comment (live rows only)' } } },
+        PrTable: { type: 'object', required: ['at', 'stale', 'verified', 'manager', 'rows'], properties: { at: { type: 'string', format: 'date-time' }, stale: { type: 'boolean' }, manager: ref('PriAgent'), verified: { type: 'boolean', description: 'False with no good board poll; rows are then empty' }, rows: { type: 'array', items: ref('PrTableRow') } } },
+        PrioritiesView: { type: 'object', required: ['at', 'qm', 'now', 'prs', 'today', 'next'], properties: { at: { type: 'string', format: 'date-time' }, qm: ref('QmTable'), now: ref('PriTable'), prs: ref('PrTable'), today: ref('PriTable'), next: ref('PriTable') } },
         PrRec: {
           type: 'object', required: ['id', 'repo', 'number', 'url', 'agent', 'reason', 'state', 'at'],
           properties: {

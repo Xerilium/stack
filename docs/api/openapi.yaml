@@ -1488,15 +1488,37 @@ paths:
           $ref: "#/components/responses/Error"
   /priorities:
     get:
-      summary: "Owner only. The priorities as tables: now (top 3 open), autopilot (PRs ready to promote to Autopilot, fewest spec lines first), today, next 3 days. Priority rows: project, agent session link, next action; every row has its last live check (stale after 30 min). 404 on hosts with no store"
+      summary: "Owner only. The priorities report: qm (one row per project, null with no perProject priority), now (top 3 open), prs (live PRs that need the owner, quickest first), today, next 3 days. Project rows come only from tiered tasks (1️⃣ 2️⃣ 3️⃣) in tasks/*.md; a priority with none is a gap row. Every row has its last live check (stale after 30 min). 404 on hosts with no store"
       operationId: getPrioritiesTables
       responses:
         "200":
-          description: Priorities tables
+          description: Priorities report
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PrioritiesView"
+        default:
+          $ref: "#/components/responses/Error"
+  /qm:
+    get:
+      summary: Owner only. The weekly QM (quota-maxxing) plan from ~/.stack/qm-plan.json (.xe/features/qm-plan/spec.md); plan is null when none is stored, broken is true when the file is not a valid plan. Agents write it with stack qm put. 404 on hosts with no store
+      operationId: getQmPlan
+      responses:
+        "200":
+          description: QM plan
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - plan
+                properties:
+                  plan:
+                    allOf:
+                      - $ref: "#/components/schemas/QmPlan"
+                    nullable: true
+                  broken:
+                    type: boolean
         default:
           $ref: "#/components/responses/Error"
   /pr-priority:
@@ -3960,13 +3982,32 @@ components:
               to:
                 type: string
                 pattern: ^([01]\d|2[0-3]):[0-5]\d$
+        perProject:
+          type: boolean
+          description: One row per project in its own first section (QM); tasks that match its terms link to it first
+    PriAgent:
+      type: object
+      nullable: true
+      required:
+        - name
+        - link
+      properties:
+        name:
+          type: string
+        link:
+          type: string
+          nullable: true
+          description: Session link; null when no session matches
     PriRow:
       type: object
       required:
         - id
         - project
         - agent
+        - status
         - action
+        - gap
+        - ref
         - at
         - stale
       properties:
@@ -3974,17 +4015,30 @@ components:
           type: string
         project:
           type: string
+        agent:
+          $ref: "#/components/schemas/PriAgent"
+        status:
+          type: string
+          nullable: true
+          enum:
+            - working
+            - pairing
+            - done
+            - idle
+            - blocked
+            - queued
+            - unknown
+          description: Agent status from the task line; null with no agent
         action:
           type: string
-          description: At most 20 words; -- when none
-        agent:
-          type: object
+          description: The owner next action, at most 20 words; ⏳ first for tier 2 or 3
+        gap:
+          type: boolean
+          description: No tiered task linked (or QM off today)
+        ref:
+          type: string
           nullable: true
-          properties:
-            name:
-              type: string
-            link:
-              type: string
+          description: tasks/<file>.md:<line> of the task
         at:
           type: string
           format: date-time
@@ -4007,36 +4061,17 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PriRow"
-    PrTableRow:
+    QmTable:
       type: object
+      nullable: true
       required:
-        - project
-        - number
-        - url
         - title
-        - at
-        - stale
-      properties:
-        project:
-          type: string
-        number:
-          type: integer
-        url:
-          type: string
-        title:
-          type: string
-        at:
-          type: string
-          format: date-time
-        stale:
-          type: boolean
-    PrTable:
-      type: object
-      required:
         - at
         - stale
         - rows
       properties:
+        title:
+          type: string
         at:
           type: string
           format: date-time
@@ -4045,22 +4080,86 @@ components:
         rows:
           type: array
           items:
+            $ref: "#/components/schemas/PriRow"
+    PrTableRow:
+      type: object
+      required:
+        - emoji
+        - number
+        - url
+        - agent
+        - action
+        - minutes
+        - server
+        - details
+      properties:
+        emoji:
+          type: string
+        number:
+          type: integer
+        url:
+          type: string
+        agent:
+          $ref: "#/components/schemas/PriAgent"
+        action:
+          type: string
+          enum:
+            - "Autopilot: promote"
+            - "Live: validate"
+            - "Thread: sign off"
+            - Approve
+            - Publish review
+        minutes:
+          type: integer
+        server:
+          type: string
+          nullable: true
+          description: Live test server (live rows only)
+        details:
+          type: string
+          nullable: true
+          description: "What to validate: agent thread or comment (live rows only)"
+    PrTable:
+      type: object
+      required:
+        - at
+        - stale
+        - verified
+        - manager
+        - rows
+      properties:
+        at:
+          type: string
+          format: date-time
+        stale:
+          type: boolean
+        manager:
+          $ref: "#/components/schemas/PriAgent"
+        verified:
+          type: boolean
+          description: False with no good board poll; rows are then empty
+        rows:
+          type: array
+          items:
             $ref: "#/components/schemas/PrTableRow"
     PrioritiesView:
       type: object
       required:
         - at
+        - qm
         - now
-        - autopilot
+        - prs
         - today
         - next
       properties:
         at:
           type: string
           format: date-time
+        qm:
+          $ref: "#/components/schemas/QmTable"
         now:
           $ref: "#/components/schemas/PriTable"
-        autopilot:
+        prs:
           $ref: "#/components/schemas/PrTable"
         today:
           $ref: "#/components/schemas/PriTable"
@@ -4239,6 +4338,91 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PrRec"
+    QmPlan:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+        - asOf
+        - projects
+      properties:
+        version:
+          type: integer
+          enum:
+            - 1
+        asOf:
+          type: string
+          format: date-time
+        projects:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - project
+              - agent
+              - tasks
+              - weeklyTokens
+              - preAckMin
+              - postReviewMin
+            properties:
+              project:
+                type: string
+                minLength: 1
+                maxLength: 80
+                description: Unique in the plan (case-insensitive)
+              agent:
+                type: object
+                additionalProperties: false
+                required:
+                  - name
+                properties:
+                  name:
+                    type: string
+                    minLength: 1
+                    maxLength: 80
+                  sessionId:
+                    type: string
+                    pattern: ^[A-Za-z0-9_.-]{1,100}$
+                  url:
+                    type: string
+                    format: uri
+                    pattern: ^https://
+                    maxLength: 2000
+              tasks:
+                type: array
+                maxItems: 5
+                items:
+                  type: object
+                  additionalProperties: false
+                  required:
+                    - title
+                  properties:
+                    title:
+                      type: string
+                      minLength: 1
+                      maxLength: 200
+                    url:
+                      type: string
+                      format: uri
+                      pattern: ^https://
+                      maxLength: 2000
+              weeklyTokens:
+                type: integer
+                minimum: 0
+                nullable: true
+                description: null = pending
+              preAckMin:
+                type: integer
+                minimum: 0
+                nullable: true
+                description: null = pending
+              postReviewMin:
+                type: integer
+                minimum: 0
+                nullable: true
+                description: null = pending
     PrisFile:
       type: object
       required:

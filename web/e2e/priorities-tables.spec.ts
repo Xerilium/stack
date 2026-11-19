@@ -8,7 +8,7 @@ const iso = (minsAgo = 0) => new Date(at().getTime() - minsAgo * 60_000).toISOSt
 const S = (id: string, name: string) => ({ name, link: `claude://claude.ai/epitaxy/${id}` });
 const row = (id: string, project: string, o: Record<string, unknown> = {}) => ({ id, project, agent: null, status: null, action: 'No tiered task in tasks/', gap: true, ref: null, at: iso(), stale: false, ...o });
 const task = (id: string, project: string, action: string, o: Record<string, unknown> = {}) => row(id, project, { action, gap: false, ref: `tasks/${id}.md:4`, ...o });
-const pr = (n: number, emoji: string, action: string, minutes: number, o: Record<string, unknown> = {}) => ({ emoji, number: n, url: `https://github.com/allytehq/finops-hubs/pull/${n}`, agent: null, action, minutes, ...o });
+const pr = (n: number, emoji: string, action: string, minutes: number, o: Record<string, unknown> = {}) => ({ emoji, number: n, url: `https://github.com/allytehq/finops-hubs/pull/${n}`, agent: null, action, minutes, server: null, details: null, ...o });
 const view = () => ({
   at: iso(),
   qm: { title: 'QM', at: iso(), stale: false, rows: [
@@ -20,9 +20,9 @@ const view = () => ({
     task('fh', 'FH Premium', 'Live-validate 430 on the dev hub', { agent: S('s1', 'FH backend'), status: 'working' }),
     row('fh11', 'FH 0.11'),
   ] },
-  prs: { at: iso(), stale: false, verified: true, rows: [
+  prs: { at: iso(), stale: false, verified: true, manager: S('sm', 'Sweep Manager') as { name: string; link: string } | null, rows: [
     pr(1142, '🏦', 'Autopilot: promote', 5, { agent: S('s1', 'FH backend') }),
-    pr(439, '🏦', 'Live: validate', 15),
+    pr(439, '🏦', 'Live: validate', 15, { server: 'https://dev.example.test', details: 'https://github.com/allytehq/finops-hubs/pull/439#issuecomment-1' }),
   ] },
   today: { at: iso(40), stale: true, rows: [
     task('focus', 'FOCUS', 'work with FOCUS CoS + 2 more', { agent: S('s2', 'focus-cos'), status: 'pairing', at: iso(40), stale: true }),
@@ -32,7 +32,7 @@ const view = () => ({
 });
 
 test.describe('Priorities report', () => {
-  // @req FR:ux-consolidation/one.messages @req FR:priorities-tables/web.place @req FR:priorities-tables/web.sections @req FR:priorities-tables/web.sections.cols @req FR:priorities-tables/web.sections.head @req FR:priorities-tables/web.sections.gap @req FR:priorities-tables/web.sections.empty @req FR:priorities-tables/web.links
+  // @req FR:ux-consolidation/one.messages @req FR:priorities-tables/web.place @req FR:priorities-tables/web.sections @req FR:priorities-tables/web.sections.cols @req FR:priorities-tables/web.sections.head @req FR:priorities-tables/web.sections.gap @req FR:priorities-tables/web.sections.empty @req FR:priorities-tables/web.links @req FR:priorities-tables/pr.cols.live @req FR:priorities-tables/pr.manager
   test('shows QM, Now, PRs, Today, Next 3 days, each a rule, an h2 with a stamp, and a table', async ({ page }, info) => {
     await page.clock.setFixedTime(at());
     const m = await mockApi(page, { tasks: seed() });
@@ -51,7 +51,7 @@ test.describe('Priorities report', () => {
     await expect(fh.getByRole('link', { name: 'FH backend' })).toHaveAttribute('href', 'claude://claude.ai/epitaxy/s1');
     // a gap is explicit, -- is plain text
     const gap = now.locator('tbody tr').nth(2);
-    await expect(gap.getByRole('cell')).toHaveText(['FH 0.11', '--', '--', 'Gap: No tiered task in tasks/']);
+    await expect(gap.locator('td')).toHaveText(['FH 0.11', '--', '--', 'Gap: No tiered task in tasks/']);
     expect(await gap.getByRole('link').count()).toBe(0);
     // an agent with no session is plain text
     await expect(page.getByTestId('pri-qm').locator('tbody tr').nth(1).getByRole('cell').nth(1)).toHaveText('qm-planner');
@@ -60,6 +60,10 @@ test.describe('Priorities report', () => {
     const prs = page.getByTestId('pri-prs');
     await expect(prs.locator('tbody tr').first().getByRole('cell')).toHaveText(['🏦 1142', 'FH backend', 'Autopilot: promote', '5m']);
     await expect(prs.getByRole('link', { name: '1142' })).toHaveAttribute('href', 'https://github.com/allytehq/finops-hubs/pull/1142');
+    // live rows link the server and the details; the Sweep Manager is above the table
+    await expect(prs.locator('tbody tr').nth(1).locator('.pri-c-action')).toHaveText('Live: server, details');
+    await expect(prs.getByRole('link', { name: 'server' })).toHaveAttribute('href', 'https://dev.example.test');
+    await expect(prs.getByRole('link', { name: 'Sweep Manager' })).toHaveAttribute('href', 'claude://claude.ai/epitaxy/sm');
     // a stale row says so; an empty section has one row
     await expect(page.getByTestId('pri-today').locator('tbody tr').first().getByRole('cell').first()).toHaveText('FOCUS stale');
     await expect(page.getByTestId('pri-next').locator('tbody tr')).toHaveText(['Nothing here']);
@@ -67,6 +71,7 @@ test.describe('Priorities report', () => {
     await expect(page.getByText('Waiting on you')).toHaveCount(0);
     await expect(page.getByRole('navigation').getByText(/priorit/i)).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.setViewportSize({ width: page.viewportSize()!.width, height: 2400 });
     await box.screenshot({ path: `e2e/screenshots/priorities-report-${info.project.name}.png` });
   });
 
@@ -74,7 +79,7 @@ test.describe('Priorities report', () => {
   test('says Not verified live when the board has no good poll', async ({ page }) => {
     await page.clock.setFixedTime(at());
     const m = await mockApi(page, { tasks: seed() });
-    const v = view(); v.prs = { at: iso(), stale: true, verified: false, rows: [] }; m.priorities = v;
+    const v = view(); v.prs = { at: iso(), stale: true, verified: false, manager: null, rows: [] }; m.priorities = v;
     await page.goto('/#/now');
     await expect(page.getByTestId('pri-prs').locator('tbody tr')).toHaveText(['Not verified live']);
   });
@@ -101,6 +106,7 @@ test.describe('Priorities report', () => {
         expect(action).toBeGreaterThan(project + 4);
         expect(agent).toBeGreaterThan(action + 4);
       }
+      await page.setViewportSize({ width: page.viewportSize()!.width, height: 2400 });
       await box.screenshot({ path: `e2e/screenshots/priorities-report-${scheme}-${info.project.name}.png` });
     });
   }

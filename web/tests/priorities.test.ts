@@ -2,8 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { actionText, PR_COLS, PRI_COLS, safeHref, sectionsOf, stampText, statusText, type PrioritiesView } from '../src/priorities';
 
-const t = (rows: unknown[] = []) => ({ at: '2026-11-18T19:00:00Z', stale: false, rows }) as never;
-const v = (qm: PrioritiesView['qm']): PrioritiesView => ({ at: '2026-11-18T19:00:00Z', qm, now: t(), today: t(), next: t(), prs: { ...t(), verified: true } });
+const t = (rows: never[] = []) => ({ at: '2026-11-18T19:00:00Z', stale: false, rows });
+const v = (qm: PrioritiesView['qm']): PrioritiesView => ({ at: '2026-11-18T19:00:00Z', qm, now: t(), today: t(), next: t(), prs: { ...t(), verified: true, manager: null } });
 
 describe('priorities report', () => {
   // @req FR:priorities-tables/web.sections @req FR:priorities-tables/web.sections.cols

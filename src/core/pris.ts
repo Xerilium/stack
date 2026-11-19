@@ -39,6 +39,8 @@ export interface Pri {
   session?: string;
   /** The hours the owner can work it (local time); without them, all day. */
   windows?: PriWindow[];
+  /** One row per project in its own section, first (QM). Tasks that match its terms link to it before other priorities. @req FR:priorities-tables/qm.pri */
+  perProject?: boolean;
 }
 /** `from` is inside, `to` is outside; no `days` means every weekday. @req FR:priorities-tables/$window */
 export interface PriWindow { days?: PriDay[]; from?: string; to?: string }
@@ -96,7 +98,7 @@ export function parsePris(body: unknown): Pri[] {
   const out = body.flatMap((raw, i): Pri[] => {
     const f = `[${i}]`;
     if (!isObj(raw)) { bad(f, 'Must be an object'); return []; }
-    unknown(f, raw, ['id', 'title', 'status', 'items', 'backlog', 'weekly', ...PRI_LINKS, 'statusAt', 'slot', 'days', 'label', 'action', 'session', 'windows']);
+    unknown(f, raw, ['id', 'title', 'status', 'items', 'backlog', 'weekly', ...PRI_LINKS, 'statusAt', 'slot', 'days', 'label', 'action', 'session', 'windows', 'perProject']);
     let id: string | undefined;
     if (typeof raw.id !== 'string' || !SLUG.test(raw.id)) bad(`${f}.id`, 'Must match [a-z0-9][a-z0-9-]{0,23}');
     else if (ids.has(raw.id)) bad(`${f}.id`, 'Must be unique');
@@ -142,7 +144,8 @@ export function parsePris(body: unknown): Pri[] {
       }
     }
     // @req FR:priorities-tables/$window
-    const view: Pick<Pri, 'label' | 'action' | 'session' | 'windows'> = {};
+    const view: Pick<Pri, 'label' | 'action' | 'session' | 'windows' | 'perProject'> = {};
+    if (raw.perProject !== undefined) { if (typeof raw.perProject === 'boolean') { if (raw.perProject) view.perProject = true; } else bad(`${f}.perProject`, 'Must be true or false'); }
     if (raw.label !== undefined) { const t = text(`${f}.label`, raw.label, 40); if (t) view.label = t; }
     if (raw.action !== undefined) { const t = text(`${f}.action`, raw.action, 200); if (t) view.action = t; }
     if (raw.session !== undefined) { if (typeof raw.session === 'string' && SESSION.test(raw.session)) view.session = raw.session; else bad(`${f}.session`, 'Must match [A-Za-z0-9_-]{1,128}'); }
