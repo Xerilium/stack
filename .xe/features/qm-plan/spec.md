@@ -56,8 +56,9 @@ The owner needs the open page to show the plan an agent just wrote so that the p
 The owner needs one table so that the weekly plan is clear at a glance.
 
 - **FR:ui.route** (P1): `#/qm` shows the plan in place of the shell. The command palette (More on phone) has `Go to QM plan`. No rail item
-- **FR:ui.table** (P1): Plain table: Project | Agent | Top 5 | Weekly tokens | Pre-ack min | Post-review min. Top 5 shows the count; a disclosure expands the linked titles. Agent links to `agent.url` when set and shows the session id. `null` shows `Pending`
+- **FR:ui.table** (P1): Plain table: Project | Agent | Top 5 | Weekly tokens | Pre-ack min | Post-review min. Top 5 shows the count with a chevron; the disclosure expands the linked titles. Agent links to `agent.url` when set; the session id is in the agent cell `title` only, never visible text. Weekly tokens show the compact app format (`25000000` → `25M`, same as the Agents view) with the raw number in `title`; sort uses the raw number. `null` shows `Pending`
 - **FR:ui.sort** (P1): Every column header is a button that sorts by that column; a second click reverses. `aria-sort` marks the sorted column. Pending sorts last
+- **FR:ui.back** (P1): The header starts with a quiet icon button (`aria-label="Back"`, no underline) that goes to `#/now`. It has a 44 px touch target and a visible focus ring
 - **FR:ui.stamp** (P1): The header shows `As of <time>` from `asOf`
 - **FR:ui.style** (P1): Fluent 2 tokens (`docs/design-system.md`), light and dark. On a phone the table scrolls sideways in its own box; the page never does
 

@@ -1,7 +1,9 @@
 /**
  * The weekly QM (quota-maxxing) plan page: types, sort, and the read client for `/qm`.
- * @req FR:qm-plan/ui.route @req FR:qm-plan/ui.sort
+ * @req FR:qm-plan/ui.route @req FR:qm-plan/ui.sort @req FR:qm-plan/ui.table
  */
+import { fmtTokens } from './sessions';
+
 export interface QmTask { title: string; url?: string }
 export interface QmRow { project: string; agent: { name: string; sessionId?: string; url?: string }; tasks: QmTask[]; weeklyTokens: number | null; preAckMin: number | null; postReviewMin: number | null }
 export interface QmPlan { version: 1; asOf: string; projects: QmRow[] }
@@ -34,6 +36,9 @@ export function sortRows(rows: QmRow[], col: QmCol, dir: Dir): QmRow[] {
 
 /** `2000000` → `2,000,000`; null → `Pending`. */
 export const numText = (v: number | null): string => (v === null ? 'Pending' : v.toLocaleString('en-US'));
+
+/** Compact token count, as the Agents view shows it: `25000000` → `25M`; null → `Pending`. @req FR:qm-plan/ui.table */
+export const tokText = (v: number | null): string => (v === null ? 'Pending' : fmtTokens(v));
 
 export async function loadQm(fetchFn: typeof fetch = (...a) => fetch(...a)): Promise<{ plan: QmPlan | null; broken?: boolean }> {
   const res = await fetchFn('/api/qm', { credentials: 'same-origin' });

@@ -21,7 +21,7 @@ test('shows the plan table, the stamp and expandable tasks', async ({ page }) =>
   await expect(page.getByText(/^As of /)).toBeVisible();
   await expect(page.getByRole('columnheader')).toHaveText(['Project▲', 'Agent', 'Top 5', 'Weekly tokens', 'Pre-ack min', 'Post-review min']);
   await expect(page.getByRole('link', { name: 'stack-architect' })).toHaveAttribute('href', 'https://example.com/s');
-  await expect(page.getByText('2,000,000')).toBeVisible();
+  await expect(page.getByText('2.0M')).toBeVisible();
   await expect(page.getByText('Pending')).toHaveCount(2);
   await page.locator('.qm-tasks summary').click();
   await expect(page.getByRole('link', { name: 'Ship QM' })).toBeVisible();

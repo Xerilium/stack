@@ -1,6 +1,6 @@
-/** @req FR:qm-plan/ui.sort @req FR:qm-plan/ui.route */
+/** @req FR:qm-plan/ui.sort @req FR:qm-plan/ui.route @req FR:qm-plan/ui.table */
 import { describe, expect, it } from 'vitest';
-import { isQmHash, sortRows, type QmRow } from '../src/qm';
+import { isQmHash, sortRows, tokText, type QmRow } from '../src/qm';
 
 const row = (project: string, agent: string, n: number, t: number | null, pre: number | null, post: number | null): QmRow => ({
   project, agent: { name: agent }, tasks: Array.from({ length: n }, (_, i) => ({ title: `t${i}` })), weeklyTokens: t, preAckMin: pre, postReviewMin: post,
@@ -25,5 +25,11 @@ describe('qm page helpers', () => {
     expect(isQmHash('#/qm?x=1')).toBe(true);
     expect(isQmHash('#/qmx')).toBe(false);
     expect(isQmHash('#/list')).toBe(false);
+  });
+  it("shows weekly tokens in the compact app format; pending stays Pending", () => {
+    expect(tokText(25_000_000)).toBe("25M");
+    expect(tokText(2_000_000)).toBe("2.0M");
+    expect(tokText(636_000_000)).toBe("636M");
+    expect(tokText(null)).toBe("Pending");
   });
 });

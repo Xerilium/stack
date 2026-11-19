@@ -3,12 +3,14 @@
 .qm > * { max-width: 1040px; margin-inline: auto; }
 .qm-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--fl-s-xs) var(--fl-s-m); }
 .qm-title { font-size: var(--fl-sub2); line-height: var(--fl-sub2-lh); font-weight: 600; margin: 0; }
-.qm-stamp, .qm-hint, .qm-sub, .qm-empty { color: var(--fl-fg2); }
-.qm-stamp, .qm-sub { font-size: var(--fl-caption); line-height: var(--fl-caption-lh); margin: 0; }
+.qm-stamp, .qm-hint, .qm-empty { color: var(--fl-fg2); }
+.qm-stamp { font-size: var(--fl-caption); line-height: var(--fl-caption-lh); margin: 0; }
 .qm-hint { margin-block: var(--fl-s-s) var(--fl-s-l); }
 .qm-error { color: var(--fl-danger); }
-.qm-back { flex-basis: 100%; color: var(--fl-brand-fg); min-height: var(--fl-target); display: inline-flex; align-items: center; }
-.qm a { color: var(--fl-brand-fg); }
+/* Quiet icon button (shared .fl-btn.subtle); 44 px target on every screen. @req FR:qm-plan/ui.back */
+.qm .qm-back { flex: none; align-self: center; min-width: 44px; min-height: 44px; padding: 0; margin-inline-start: calc(-1 * var(--fl-s-s)); font-size: 24px; font-weight: 400; line-height: 1; text-decoration: none; }
+.qm .qm-back:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 2px; }
+.qm a:not(.fl-btn) { color: var(--fl-brand-fg); }
 .qm a:focus-visible, .qm-sort:focus-visible, .qm-scroll:focus-visible, .qm summary:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 2px; }
 /* The table scrolls sideways in its own box on a phone; the page never does. */
 .qm-scroll { overflow-x: auto; border: 1px solid var(--fl-stroke2); border-radius: var(--fl-r-xl); background: var(--fl-bg1); }
@@ -24,6 +26,12 @@
 .qm-sort:hover { background: var(--fl-subtle-hover); }
 .qm-arrow { font-size: 10px; min-width: 10px; }
 .qm-tasks details { display: inline-block; text-align: left; }
-.qm-tasks summary { cursor: pointer; text-align: right; min-width: var(--fl-target); line-height: var(--fl-target); }
+.qm-tasks summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; justify-content: flex-end; gap: var(--fl-s-xs); min-width: var(--fl-target); min-height: var(--fl-target); border-radius: var(--fl-r-md); padding-inline: var(--fl-s-xs); }
+.qm-tasks summary::-webkit-details-marker { display: none; }
+.qm-tasks summary:hover { background: var(--fl-subtle-hover); }
+/* Same disclosure look as Priorities rows: a chevron that turns down when open. */
+.qm-chev { color: var(--fl-fg3); font-size: 16px; line-height: 1; transition: transform var(--fl-fast) var(--fl-ease); }
+.qm-tasks details[open] .qm-chev { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .qm-chev { transition: none; } }
 .qm-tasks ol { margin: var(--fl-s-xs) 0 0; padding-left: var(--fl-s-l); min-width: 240px; }
 @media (min-width: 768px) { .qm { padding: var(--fl-s-xxxl) var(--fl-s-xxl); } }
