@@ -1,7 +1,7 @@
 /**
  * `stack init` writes to `--dir` or the current folder, never to a configured repo.
  * Every path is a temp dir: HOME, XDG_CONFIG_HOME, STACK_REPO and STACK_DIR point at temp folders.
- * @req FR:cli/cmd.init @req FR:cli/cmd.init.here @req FR:cli/cmd.init.out
+ * @req FR:cli/cmd.init @req FR:cli/cmd.init.here @req FR:cli/cmd.init.out @req FR:cli/cmd.init.json
  */
 import { execFileSync } from 'child_process';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'fs';
@@ -76,6 +76,13 @@ describe('stack init', () => {
     expect(JSON.parse(r.out)).toEqual({ ok: true, dir: target, created: ['repo', 'tasks/.gitkeep', '.xe/config/stack.json'] });
     expect(commits(target)).toBe(1);
     expect(commits(configured)).toBe(1);
+  });
+
+  it('uses the Stack repo above the current folder, not a new nested repo', async () => {
+    const r = await cli(join(configured, 'tasks'), 'init');
+    expect(r.code).toBe(0);
+    expect(r.out).toBe(`Already initialized: ${configured}\n`);
+    expect(existsSync(join(configured, 'tasks/.git'))).toBe(false);
   });
 
   it('says the repo is already initialized, with its path', async () => {
