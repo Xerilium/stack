@@ -43,6 +43,10 @@ Owner needs ranking to cost little CPU so that Home draws quickly on a repo of h
 ### FR:serve: Static files
 
 - **FR:serve.assets** (P2): Files under `/assets/` (content-hashed names) MUST be served with `cache-control: public, max-age=31536000, immutable`; `index.html` and the API stay `no-store`
+- **FR:serve.gzip** (P2): `stack web` MUST gzip (level 6) a static file or API reply over 1 KB when `Accept-Encoding` allows `gzip` and the type is `html`, `js`, `css`, `json`, `svg`, or `webmanifest`, and set `content-encoding: gzip` and `vary: accept-encoding`
+  - **FR:serve.gzip.budget** (P2): `stack web` MUST transfer the main JS bundle at least 60% smaller than its raw size
+  - **FR:serve.gzip.skip** (P2): `stack web` MUST send event streams (`text/event-stream`), images, and other binary types as raw bytes
+  - **FR:serve.gzip.cache** (P3): `stack web` MUST gzip each `/assets/` file once and keep the result in memory
 
 ### FR:client: First page load
 
