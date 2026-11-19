@@ -22,6 +22,8 @@ export interface RunDeps {
   cursor?: string;
   /** The owner's learned voice; without it drafts are checked against the cliche list only. */
   voice?: VoiceProfile;
+  /** Send is on for this mailbox: reply drafts stay on this machine and nothing is written to the mailbox for them. @req FR:email-send/draft.local */
+  localDrafts?: boolean;
   /** Runs after triage, before any ask is written; throwing stops the pass with no ask. @req FR:email-runner/model.down */
   beforeAsks?: () => void;
   /** Inbox zero: batch asks, subscriptions, and acting on answered asks. Without `actions` nothing moves. @req FR:email-inbox-zero/batch.act */
@@ -64,14 +66,15 @@ async function triage(d: RunDeps, m: Message, summary: RunSummary): Promise<Tria
   };
   if (r.class === 'needs_reply' && d.drafter) {
     // One draft per conversation: a run that died after drafting, or a thread seen again, reuses the draft already in the mailbox. @req FR:email-triage/ask.once
-    const prior = await existingDraft(d.ctx, m);
-    if (prior) r.draft = { text: prior.text, webLink: prior.webLink, reused: true };
+    const prior = await existingDraft(d.ctx, m, { local: d.localDrafts });
+    if (prior) r.draft = { text: prior.text, webLink: prior.webLink, reused: true, ...(prior.webLink ? {} : { local: true }) };
     else {
       // A failed draft is not a failed pass: the owner gets a plain "Reply to" ask instead. @req FR:email-runner/model.draft
       const drafted = await voicedDraft(d.drafter, m, d.voice, summary).catch(() => null);
       if (drafted?.text) {
         const marked = markDraft(drafted.text);
-        r.draft = { text: marked, webLink: (await d.provider.createDraft(m.id, marked)).webLink, voice: drafted.voice };
+        // With Send on, the draft is never written to the mailbox: the owner sends it from Stack. @req FR:email-send/draft.local
+        r.draft = d.localDrafts ? { text: marked, webLink: '', voice: drafted.voice, local: true } : { text: marked, webLink: (await d.provider.createDraft(m.id, marked)).webLink, voice: drafted.voice };
       }
     }
   }

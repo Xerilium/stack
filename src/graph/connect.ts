@@ -1,7 +1,7 @@
 /**
  * In-app Connect for Outlook.com and work or school Microsoft accounts: browser sign-in (PKCE, loopback), device code fallback,
  * the account list with health, drafts opt-in, disconnect, and the one-time app registration run.
- * Never logs or returns a token, code, verifier or id token. Never sends.
+ * Never logs or returns a token, code, verifier or id token. Sends nothing; the Send setting only changes what a sign-in asks for.
  * @req FR:connect-accounts/flow.browser @req FR:connect-accounts/flow.callback @req FR:connect-accounts/flow.device @req FR:connect-accounts/flow.account
  * @req FR:connect-accounts/flow.save @req FR:connect-accounts/flow.session @req FR:connect-accounts/scope.default @req FR:connect-accounts/scope.drafts
  * @req FR:connect-accounts/acct.list @req FR:connect-accounts/acct.health @req FR:connect-accounts/acct.remove
@@ -17,7 +17,7 @@ import { MAILBOX } from '../core/config';
 import { readJsonFile } from '../core/file-lock';
 import {
   accountCachePath, authorizeUrl, cacheDir as defaultCacheDir, FileTokenCache, GraphSignInError, GraphSignInRequired, hasScope, idClaims, listCachePaths, MSA_TENANT,
-  pkcePair, pollDeviceCode, redeemAuthCode, startDeviceCode, tenantFor, type Granted,
+  pkcePair, pollDeviceCode, redeemAuthCode, startDeviceCode, tenantFor, type Granted, SEND_SCOPE, withoutSend,
 } from './auth';
 import { GraphHttpError } from './transport';
 
@@ -143,8 +143,8 @@ export interface ConnectSession {
   url?: string; userCode?: string; verificationUri?: string; expiresAt?: string; account?: string; error?: string;
 }
 /** `lastOkAt`: the last good live read; `retryAt`: the next automatic try (ISO). @req FR:connect-accounts/acct.list */
-export interface AccountRow { account: string; type: 'personal' | 'work'; mail: boolean; calendar: boolean; drafts: boolean; state: 'connected' | AccountMark; lastOkAt?: string; retryAt?: string }
-export interface StartOptions { account?: string; drafts?: boolean; method?: 'browser' | 'device' }
+export interface AccountRow { account: string; type: 'personal' | 'work'; mail: boolean; calendar: boolean; drafts: boolean; /** Send is on: the owner may send a reply with a click. @req FR:connect-accounts/scope.send */ send: boolean; state: 'connected' | AccountMark; lastOkAt?: string; retryAt?: string }
+export interface StartOptions { account?: string; drafts?: boolean; send?: boolean; method?: 'browser' | 'device' }
 
 /** The connect service the API calls. */
 export interface Connect {
@@ -153,6 +153,7 @@ export interface Connect {
   get(id: string): ConnectSession | undefined;
   accounts(): Promise<AccountRow[]>;
   setDrafts(account: string, on: boolean): Promise<ConnectSession | { ok: true }>;
+  setSend(account: string, on: boolean): Promise<ConnectSession | { ok: true }>;
   remove(account: string): Promise<void>;
   setup(): Promise<{ state: SetupState }>;
 }
@@ -210,7 +211,7 @@ const DONE_HTML = '<!doctype html><meta charset="utf-8"><title>Stack</title><bod
 const FAIL_HTML = '<!doctype html><meta charset="utf-8"><title>Stack</title><body style="font-family:system-ui;padding:2rem"><h1>Sign-in did not finish. Go back to Stack and try again.</h1></body>';
 
 /** The scopes Connect asks for. @req FR:connect-accounts/scope.default @req FR:connect-accounts/scope.drafts */
-export const connectScopes = (drafts: boolean): string[] => ['Calendars.Read', drafts ? 'Mail.ReadWrite' : 'Mail.Read', 'offline_access', 'openid', 'profile'];
+export const connectScopes = (drafts: boolean, send = false): string[] => ['Calendars.Read', drafts ? 'Mail.ReadWrite' : 'Mail.Read', ...(send ? [SEND_SCOPE] : []), 'offline_access', 'openid', 'profile'];
 
 export function createConnect(d: ConnectDeps): Connect {
   const sessions = new Map<string, { s: ConnectSession; at: number }>();
@@ -235,7 +236,9 @@ export function createConnect(d: ConnectDeps): Connect {
     const tenant = c.tid === MSA_TENANT ? 'consumers' : c.tid && GUID.test(c.tid) ? c.tid : tenantFor(c.account);
     // Microsoft returns every scope ever consented: Mail.ReadWrite stays only when this sign-in asked for drafts.
     const drafts = hasScope(scopes, 'Mail.ReadWrite');
-    let kept = (g.scopes.length ? g.scopes : scopes).filter((x) => drafts || !hasScope([x], 'Mail.ReadWrite'));
+    // The send scope stays only when this sign-in asked for Send. @req FR:connect-accounts/scope.send
+    const granted = hasScope(scopes, SEND_SCOPE) ? (g.scopes.length ? g.scopes : scopes) : withoutSend(g.scopes.length ? g.scopes : scopes);
+    let kept = granted.filter((x) => drafts || !hasScope([x], 'Mail.ReadWrite'));
     if (!drafts && hasScope(g.scopes, 'Mail.ReadWrite') && !hasScope(kept, 'Mail.Read')) kept = [...kept, 'Mail.Read'];
     await new FileTokenCache(accountCachePath(c.account, dir())).write({ version: 1, tenant, clientId, scopes: kept, refreshToken: g.refreshToken, accessToken: g.accessToken, expiresAt: g.expiresAt, account: c.account });
     // An older default file for this account would list it twice: the new file replaces it.
@@ -251,7 +254,7 @@ export function createConnect(d: ConnectDeps): Connect {
   async function device(s: ConnectSession, clientId: string, scopes: string[], account?: string): Promise<ConnectSession> {
     // `common`, as the browser flow: a personal account outside the known Outlook domains still signs in.
     const tenant = 'common';
-    const code = await startDeviceCode({ tenant, clientId, scopes, ...(d.fetch ? { fetch: d.fetch } : {}) });
+    const code = await startDeviceCode({ tenant, clientId, scopes, send: hasScope(scopes, SEND_SCOPE), ...(d.fetch ? { fetch: d.fetch } : {}) });
     Object.assign(s, { method: 'device', userCode: code.userCode, verificationUri: code.verificationUri, expiresAt: new Date(now() + code.expiresIn * 1000).toISOString() });
     delete s.url;
     // A newer sign-in stops this poll at its next wait.
@@ -291,7 +294,7 @@ export function createConnect(d: ConnectDeps): Connect {
     h.stop = () => { listeners.delete(s.id); l.close(); };
     listeners.set(s.id, close);
     redirectUri = `http://localhost:${l.port}`;
-    s.url = authorizeUrl({ tenant: 'common', clientId, scopes, redirectUri, challenge, state, ...(account ? { loginHint: account } : {}) });
+    s.url = authorizeUrl({ tenant: 'common', clientId, scopes, send: hasScope(scopes, SEND_SCOPE), redirectUri, challenge, state, ...(account ? { loginHint: account } : {}) });
     try { await (d.openUrl ?? osOpen)(s.url); } catch { close(); return null; }
     h.timer = setTimeout(() => { if (!used) { used = true; close(); fail(s, new GraphSignInError('expired_token')); } }, LISTEN_MS);
     h.timer.unref?.();
@@ -303,7 +306,7 @@ export function createConnect(d: ConnectDeps): Connect {
     if (!clientId) throw Object.assign(new Error('One-time setup needed: no Stack app registration yet'), { code: 'setup_needed' });
     const account = o.account?.trim().toLowerCase();
     if (account !== undefined && !MAILBOX.test(account)) throw new Error('Invalid account address');
-    const scopes = connectScopes(!!o.drafts);
+    const scopes = connectScopes(!!o.drafts, !!o.send);
     for (const [id, stop] of [...listeners]) { stop(); const old = sessions.get(id)?.s; if (old?.state === 'waiting') { old.state = 'error'; old.error = 'replaced'; } }
     // The hinted account rides on the session, so "Use a code instead" keeps it.
     const s = put({ id: randomBytes(12).toString('hex'), method: 'browser', state: 'waiting', ...(account ? { account } : {}) });
@@ -329,9 +332,9 @@ export function createConnect(d: ConnectDeps): Connect {
         const drafts = hasScope(t.scopes, 'Mail.ReadWrite');
         // The same health key as the calendar: an unnamed cache uses its file. @req FR:connect-accounts/acct.retry
         const who = account || p;
-        out.push({ account, type: t.tenant === 'consumers' ? 'personal' : 'work', mail: drafts || hasScope(t.scopes, 'Mail.Read'), calendar: hasScope(t.scopes, 'Calendars.Read'), drafts, state: health.get(who) ?? 'connected', ...times(who) });
+        out.push({ account, type: t.tenant === 'consumers' ? 'personal' : 'work', mail: drafts || hasScope(t.scopes, 'Mail.Read'), calendar: hasScope(t.scopes, 'Calendars.Read'), drafts, send: hasScope(t.scopes, SEND_SCOPE), state: health.get(who) ?? 'connected', ...times(who) });
       } catch {
-        out.push({ account: named, type: tenantFor(named) === 'consumers' ? 'personal' : 'work', mail: false, calendar: false, drafts: false, state: 'error' });
+        out.push({ account: named, type: tenantFor(named) === 'consumers' ? 'personal' : 'work', mail: false, calendar: false, drafts: false, send: false, state: 'error' });
       }
     }
     return out.sort((a, b) => a.account.localeCompare(b.account));
@@ -354,7 +357,8 @@ export function createConnect(d: ConnectDeps): Connect {
     accounts,
     /** @req FR:connect-accounts/scope.drafts */
     async setDrafts(account, on) {
-      if (on) return start({ account, drafts: true });
+      // Each setting keeps the other. @req FR:connect-accounts/scope.send
+      if (on) return start({ account, drafts: true, send: hasScope((await (await cacheFor(account)).read().catch(() => null))?.scopes ?? [], SEND_SCOPE) });
       const c = await cacheFor(account);
       const t = await c.read();
       if (!t) throw new Error('Account not connected');
@@ -364,6 +368,17 @@ export function createConnect(d: ConnectDeps): Connect {
       const { accessToken: _a, expiresAt: _e, ...rest } = t;
       void _a; void _e;
       await c.write({ ...rest, scopes });
+      return { ok: true };
+    },
+    /** On: a sign-in that also asks for the send scope. Off: the scope leaves the cache and the access token is dropped. @req FR:connect-accounts/scope.send */
+    async setSend(account, on) {
+      const c = await cacheFor(account);
+      const t = await c.read().catch(() => null);
+      if (on) return start({ account, drafts: hasScope(t?.scopes ?? [], 'Mail.ReadWrite'), send: true });
+      if (!t) throw new Error('Account not connected');
+      const { accessToken: _a, expiresAt: _e, ...rest } = t;
+      void _a; void _e;
+      await c.write({ ...rest, scopes: withoutSend(t.scopes) });
       return { ok: true };
     },
     /** @req FR:connect-accounts/acct.remove */

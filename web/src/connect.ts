@@ -6,7 +6,7 @@
  */
 import { freshness } from './asks';
 
-export interface AccountRow { account: string; type: 'personal' | 'work'; mail: boolean; calendar: boolean; drafts: boolean; state: 'connected' | 'expired' | 'down' | 'error'; lastOkAt?: string; retryAt?: string }
+export interface AccountRow { account: string; type: 'personal' | 'work'; mail: boolean; calendar: boolean; drafts: boolean; /** Send is on for this account. @req FR:connect-accounts/scope.send */ send?: boolean; state: 'connected' | 'expired' | 'down' | 'error'; lastOkAt?: string; retryAt?: string }
 export interface ConnectInfo { setup: { clientId: boolean }; accounts: AccountRow[] }
 export interface ConnectSession {
   id: string; method: 'browser' | 'device'; state: 'waiting' | 'done' | 'error';
@@ -18,23 +18,28 @@ export type SetupState = 'done' | 'needs-azure-signin' | 'needs-pwsh' | 'failed'
 export interface ConnectApi {
   connect(): Promise<ConnectInfo>;
   connectSetup(): Promise<{ state: SetupState }>;
-  connectStart(body: { account?: string; drafts?: boolean; method?: 'browser' | 'device' }): Promise<ConnectSession>;
+  connectStart(body: { account?: string; drafts?: boolean; send?: boolean; method?: 'browser' | 'device' }): Promise<ConnectSession>;
+  connectSend(account: string, on: boolean): Promise<ConnectSession | { ok: true }>;
   connectPoll(id: string): Promise<ConnectSession>;
   connectDrafts(account: string, on: boolean): Promise<ConnectSession | { ok: true }>;
   connectRemove(account: string): Promise<{ ok: true }>;
 }
 
 export const POLL_MS = 2000;
-export const DRAFTS_TEXT = 'Drafts lets Stack save reply drafts in your mailbox. Stack never sends.';
-export const READ_TEXT = 'Stack reads mail and calendar. It never sends.';
+export const DRAFTS_TEXT = 'Drafts lets Stack save reply drafts in your mailbox. Stack sends only when you click Send.';
+export const READ_TEXT = 'Stack reads mail and calendar. It sends only when you click Send.';
 /** The one-line hint on the drafts menu item. @req FR:connect-accounts/web.menu */
 export const DRAFTS_LABEL = 'Let Stack save reply drafts in my mailbox';
-export const DRAFTS_HINT = 'Stack writes drafts for you to review. It never sends.';
+export const DRAFTS_HINT = 'Stack writes drafts for you to review. It sends only when you click Send.';
+/** The Send setting on the row menu. Off by default. @req FR:connect-accounts/scope.send */
+export const SEND_LABEL = 'Let Stack send replies when I click Send';
+export const SEND_HINT = 'Stack sends one reply for each click on Send.';
 /** The Learn more popover. @req FR:connect-accounts/web.learn */
 export const LEARN_TEXT = [
   'Stack reads mail and calendar from each account. It signs in on Microsoft pages only and never sees your password.',
   'Reply drafts is off by default. Turn it on for an account and Stack saves reply drafts in that mailbox for you to review.',
-  'Stack never sends mail and never changes your calendar.',
+  'Send is off by default. Turn it on for an account and the Send button in Inbox sends your reply.',
+  'Stack sends mail only when you click Send, and never changes your calendar.',
 ] as const;
 export const SETUP_TEXT = 'Stack registers its own sign-in app in your Azure account. You do this once for all your accounts.';
 

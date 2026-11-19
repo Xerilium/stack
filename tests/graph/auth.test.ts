@@ -83,10 +83,10 @@ describe('device code poll', () => {
     await expect(pollDeviceCode({ tenant: TENANT, clientId: CLIENT, code: { ...dc, expiresIn: 30 }, fetch: slow.fetch, sleep: async (s) => { t += s * 1000; }, now: () => t })).rejects.toMatchObject({ code: 'expired_token' });
   });
   it('a grant that includes an unsafe scope is refused, so no such token is ever saved; the error names the scope and the fix', async () => {
-    const f = fakeLogin([{ access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: 'Calendars.Read Mail.Send offline_access' }]);
+    const f = fakeLogin([{ access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: 'Calendars.Read Mail.Send.Shared offline_access' }]);
     const e = await pollDeviceCode({ tenant: TENANT, clientId: CLIENT, code: dc, fetch: f.fetch, sleep: async () => undefined, now: () => 0 }).catch((x: unknown) => x as GraphSignInError);
     expect(e).toMatchObject({ code: 'unsafe_scope' });
-    expect(String((e as GraphSignInError).message)).toMatch(/Mail\.Send.*Entra.*revoke the consent/);
+    expect(String((e as GraphSignInError).message)).toMatch(/Mail\.Send\.Shared.*Entra.*revoke the consent/);
     expect(String((e as GraphSignInError).message)).not.toMatch(/\bat\b|\brt\b/);
   });
   it('a grant without a refresh token is an error', async () => {
@@ -203,7 +203,7 @@ describe('access token provider', () => {
     const d = tmp();
     const cache = new FileTokenCache(join(d, 'graph-token.json'));
     await cache.write(token({ expiresAt: 0 }));
-    await expect(graphToken(cache, { fetch: fakeLogin([{ access_token: 'bad', refresh_token: 'rt2', expires_in: 3600, scope: 'Calendars.Read Mail.Send' }]).fetch, now: () => 1 })()).rejects.toMatchObject({ code: 'unsafe_scope' });
+    await expect(graphToken(cache, { fetch: fakeLogin([{ access_token: 'bad', refresh_token: 'rt2', expires_in: 3600, scope: 'Calendars.Read Mail.Send.Shared' }]).fetch, now: () => 1 })()).rejects.toMatchObject({ code: 'unsafe_scope' });
     expect(await cache.read()).toMatchObject({ refreshToken: 'rt1', accessToken: 'at1' });
   });
   it('force refreshes even when the cached token looks fresh (a 401 from Graph)', async () => {
@@ -258,7 +258,7 @@ describe('access token provider', () => {
   it('refuses to refresh a cache holding unsafe scopes', async () => {
     const d = tmp();
     const cache = new FileTokenCache(join(d, 'graph-token.json'));
-    await cache.write(token({ expiresAt: 0, scopes: ['Mail.Send', 'offline_access'] }));
+    await cache.write(token({ expiresAt: 0, scopes: ['Mail.Send.Shared', 'offline_access'] }));
     const f = fakeLogin([]);
     await expect(graphToken(cache, { fetch: f.fetch, now: () => 1 })()).rejects.toThrow();
     expect(f.hits).toHaveLength(0);

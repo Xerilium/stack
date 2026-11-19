@@ -1,4 +1,4 @@
-/** Email triage module: reads a mailbox, never sends, writes asks into the ask queue. @req FR:email-triage/safe.allowlist */
+/** Email triage module: reads a mailbox and writes asks into the ask queue. The only send is the owner's click (`reply-send.ts`). @req FR:email-triage/safe.allowlist */
 export * from './types';
 export * from './guard';
 export * from './draft';

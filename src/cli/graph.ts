@@ -4,7 +4,7 @@
  */
 import { existsSync } from 'fs';
 import { basename } from 'path';
-import { accountCachePath, cacheDir, defaultCachePath, listCachePaths, tenantFor, FileTokenCache, FEATURES, pollDeviceCode, scopesFor, startDeviceCode, type Feature } from '../graph/auth';
+import { accountCachePath, cacheDir, defaultCachePath, listCachePaths, tenantFor, FileTokenCache, FEATURES, pollDeviceCode, scopesFor, startDeviceCode, type Feature, withoutSend } from '../graph/auth';
 import { UsageError } from './args';
 
 export interface GraphIO { out(s: string): void; err(s: string): void }
@@ -27,8 +27,8 @@ export async function graphCmd(action: string | undefined, f: Record<string, str
     // With --json, stdout is only JSON; the sign-in message goes to stderr.
     (json ? io.err : io.out)(`${code.message || `Open ${code.verificationUri} and enter ${code.userCode}`}\n`);
     const g = await pollDeviceCode({ tenant, clientId, code });
-    await cache.write({ version: 1, tenant, clientId, scopes: g.scopes.length ? g.scopes : scopes, refreshToken: g.refreshToken, accessToken: g.accessToken, expiresAt: g.expiresAt, ...(account ? { account } : {}) });
-    io.out(json ? `${JSON.stringify({ signedIn: true, tenant, scopes: g.scopes, cache: cache.path })}\n` : `Signed in. Scopes: ${g.scopes.join(' ')}\nSaved to ${cache.path}\n`);
+    await cache.write({ version: 1, tenant, clientId, scopes: withoutSend(g.scopes.length ? g.scopes : scopes) /* the CLI never keeps the send scope */, refreshToken: g.refreshToken, accessToken: g.accessToken, expiresAt: g.expiresAt, ...(account ? { account } : {}) });
+    io.out(json ? `${JSON.stringify({ signedIn: true, tenant, scopes: withoutSend(g.scopes), cache: cache.path })}\n` : `Signed in. Scopes: ${withoutSend(g.scopes).join(' ')}\nSaved to ${cache.path}\n`);
     return 0;
   }
   if (action === 'status') {

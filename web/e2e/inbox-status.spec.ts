@@ -9,7 +9,7 @@ import { mockApi, type Mock } from './mock';
 
 const DOC = 'https://github.com/Xerilium/stack/blob/main/docs/inbox-sources.md';
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
-const SIGN_IN = 'Click Connect and sign in with Microsoft. Read-only by default. Stack never sends.';
+const SIGN_IN = 'Click Connect and sign in with Microsoft. Read-only by default. Stack sends only when you click Send.';
 /** The same patterns as `FR:product-reset/connect.rule.test`. */
 const CMD = /\bstack (web|graph|asks|task|report|email|inbox)\b|\.ps1\b|\b(npm|pnpm|npx|az|gh) |\bSTACK_[A-Z_]+|GITHUB_TOKEN|docs\/|runbook|\bterminal\b/;
 const planned = [

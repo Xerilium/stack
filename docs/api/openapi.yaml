@@ -2460,6 +2460,78 @@ paths:
                       type: object
         default:
           $ref: "#/components/responses/Error"
+  /inbox-items/{id}/draft:
+    post:
+      summary: "Store the reply draft of an email item on this machine. Sends nothing. 409 when the mailbox is not connected here. Owner session only: 403 for tokens"
+      operationId: saveInboxDraft
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  maxLength: 20000
+                  description: The reply text
+      responses:
+        "200":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /inbox-items/{id}/send:
+    post:
+      summary: "Send this text as the reply to the item (the owner clicked Send). One guarded reply; recipients, subject and thread come from the server. 409 when Send is off for the account; 502 when the send failed (the draft is kept). Owner session only: 403 for tokens"
+      operationId: sendInboxReply
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  maxLength: 20000
+                  description: The reply text to send
+      responses:
+        "200":
+          description: Sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
   /inbox-junk:
     post:
       summary: "Clear the Inbox junk (email items of kind spam or newsletter that the owner did not restore): move each listed item (ids: the junk rows the owner sees) to Archive, with unsubscribe-archive after a one-click unsubscribe where the sender offers one. Junk not in ids is left alone. Never deletes. kept counts items that stay (a read-only account, a failed move). Owner session only: 403 for tokens"
@@ -2538,6 +2610,8 @@ paths:
                           type: boolean
                         drafts:
                           type: boolean
+                        send:
+                          type: boolean
                         state:
                           type: string
                           enum:
@@ -2579,7 +2653,7 @@ paths:
           $ref: "#/components/responses/Error"
   /connect/sign-in:
     post:
-      summary: "Start a Microsoft sign-in: the browser opens the sign-in page (PKCE, loopback), or a device code shows in the page. Read-only scopes; drafts opt-in; never send. 409 until setup has run. Owner session only"
+      summary: "Start a Microsoft sign-in: the browser opens the sign-in page (PKCE, loopback), or a device code shows in the page. Read-only scopes; drafts and Send are opt-in. 409 until setup has run. Owner session only"
       operationId: startConnect
       requestBody:
         content:
@@ -2596,6 +2670,9 @@ paths:
                 drafts:
                   type: boolean
                   description: Also ask for Mail.ReadWrite (reply drafts)
+                send:
+                  type: boolean
+                  description: Also ask for the send permission (the Send setting)
                 method:
                   type: string
                   enum:
@@ -2687,6 +2764,38 @@ paths:
                 type: object
         default:
           $ref: "#/components/responses/Error"
+  /connect/send:
+    post:
+      summary: Turn Send on for an account (starts a sign-in that also asks for the send permission) or off. Off by default. Sends nothing. Owner session only
+      operationId: setConnectSend
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - account
+                - on
+              properties:
+                account:
+                  type: string
+                  maxLength: 200
+                  pattern: ^[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$
+                  description: Mailbox address Single line.
+                on:
+                  type: boolean
+                  description: true to turn Send on
+      responses:
+        "200":
+          description: Sign-in session or ok
+          content:
+            application/json:
+              schema:
+                type: object
+        default:
+          $ref: "#/components/responses/Error"
   /connect/remove:
     post:
       summary: "Disconnect an account: deletes its token cache. Owner session only"
@@ -2741,7 +2850,7 @@ paths:
           $ref: "#/components/responses/Error"
   /inbox-items/{id}/action:
     post:
-      summary: "Run an inbox action (reply-draft makes a draft and never sends), or with request true file a request for a missing action. Owner session only: 403 for tokens"
+      summary: "Run an inbox action (reply-draft makes a draft and sends nothing), or with request true file a request for a missing action. Owner session only: 403 for tokens"
       operationId: inboxAction
       parameters:
         - name: id

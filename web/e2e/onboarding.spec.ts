@@ -79,7 +79,7 @@ test.describe('first-run onboarding', () => {
     await expect(page.getByText('Step 4 of 5')).toBeVisible();
     await expect(page.getByTestId('connect-accounts')).toBeVisible(); // in-app Connect, no command
     await expect(page.locator('code')).toHaveCount(0);
-    await expect(page.getByText('It never sends mail.')).toBeVisible();
+    await expect(page.getByText('It sends mail only when you click Send.')).toBeVisible();
     await page.getByRole('button', { name: 'Skip' }).click();
 
     await expect(page.getByText('Step 5 of 5')).toBeVisible();

@@ -51,7 +51,11 @@ export function junkToast(r: JunkResult): string {
 /** @req FR:inbox-page/detail.api */
 export interface Person { name?: string; address: string }
 export interface MailMessage { id: string; from: Person; to: Person[]; subject: string; receivedAt: string; body: string; mine: boolean }
-export interface DetailReply { item: InboxRow; live: boolean; message?: MailMessage; thread?: MailMessage[] }
+/** The stored reply draft: `canSend` is true when Send is on for the account; `link` is a draft in the mailbox. @req FR:email-send/draft.api.detail */
+export interface ReplyDraft { text: string; canSend: boolean; link?: string }
+export interface DetailReply { item: InboxRow; live: boolean; message?: MailMessage; thread?: MailMessage[]; draft?: ReplyDraft }
+/** What the reply box says under the text. @req FR:email-send/draft.outlook */
+export const replyNote = (d: ReplyDraft): string => (d.canSend ? 'Stack sends this reply when you click Send.' : 'Send is off for this account.');
 
 /** `Name <address>`, the address alone, or `You` for the owner. @req FR:inbox-page/detail.head @req FR:inbox-page/detail.thread.mine */
 export const person = (p: Person, mine = false): string => (mine ? 'You' : p.name && p.name !== p.address ? `${p.name} <${p.address}>` : p.address || p.name || 'Unknown sender');

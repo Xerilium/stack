@@ -21,7 +21,8 @@ function fakeConnect(clientId = true) {
     hasClientId: () => clientId,
     start: async (o) => { calls.push(['start', o]); if (!clientId) throw Object.assign(new Error('setup needed'), { code: 'setup_needed' }); return SESSION; },
     get: (id) => (id === 's1' ? SESSION : undefined),
-    accounts: async () => [{ account: 'me@outlook.com', type: 'personal', mail: true, calendar: true, drafts: false, state: 'connected' }],
+    accounts: async () => [{ account: 'me@outlook.com', type: 'personal', mail: true, calendar: true, drafts: false, send: false, state: 'connected' }],
+    setSend: async (a, on) => { calls.push(['send', a, on]); return on ? SESSION : { ok: true as const }; },
     setDrafts: async (a, on) => { calls.push(['drafts', a, on]); return on ? SESSION : { ok: true as const }; },
     remove: async (a) => { calls.push(['remove', a]); },
     setup: async () => { calls.push(['setup']); return { state: 'needs-azure-signin' }; },
@@ -45,7 +46,7 @@ function mk(extra: Partial<ApiDeps> = {}) {
 
 describe('connect routes', () => {
   it('are registered, scoped, documented', () => {
-    for (const n of ['connect.get', 'connect.setup', 'connect.start', 'connect.poll', 'connect.drafts', 'connect.remove']) {
+    for (const n of ['connect.get', 'connect.setup', 'connect.start', 'connect.poll', 'connect.drafts', 'connect.send', 'connect.remove']) {
       expect(ROUTES.some((r) => r.name === n)).toBe(true);
       expect(routeScope(n)).toBeDefined();
     }
@@ -62,7 +63,7 @@ describe('connect routes', () => {
   it('lists setup and accounts; starts, polls, toggles drafts, removes, runs setup', async () => {
     const f = fakeConnect();
     const { call } = mk({ connect: f.c });
-    expect((await call('GET', '/connect')).json).toEqual({ setup: { clientId: true }, accounts: [{ account: 'me@outlook.com', type: 'personal', mail: true, calendar: true, drafts: false, state: 'connected' }] });
+    expect((await call('GET', '/connect')).json).toEqual({ setup: { clientId: true }, accounts: [{ account: 'me@outlook.com', type: 'personal', mail: true, calendar: true, drafts: false, send: false, state: 'connected' }] });
     const s = await call('POST', '/connect/sign-in', { drafts: true, method: 'device', account: 'Me@Outlook.com' });
     expect(s).toEqual({ status: 201, json: SESSION });
     expect(f.calls[0]).toEqual(['start', { drafts: true, method: 'device', account: 'me@outlook.com' }]);
@@ -70,6 +71,10 @@ describe('connect routes', () => {
     expect((await call('GET', '/connect/sign-in/zz')).status).toBe(404);
     expect((await call('POST', '/connect/drafts', { account: 'me@outlook.com', on: false })).json).toEqual({ ok: true });
     expect((await call('POST', '/connect/drafts', { account: 'me@outlook.com', on: true })).json).toEqual(SESSION);
+    // @req FR:connect-accounts/scope.send
+    expect((await call('POST', '/connect/send', { account: 'Me@Outlook.com', on: true })).json).toEqual(SESSION);
+    expect((await call('POST', '/connect/send', { account: 'me@outlook.com', on: false })).json).toEqual({ ok: true });
+    expect(f.calls.filter((x) => x[0] === 'send')).toEqual([['send', 'me@outlook.com', true], ['send', 'me@outlook.com', false]]);
     expect((await call('POST', '/connect/remove', { account: 'me@outlook.com' })).json).toEqual({ ok: true });
     expect((await call('POST', '/connect/setup')).json).toEqual({ state: 'needs-azure-signin' });
   });

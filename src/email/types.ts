@@ -63,7 +63,8 @@ export interface TriageResult {
   /** Thread summary for the ask. @req FR:email-inbox-zero/sum.ask */
   summary?: string;
   /** The draft in the mailbox with its Outlook web link; `reused` when it was already there from an earlier pass and nothing new was created. */
-  draft?: { text: string; webLink: string; reused?: boolean; voice?: DraftVoice };
+  /** `local`: the draft is kept on this machine only, for an account with Send on (`webLink` is empty). @req FR:email-send/draft.local */
+  draft?: { text: string; webLink: string; reused?: boolean; voice?: DraftVoice; local?: boolean };
 }
 
 /** One message of a thread, for a reader. `body` is plain text and untrusted data. `mine`: the owner sent it. @req FR:inbox-page/detail.thread.mine */

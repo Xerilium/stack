@@ -310,6 +310,9 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('connect.remove', 'POST', '/connect/remove', { account: 'nope' }, 422);
     await go('connect.remove', 'POST', '/connect/remove', { account: '' }, 200);
     await go('inboxItems.detail', 'GET', '/inbox-items/mail-000000000000/detail', undefined, 404);
+    await go('inboxItems.draft', 'POST', '/inbox-items/mail-000000000000/draft', { text: 'x' }, 404);
+    await go('inboxItems.send', 'POST', '/inbox-items/mail-000000000000/send', { text: 'x' }, 404);
+    await go('connect.send', 'POST', '/connect/send', { account: 'me@outlook.com', on: true }, 200);
     await go('inboxJunk.clear', 'POST', '/inbox-junk', { action: 'archive', ids: [] }, 200);
     await go('inboxItems.action', 'POST', '/inbox-items/mail-000000000000/action', { action: 'mark-done' }, 404);
     await go('capture', 'POST', '/capture', { text: 'call dentist tomorrow 30m #alpha', dryRun: true }, 200);

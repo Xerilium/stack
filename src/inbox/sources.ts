@@ -60,7 +60,7 @@ export const SOURCES_PATH = '.stack/inbox-sources.json';
 const DOC = 'https://github.com/Xerilium/stack/blob/main/docs/inbox-sources.md';
 const KINDS: Source[] = ['email', 'github', 'teams', 'slack'];
 const LABEL: Record<Source, string> = { email: 'Email', github: 'GitHub', teams: 'Teams', slack: 'Slack' };
-const NEVER_SENDS = 'Stack never sends.';
+const NEVER_SENDS = 'Stack sends only when you click Send.';
 
 // ------------------------------------------------------------------ records
 

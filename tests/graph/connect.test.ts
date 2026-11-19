@@ -68,8 +68,8 @@ describe('PKCE and id token', () => {
     expect(g).toMatchObject({ accessToken: 'AT-secret', refreshToken: 'RT-secret', expiresAt: 3_600_000 });
     expect(idClaims(g.idToken!)).toEqual({ account: 'me@outlook.com', tid: MSA_TENANT });
   });
-  it('a granted send scope is refused before anything is saved', async () => {
-    const { fetch } = fakeLogin([tokenReply({ preferred_username: 'me@outlook.com' }, 'Mail.Read Mail.Send offline_access')]);
+  it('a granted shared send scope is refused before anything is saved', async () => {
+    const { fetch } = fakeLogin([tokenReply({ preferred_username: 'me@outlook.com' }, 'Mail.Read Mail.Send.Shared offline_access')]);
     await expect(redeemAuthCode({ tenant: 'common', clientId: CLIENT, code: 'C', verifier: 'V', redirectUri: 'http://localhost:1', fetch })).rejects.toThrow(/unsafe_scope/);
   });
   it('idClaims: email fallback; a bad token gives nothing', () => {
@@ -185,9 +185,9 @@ describe('accounts', () => {
     writeFileSync(join(dir, 'graph-token-bad@x.com.json'), '{}', { mode: 0o644 });
     health.mark('w@contoso.test', 'expired');
     expect(await c.accounts()).toEqual([
-      { account: 'bad@x.com', type: 'work', mail: false, calendar: false, drafts: false, state: 'error' },
-      { account: 'me@outlook.com', type: 'personal', mail: true, calendar: true, drafts: false, state: 'connected' },
-      { account: 'w@contoso.test', type: 'work', mail: true, calendar: false, drafts: true, state: 'expired' },
+      { account: 'bad@x.com', type: 'work', mail: false, calendar: false, drafts: false, send: false, state: 'error' },
+      { account: 'me@outlook.com', type: 'personal', mail: true, calendar: true, drafts: false, send: false, state: 'connected' },
+      { account: 'w@contoso.test', type: 'work', mail: true, calendar: false, drafts: true, send: false, state: 'expired' },
     ]);
   });
   // @req FR:connect-accounts/acct.list @req FR:connect-accounts/acct.retry
@@ -198,7 +198,7 @@ describe('accounts', () => {
     health.ok('me@outlook.com', t0);
     health.fail('me@outlook.com', new GraphHttpError(502, 'UnknownError'), t0 + 60_000);
     expect(await c.accounts()).toEqual([
-      { account: 'me@outlook.com', type: 'personal', mail: true, calendar: true, drafts: false, state: 'down', lastOkAt: new Date(t0).toISOString(), retryAt: new Date(t0 + 90_000).toISOString() },
+      { account: 'me@outlook.com', type: 'personal', mail: true, calendar: true, drafts: false, send: false, state: 'down', lastOkAt: new Date(t0).toISOString(), retryAt: new Date(t0 + 90_000).toISOString() },
     ]);
   });
   // @req FR:connect-accounts/acct.retry
@@ -231,6 +231,40 @@ describe('accounts', () => {
     const t = await new FileTokenCache(accountCachePath('me@outlook.com', dir)).read();
     expect(t?.scopes.sort()).toEqual(['Calendars.Read', 'Mail.Read', 'offline_access']);
     expect(t?.accessToken).toBeUndefined();
+  });
+  // @req FR:connect-accounts/scope.send @req FR:email-send/send.optin
+  it('Send is off by default: a sign-in that did not ask for it never keeps the send scope, even when Microsoft grants it', async () => {
+    const { c, dir, l } = mk({ replies: [tokenReply({ preferred_username: 'me@outlook.com', tid: MSA_TENANT }, 'Mail.Read Mail.Send Calendars.Read offline_access')] });
+    const s = await c.start({});
+    expect(new URL(s.url!).searchParams.get('scope')).not.toContain('Mail.Send');
+    await l.box.handler!(new URL(`http://localhost:53682/?code=CODE&state=${new URL(s.url!).searchParams.get('state')}`));
+    const t = await new FileTokenCache(accountCachePath('me@outlook.com', dir)).read();
+    expect(t?.scopes).not.toContain('Mail.Send');
+    expect((await c.accounts())[0]).toMatchObject({ account: 'me@outlook.com', send: false });
+  });
+  it('Send on starts a sign-in for that account that also asks for the send scope and keeps drafts; the cache then holds it', async () => {
+    const { c, dir, l } = mk({ replies: [tokenReply({ preferred_username: 'me@outlook.com', tid: MSA_TENANT }, 'Mail.ReadWrite Mail.Send Calendars.Read offline_access')] });
+    await seed(dir, 'me@outlook.com', ['Mail.ReadWrite', 'Calendars.Read', 'offline_access']);
+    const s = (await c.setSend('me@outlook.com', true)) as ConnectSession;
+    const u = new URL(s.url!);
+    expect(u.searchParams.get('scope')).toContain('Mail.Send');
+    expect(u.searchParams.get('scope')).toContain('Mail.ReadWrite');
+    expect(u.searchParams.get('login_hint')).toBe('me@outlook.com');
+    await l.box.handler!(new URL(`http://localhost:53682/?code=CODE&state=${u.searchParams.get('state')}`));
+    expect((await c.accounts())[0]).toMatchObject({ send: true, drafts: true });
+    // Drafts on again keeps Send.
+    const again = (await c.setDrafts('me@outlook.com', true)) as ConnectSession;
+    expect(new URL(again.url!).searchParams.get('scope')).toContain('Mail.Send');
+  });
+  it('Send off removes the send scope from the cache and drops the access token', async () => {
+    const { c, dir } = mk();
+    await seed(dir, 'me@outlook.com', ['Mail.Read', 'Mail.Send', 'offline_access']);
+    expect((await c.accounts())[0].send).toBe(true);
+    expect(await c.setSend('me@outlook.com', false)).toEqual({ ok: true });
+    const t = await new FileTokenCache(accountCachePath('me@outlook.com', dir)).read();
+    expect(t?.scopes).toEqual(['Mail.Read', 'offline_access']);
+    expect(t?.accessToken).toBeUndefined();
+    await expect(c.setSend('nobody@outlook.com', false)).rejects.toThrow('Account not connected');
   });
   it('disconnect deletes the cache and the mark', async () => {
     const { c, dir, health } = mk();
@@ -310,13 +344,12 @@ describe('register-stack-app.ps1', () => {
   const src = readFileSync(join(__dirname, '../../scripts/register-stack-app.ps1'), 'utf8');
   // Microsoft Graph delegated permission ids (Graph permissions reference).
   const ALLOWED: Record<string, string> = {
-    'Mail.Read': '570282fd-fa5c-430d-a7fd-fc8dc98a9dca', 'Calendars.Read': '465a38f9-76ea-45b9-9f34-9e8b0d4b0b42', 'Mail.ReadWrite': '024d486e-b451-40bb-833d-3e66d98c5c73',
+    'Mail.Read': '570282fd-fa5c-430d-a7fd-fc8dc98a9dca', 'Calendars.Read': '465a38f9-76ea-45b9-9f34-9e8b0d4b0b42', 'Mail.ReadWrite': '024d486e-b451-40bb-833d-3e66d98c5c73', 'Mail.Send': 'e383f46e-2787-4529-855e-0e479a3ffac0',
     offline_access: '7427e0e9-2fba-42fe-b0c0-848c9e6a8182', openid: '37f7f235-527c-4136-accd-4a02d197296e', profile: '14dad69e-099b-42c9-810b-d002981feec1',
   };
   it('asks only for the allowed delegated scopes, by their real ids', () => {
     const pairs = [...src.matchAll(/'([A-Za-z_.]+)'\s*=\s*'([0-9a-f-]{36})'/g)].map((m) => [m[1], m[2]]);
     expect(Object.fromEntries(pairs)).toEqual(ALLOWED);
-    expect(src).not.toMatch(/e383f46e-2787-4529-855e-0e479a3ffac0/); // Mail.Send
     expect(src).toMatch(/Type = 'Scope'/);
     expect(src).not.toMatch(/Type = 'Role'/);
   });

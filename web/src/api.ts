@@ -139,17 +139,22 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     /** In-app Connect for Microsoft accounts; the server runs every step. @req FR:connect-accounts/api.get */
     connect: () => call<import('./connect').ConnectInfo>('/connect'),
     connectSetup: () => call<{ state: import('./connect').SetupState }>('/connect/setup', {}),
-    connectStart: (body: { account?: string; drafts?: boolean; method?: 'browser' | 'device' }) => call<import('./connect').ConnectSession>('/connect/sign-in', body),
+    connectStart: (body: { account?: string; drafts?: boolean; send?: boolean; method?: 'browser' | 'device' }) => call<import('./connect').ConnectSession>('/connect/sign-in', body),
     connectPoll: (id: string) => call<import('./connect').ConnectSession>(`/connect/sign-in/${encodeURIComponent(id)}`),
+    connectSend: (account: string, on: boolean) => call<import('./connect').ConnectSession | { ok: true }>('/connect/send', { account, on }),
     connectDrafts: (account: string, on: boolean) => call<import('./connect').ConnectSession | { ok: true }>('/connect/drafts', { account, on }),
     connectRemove: (account: string) => call<{ ok: true }>('/connect/remove', { account }),
     /** Each inbox source and the summary. @req FR:inbox-page/api.sources */
     inboxSources: () => call<import('./inbox').SourcesReply>('/inbox-sources'),
     /** @req FR:inbox-page/detail.api */
     inboxDetail: (id: string) => call<import('./inbox').DetailReply>(`/inbox-items/${encodeURIComponent(id)}/detail`),
+    /** Stores the edit on this machine. @req FR:email-send/draft.api */
+    inboxDraft: (id: string, text: string) => call<{ ok: true }>(`/inbox-items/${encodeURIComponent(id)}/draft`, { text }),
+    /** The owner clicked Send. @req FR:email-send/send.api */
+    inboxSend: (id: string, text: string) => call<{ ok: true }>(`/inbox-items/${encodeURIComponent(id)}/send`, { text }),
     /** Clears the junk rows the owner sees. @req FR:inbox-page/junk.api */
     inboxJunk: (action: 'archive' | 'unsubscribe-archive', ids: string[]) => call<import('./inbox').JunkResult>('/inbox-junk', { action, ids }),
-    /** Runs one action; never sends. @req FR:inbox-page/api.act */
+    /** Runs one action; sends nothing. @req FR:inbox-page/api.act */
     inboxAct: (id: string, body: { action: string; text?: string; until?: string; request?: boolean }) => call<import('./inbox').ActResult>(`/inbox-items/${encodeURIComponent(id)}/action`, body),
     sessions: () => call<SessionList>('/sessions?limit=200'),
     sessionCost: (days = 7) => call<CostReport>(`/sessions/cost?days=${days}`),

@@ -61,11 +61,23 @@ describe('stack graph', () => {
     const cache = join(mkdtempSync(join(tmpdir(), 'graph-cli-')), 'graph-token.json');
     replies([
       { device_code: 'dc', user_code: 'ABCD', verification_uri: 'https://microsoft.com/devicelogin', expires_in: 900, interval: 0, message: 'enter ABCD' },
-      { access_token: 'secret-at', refresh_token: 'secret-rt', expires_in: 3600, scope: 'Calendars.Read Mail.Send offline_access' },
+      { access_token: 'secret-at', refresh_token: 'secret-rt', expires_in: 3600, scope: 'Calendars.Read Mail.Send.Shared offline_access' },
     ]);
     const r = await stack('graph', 'login', '--client-id', CLIENT, '--cache', cache);
     expect(r.code).not.toBe(0);
     expect(existsSync(cache)).toBe(false);
+  });
+  // @req FR:graph-signin/cli.login.nosend @req FR:connect-accounts/scope.send
+  it('login never keeps the send scope, even when Microsoft grants it', async () => {
+    const cache = join(mkdtempSync(join(tmpdir(), 'graph-cli-')), 'graph-token.json');
+    replies([
+      { device_code: 'dc', user_code: 'ABCD', verification_uri: 'https://microsoft.com/devicelogin', expires_in: 900, interval: 0, message: 'enter ABCD' },
+      { access_token: 'secret-at', refresh_token: 'secret-rt', expires_in: 3600, scope: 'Calendars.Read Mail.Send offline_access' },
+    ]);
+    const r = await stack('graph', 'login', '--client-id', CLIENT, '--cache', cache);
+    expect(r.code).toBe(0);
+    expect(r.out).not.toContain('Mail.Send');
+    expect(JSON.parse(readFileSync(cache, 'utf8')).scopes).toEqual(['Calendars.Read', 'offline_access']);
   });
   it('login needs a client id and refuses unknown features', async () => {
     const cache = join(mkdtempSync(join(tmpdir(), 'graph-cli-')), 'graph-token.json');
