@@ -1,7 +1,7 @@
 /**
  * Inbox status: mail only, no setup UI, honest empty states, one quiet link to Settings > Accounts, and the nav dot.
  * Runs at 1280 (desktop) and 375 (mobile): axe clean, no sideways scroll, 44 px targets on a phone.
- * @req FR:inbox-page/web.empty @req FR:inbox-page/web.status @req FR:inbox-page/web.nocmd @req FR:inbox-page/web.dot @req FR:inbox-page/web.phone @req FR:inbox-page/web.view.calm
+ * @req FR:inbox-page/web.empty @req FR:inbox-page/web.status @req FR:inbox-page/web.nocmd @req FR:inbox-page/web.dot @req FR:inbox-page/web.phone @req FR:inbox-page/web.view.unread @req FR:inbox-page/web.view.border @req FR:inbox-page/web.view.button @req FR:inbox-page/web.accounts @req FR:inbox-page/web.status.fix @req FR:inbox-page/web.empty.fix @req FR:inbox-page/web.status.setup
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
@@ -54,7 +54,7 @@ test('nothing connected: no Inbox zero, no setup UI; one link to Settings > Acco
   await expect(page.getByTestId('inbox-sources')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Check connection|Connect|Fix/ })).toHaveCount(0);
   await expect(main(page).locator('code')).toHaveCount(0);
-  const link = main(page).getByRole('link', { name: 'Manage accounts' });
+  const link = main(page).getByRole('link', { name: 'Fix in Settings' });
   await expect(link).toHaveCount(1);
   await expect(link).toHaveAttribute('href', '#/settings/accounts');
   await link.click();
@@ -73,22 +73,27 @@ test('a broken mailbox: the empty state names it, never Inbox zero', async ({ pa
   await open(page, broken());
   await expect(page.getByText('Inbox zero')).toHaveCount(0);
   await expect(page.getByTestId('empty-state')).toContainText('Email sign-in expired: me@contoso.test');
-  await expect(main(page).getByRole('link', { name: 'Manage accounts' })).toHaveCount(1);
+  await expect(main(page).getByRole('link', { name: 'Fix in Settings' })).toHaveCount(1);
 });
 
 test('items with a problem: one quiet line above the list, linked to Settings', async ({ page }) => {
   await open(page, broken(), [mail]);
   const line = page.getByTestId('inbox-status');
   await expect(line).toContainText('Email sign-in expired: me@contoso.test');
-  await expect(line.getByRole('link', { name: 'Manage accounts' })).toHaveAttribute('href', '#/settings/accounts');
+  await expect(line.getByRole('link', { name: 'Fix in Settings' })).toHaveAttribute('href', '#/settings/accounts');
   await expect(page.locator('.in-row')).toHaveCount(1);
 });
 
-test('all fresh: Inbox zero, no status line, no dot', async ({ page }) => {
+test('all fresh: Inbox zero, no status line, no dot; accounts stay one quiet link away', async ({ page }) => {
   await open(page, fresh());
   await expect(page.getByTestId('empty-state')).toContainText('Inbox zero. Nothing needs you.');
   await expect(page.getByTestId('inbox-status')).toHaveCount(0);
-  await expect(main(page).getByRole('link', { name: 'Manage accounts' })).toHaveCount(0);
+  await expect(main(page).getByRole('link', { name: 'Fix in Settings' })).toHaveCount(0);
+  // Add another account, drafts and disconnect stay reachable once mail works. @req FR:connect-accounts/web.where
+  const manage = main(page).getByRole('link', { name: 'Manage accounts' });
+  await expect(manage).toHaveAttribute('href', '#/settings/accounts');
+  await manage.click();
+  await expect(page).toHaveURL(/#\/settings\/accounts$/);
   await expect(page.getByTestId('inbox-dot')).toHaveCount(0);
 });
 
@@ -98,7 +103,7 @@ test('all fresh with items: no status line', async ({ page }) => {
   await expect(page.getByTestId('inbox-status')).toHaveCount(0);
 });
 
-// An open tab reads the status again, so Inbox zero ends when the window does. @req FR:inbox-page/web.empty
+// An open tab reads the status again, so Inbox zero ends when the window does. @req FR:inbox-page/web.empty.refresh @req FR:inbox-page/web.empty.headline
 test('an open tab drops Inbox zero once the sync goes stale', async ({ page }) => {
   const m = await open(page, fresh());
   await expect(page.getByTestId('empty-state')).toContainText('Inbox zero. Nothing needs you.');
@@ -106,6 +111,8 @@ test('an open tab drops Inbox zero once the sync goes stale', async ({ page }) =
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await expect(page.getByText('Inbox zero')).toHaveCount(0);
   await expect(page.getByTestId('empty-state')).toContainText('Last synced 45m ago');
+  // A sync that is behind has nothing to fix in Settings: no Fix link.
+  await expect(main(page).getByRole('link', { name: 'Fix in Settings' })).toHaveCount(0);
 });
 
 test('a failed read never claims Inbox zero', async ({ page }) => {

@@ -1,8 +1,8 @@
 # Inbox sources
 
-The Inbox page lists every source it reads and says how to connect each one. It says "Inbox zero" only when at least one source synced in the last 30 minutes. Stack never sends.
+The Inbox page shows mail only. It says "Inbox zero" only when every counted source synced in the last 30 minutes; otherwise it shows one status line. Accounts are managed in Settings > Accounts. Stack never sends.
 
-Check from a terminal: `stack inbox sources` (add `--json` for scripts). The page has the same list under **Inbox sources**, with **Check connection**.
+Check from a terminal: `stack inbox sources` (add `--json` for scripts). The page shows no source list; Settings > Accounts signs mailboxes in.
 
 ## States
 

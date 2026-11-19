@@ -30,7 +30,7 @@ export interface SourceRow {
 export interface SourcesSummary { connected: number; total: number; fresh: number; attention: boolean; canClaimZero: boolean; headline: string | null }
 export interface SourcesReply { sources: SourceRow[]; summary: SourcesSummary }
 
-/** Never "Inbox zero" unless a source synced within its window. @req FR:inbox-page/web.empty */
+/** Never "Inbox zero" unless every source synced within its window. @req FR:inbox-page/web.empty @req FR:inbox-page/web.empty.headline @req FR:inbox-page/web.empty.unknown */
 export function emptyText(s: SourcesSummary | undefined): { zero: boolean; what: string } {
   if (!s) return { zero: false, what: 'Inbox status unknown' };
   if (s.canClaimZero) return { zero: true, what: 'Inbox zero. Nothing needs you.' };

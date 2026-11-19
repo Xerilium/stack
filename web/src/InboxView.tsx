@@ -2,7 +2,7 @@
  * The Inbox page: all mail, unread Teams and Slack. Each row has a summary, one suggested action, and a menu of the rest.
  * A reply opens an editable draft first; the page can only create a draft, never send.
  * Mail only: no setup UI. Never says Inbox zero unless every source synced recently; a problem is one quiet line linked to Settings > Accounts.
- * @req FR:inbox-page/web.view @req FR:inbox-page/web.view.calm @req FR:inbox-page/web.draft @req FR:inbox-page/web.phone @req FR:inbox-page/web.empty @req FR:inbox-page/web.status @req FR:inbox-page/web.nocmd
+ * @req FR:inbox-page/web.view @req FR:inbox-page/web.view.unread @req FR:inbox-page/web.view.border @req FR:inbox-page/web.view.button @req FR:inbox-page/web.draft @req FR:inbox-page/web.phone @req FR:inbox-page/web.empty @req FR:inbox-page/web.status @req FR:inbox-page/web.status.setup @req FR:inbox-page/web.nocmd @req FR:inbox-page/web.accounts
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type Client } from './api';
@@ -92,7 +92,7 @@ function Row({ row, catalog, api, toast, done }: { row: InboxRow; catalog: Actio
 
 /**
  * `refresh` changes on the page's minute timer, when the tab comes back, and on live changes: the items and the summary
- * are read again together, so an open tab never keeps an old `Inbox zero`. @req FR:inbox-page/web.empty
+ * are read again together, so an open tab never keeps an old `Inbox zero`. @req FR:inbox-page/web.empty.refresh
  */
 export function InboxView({ api, toast, onStatus, refresh }: { api: Client; toast: ToastFn; onStatus?: (r: SourcesReply) => void; refresh?: string | number }) {
   const [items, setItems] = useState<InboxRow[]>([]);
@@ -118,14 +118,15 @@ export function InboxView({ api, toast, onStatus, refresh }: { api: Client; toas
   const unread = items.filter((i) => i.unread).length;
   const empty = emptyText(src?.summary);
   const line = statusLine(src?.summary);
-  const manage = <a class="in-manage" href="#/settings/accounts">Manage accounts</a>;
+  /** Only a problem the owner can fix in Settings gets a link; a sync that is behind has nothing to fix there. @req FR:inbox-page/web.status.fix @req FR:inbox-page/web.empty.fix */
+  const fix = src?.summary.attention ? <a class="in-manage" href="#/settings/accounts">Fix in Settings</a> : null;
   return (
     <section class="inbox-view" aria-labelledby="inbox-h">
-      <div class="in-head"><h1 class="h1" id="inbox-h">Inbox{unread > 0 && <span class="count">{unread}</span>}</h1></div>
+      <div class="in-head"><h1 class="h1" id="inbox-h">Inbox{unread > 0 && <span class="count">{unread}</span>}</h1><a class="in-manage in-accounts" href="#/settings/accounts">Manage accounts</a></div>
       {phase === 'loading' && <p class="in-empty" role="status">Loading</p>}
       {phase === 'error' && <p class="in-empty" role="alert">Could not load the inbox.</p>}
-      {phase === 'ready' && line && items.length > 0 && <p class="in-status" role="status" data-testid="inbox-status">{line} · {manage}</p>}
-      {phase === 'ready' && items.length === 0 && <EmptyState what={empty.what} next={empty.zero ? <a href="#/now">Back to Now</a> : manage} />}
+      {phase === 'ready' && line && items.length > 0 && <p class="in-status" role="status" data-testid="inbox-status">{line}{fix && <> · {fix}</>}</p>}
+      {phase === 'ready' && items.length === 0 && <EmptyState what={empty.what} next={empty.zero ? <a href="#/now">Back to Now</a> : fix ?? undefined} />}
       <ul class="in-list">{items.map((r) => <Row key={r.id} row={r} catalog={catalog} api={api} toast={toast} done={(id) => setItems((xs) => xs.filter((x) => x.id !== id))} />)}</ul>
     </section>
   );

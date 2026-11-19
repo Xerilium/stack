@@ -23,7 +23,7 @@ describe('inbox actions', () => {
   });
 });
 
-/** @req FR:inbox-page/web.empty @req FR:inbox-page/web.status */
+/** @req FR:inbox-page/web.empty @req FR:inbox-page/web.empty.headline @req FR:inbox-page/web.empty.unknown @req FR:inbox-page/web.status */
 describe('inbox status', () => {
   const sum = (o: Partial<SourcesSummary> = {}): SourcesSummary => ({ connected: 0, total: 2, fresh: 0, attention: true, canClaimZero: false, headline: 'No inboxes connected', ...o });
   it('claims Inbox zero only when a source is fresh', () => {
