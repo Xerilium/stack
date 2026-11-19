@@ -107,7 +107,8 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
       onSynced: setSyncedAt,
       onChange: (kinds) => {
         setLiveTick((n) => n + 1);
-        if (kinds.some((k) => k === 'asks' || k === 'state' || k === 'poll')) void load();
+        // Asks are rows in task files, so a task change reloads them too. @req FR:task-asks/core.contract
+        if (kinds.some((k) => k === 'asks' || k === 'tasks' || k === 'state' || k === 'poll')) void load();
         // A priority edit re-ranks Home. @req FR:pri-first-ranking/api.order
         if (kinds.some((k) => k === 'tasks' || k === 'poll' || k === 'pris')) tasksCb.current();
         if (kinds.includes('sync')) syncCb.current?.();

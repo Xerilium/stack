@@ -3,7 +3,8 @@ import { mkdtempSync, readdirSync, statSync, chmodSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { createHash } from 'crypto';
-import { asksPath, parseAsk } from '../../src/core/asks';
+import { askRows } from '../helpers/ask-rows';
+const rowAsk = async (s: Parameters<typeof askRows>[0], key: string) => (await askRows(s)).find((r) => r.key === key)!.ask;
 import { DEFAULT_RULES } from '../../src/email/rules';
 import { runTriage } from '../../src/email/run';
 import type { Classifier, Drafter, MailProvider } from '../../src/email/types';
@@ -132,7 +133,7 @@ describe('run robustness', () => {
     let n = 0;
     const s = setup(async () => { if (n++) throw new Error('model down'); return BAD; });
     await runTriage({ ctx, ...s, rules: DEFAULT_RULES, voice });
-    const a = parseAsk('k', (await storage.read(asksPath(keyOf('conv-1')))).content);
+    const a = (await rowAsk(storage, keyOf('conv-1')));
     expect(a.recommend).toBe('Edit then send');
     expect(a.detail).toMatch(/I hope this email finds you well/);
   });
@@ -140,12 +141,12 @@ describe('run robustness', () => {
     const { storage, ctx } = mkCtx();
     await runTriage({ ctx, ...setup(async () => BAD), rules: DEFAULT_RULES, voice });
     await runTriage({ ctx, ...setup(async () => BAD, 'm2'), rules: DEFAULT_RULES, voice });
-    expect(parseAsk('k', (await storage.read(asksPath(keyOf('conv-1')))).content).recommend).toBe('Edit then send');
+    expect((await rowAsk(storage, keyOf('conv-1'))).recommend).toBe('Edit then send');
   });
   it('the fix line lists each match once', async () => {
     const { storage, ctx } = mkCtx();
     await runTriage({ ctx, ...setup(async () => 'Hi Alex,\n\nYes.\n\nBest regards,\nSam'), rules: DEFAULT_RULES, voice });
-    const d = parseAsk('k', (await storage.read(asksPath(keyOf('conv-1')))).content).detail;
+    const d = (await rowAsk(storage, keyOf('conv-1'))).detail;
     expect(d.split('\n')[0].match(/Best regards/g)!.length).toBe(1);
   });
 });

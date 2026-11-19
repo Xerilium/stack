@@ -14,13 +14,13 @@ async function stack(d: string, ...args: string[]) {
 }
 
 describe('stack asks', () => {
-  it('put writes the ask file and prints the key; list ranks; handle closes', async () => {
+  it('put writes the ask row and prints the key; list ranks; handle closes', async () => {
     const d = dir();
     writeFileSync(join(d, 'detail.md'), 'Remaining risk: keyboard pass.');
     const put = await stack(d, 'asks', 'put', 'pr-879-approve', '--ask', 'Approve merging PR 879', '--kind', 'approve', '--from', 'allyte-cos', '--recommend', 'Approve', '--default', 'Merges at 8am', '--by', '2026-10-29T15:00:00Z', '--reversible', 'yes', '--link', 'https://github.com/o/r/pull/879', '--priority', 'high', '--effort', '2m', '--blocks', '3', '--detail-file', join(d, 'detail.md'));
     expect(put).toMatchObject({ code: 0, out: 'pr-879-approve\n' });
-    const raw = readFileSync(join(d, 'tasks/.stack/asks/pr-879-approve.md'), 'utf8');
-    expect(raw).toContain('- ask: Approve merging PR 879');
+    const raw = readFileSync(join(d, 'tasks/asks.md'), 'utf8');
+    expect(raw).toContain('- [ ] 🙋 ‼️ Approve merging PR 879\n  > id: pr-879-approve\n');
     expect(raw).toContain('Remaining risk: keyboard pass.');
     await stack(d, 'asks', 'put', 'low-one', '--ask', 'Rename the repo', '--kind', 'go-do', '--from', 'cos', '--priority', 'low');
     const list = await stack(d, 'asks', 'list', '--now', '2026-10-28T18:00:00Z');
@@ -48,7 +48,7 @@ describe('stack asks', () => {
     expect((await stack(d, 'asks', 'put', 'k', '--ask', 'x', '--kind', 'approve', '--from', 'cos', '--bogus', '1')).code).toBe(2);
   });
 
-  it('archive moves old done asks out of the queue folder', async () => {
+  it('archive deletes old done ask rows', async () => {
     const d = dir();
     await stack(d, 'asks', 'put', 'k', '--ask', 'x', '--kind', 'approve', '--from', 'cos');
     await stack(d, 'asks', 'handle', 'k', '--outcome', 'handled');
@@ -56,7 +56,7 @@ describe('stack asks', () => {
     const r = await stack(d, 'asks', 'archive', '--days', '0');
     expect(r.code).toBe(0);
     expect(r.out.trim()).toBe('archived k');
-    expect(readFileSync(join(d, 'tasks/.stack/asks/archive/k.md'), 'utf8')).toContain('- state: done');
+    expect(readFileSync(join(d, 'tasks/asks.md'), 'utf8')).not.toContain('> id: k'); // git history keeps it
     expect((await stack(d, 'asks', 'list', '--state', 'all', '--json')).out).toContain('"total":0');
     expect((await stack(d, 'asks', 'archive', '--days', 'x')).code).toBe(2);
     expect((await stack(d, 'asks', 'archive', 'extra')).code).toBe(2);

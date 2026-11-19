@@ -3,7 +3,7 @@
  * @req FR:email-triage/ask.reply @req FR:email-triage/ask.decide @req FR:email-triage/ask.quiet @req FR:email-triage/ask.resolve @req FR:email-triage/ask.group
  */
 import { createHash } from 'crypto';
-import { handleAsk, oneLine, putAsk, readAsk, type AskPriority, type AskPut } from '../core/asks';
+import { handleAsk, listAsks, oneLine, putAsk, readAsk, type AskPriority, type AskPut } from '../core/asks';
 import type { LifecycleContext } from '../core/lifecycle';
 import { ConflictError, NotFoundError } from '../core/storage';
 import { redact } from '../core/triage';
@@ -164,9 +164,9 @@ export async function resolveThreads(ctx: LifecycleContext, conversationIds: str
   let n = 0;
   for (const c of conversationIds) if (await resolveKey(ctx, mailKey(c))) n++;
   const threads = new Set(conversationIds.map(threadId));
-  if (!threads.size || !ctx.storage.listAsks) return n;
-  for (const path of await ctx.storage.listAsks()) {
-    const key = /(mail-[0-9a-f]{12})\.md$/.exec(path)?.[1];
+  if (!threads.size) return n;
+  for (const { key: k } of (await listAsks(ctx, { state: 'all', limit: Number.MAX_SAFE_INTEGER })).items) {
+    const key = /^mail-[0-9a-f]{12}$/.test(k) ? k : undefined;
     const a = key ? (await readAsk(ctx, key))?.ask : undefined;
     if (!a || a.state === 'done' || a.from !== ACTOR || !mailsOf(a.detail).ids.some((id) => threads.has(id))) continue;
     if (await resolveKey(ctx, key!)) n++;

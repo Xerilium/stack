@@ -1,6 +1,6 @@
 /**
  * `stack agent run <command> [args...] --prompt t`: one prompt on an ACP agent. Permission requests become asks
- * (`tasks/.stack/asks/perm-*.md`) that the owner answers; nothing is ever auto-allowed. Output passes through `redact`.
+ * (🙋 rows `perm-*`) that the owner answers; nothing is ever auto-allowed. Output passes through `redact`.
  * Cancel, timeout and crash end cleanly: the run is cancelled, an agent that ignores the cancel is closed after a grace period,
  * and the agent is always closed before the command returns.
  * @req FR:acp-driver/cli.run @req FR:acp-driver/cli.safe @req FR:acp-driver/perm.broker @req FR:acp-driver/perm.flow

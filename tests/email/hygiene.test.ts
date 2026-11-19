@@ -1,5 +1,7 @@
 import { createHash } from 'crypto';
-import { answerAsk, asksPath, parseAsk, putAsk } from '../../src/core/asks';
+import { answerAsk, putAsk } from '../../src/core/asks';
+import { askKeys, askRows } from '../helpers/ask-rows';
+const rowAsk = async (s: Parameters<typeof askRows>[0], key: string) => (await askRows(s)).find((r) => r.key === key)!.ask;
 import { createGraphGuard, GRAPH_BASE, GraphDenied } from '../../src/email/guard';
 import { applyApproved, approvedChoice, approvedMoves, memoryState, observe, safeHttps, subKey, unsubscribeTarget, writeHygieneAsks, type BatchKind, type HygieneState, type Http, type MailActions } from '../../src/email/hygiene';
 import { DEFAULT_RULES, prefilter } from '../../src/email/rules';
@@ -10,7 +12,7 @@ import { mkCtx, msg, NOW } from './fixtures';
 
 const H = 3600_000;
 const old = (h: number) => new Date(NOW.getTime() - h * H).toISOString();
-const read = async (storage: { read(p: string): Promise<{ content: string }> }, key: string) => parseAsk(key, (await storage.read(asksPath(key))).content);
+const read = async (storage: Parameters<typeof askRows>[0], key: string) => (await rowAsk(storage, key));
 const SIGNED = { 'Authentication-Results': 'mx.example.test; spf=pass; dkim=pass header.d=weekly.example.test; dmarc=pass' };
 const news = (over: Partial<Message> = {}): Message => msg({
   id: 'n1', conversationId: 'cn1', subject: 'Weekly digest #12', from: { name: 'Cloud Weekly', address: 'news@weekly.example.test' }, receivedAt: old(30), bodyPreview: 'This week in cloud.',
@@ -77,7 +79,7 @@ describe('batch asks', () => {
     const { storage, ctx } = ctxNow();
     const s = await memoryState().get();
     await writeHygieneAsks(ctx, s, { now: NOW });
-    expect(await storage.listAsks!()).toEqual([]);
+    expect(await askKeys(storage)).toEqual([]);
     observe(s, settled(news(), 'newsletter'), { now: NOW });
     await writeHygieneAsks(ctx, s, { now: NOW });
     const first = keyOf(s, 'archive');
@@ -189,7 +191,7 @@ describe('subscriptions', () => {
     observe(s, settled(news(), 'newsletter'), { now: NOW });
     await writeHygieneAsks(ctx, s, { now: NOW, judge });
     const key = subKey('weekly.example.test');
-    expect(await storage.listAsks!()).not.toContain(asksPath(key));
+    expect(await askKeys(storage)).not.toContain((key));
     observe(s, settled(news({ id: 'n2', conversationId: 'cn2', subject: 'Weekly digest #13' }), 'newsletter'), { now: NOW });
     await writeHygieneAsks(ctx, s, { now: NOW, judge });
     expect(judge.newsletterValue).toHaveBeenCalledWith('Cloud Weekly', ['Weekly digest #12', 'Weekly digest #13']);
@@ -353,7 +355,7 @@ describe('runTriage with hygiene', () => {
   it('writes no batch or subscription asks in observe mode (no actions)', async () => {
     const { storage, ctx } = ctxNow();
     await runTriage({ ctx, provider: provider([news(), news({ id: 'n2', conversationId: 'cn2' })]), classifier, rules: DEFAULT_RULES, hygiene: { state: memoryState(), judge: { newsletterValue: async () => 'x' } } });
-    expect(await storage.listAsks!()).toEqual([]);
+    expect(await askKeys(storage)).toEqual([]);
   });
 });
 

@@ -1,4 +1,6 @@
-import { asksPath, parseAsk, putAsk } from '../../src/core/asks';
+import { putAsk } from '../../src/core/asks';
+import { askRows } from '../helpers/ask-rows';
+const rowAsk = async (s: Parameters<typeof askRows>[0], key: string) => (await askRows(s)).find((r) => r.key === key)!.ask;
 import { ACTIONS, fromTriage, orderItems, requestAction, runAction } from '../../src/inbox';
 import { parseItems } from '../../src/inbox/store';
 import type { InboxItem } from '../../src/inbox';
@@ -74,12 +76,12 @@ describe('ask actions', () => {
   it('mark-done resolves the ask', async () => {
     const { storage, ctx } = mkCtx(); await open(ctx);
     expect(await runAction(fromTriage(res(), 'a'), { action: 'mark-done' }, { ctx })).toEqual({ ok: true });
-    expect(parseAsk(mailKey('conv-1'), (await storage.read(asksPath(mailKey('conv-1')))).content).state).toBe('done');
+    expect((await rowAsk(storage, mailKey('conv-1'))).state).toBe('done');
   });
   it('snooze defers and ask-me-later defaults to next morning', async () => {
     const { storage, ctx } = mkCtx(); await open(ctx);
     await runAction(fromTriage(res(), 'a'), { action: 'snooze', until: '2026-11-01' }, { ctx });
-    const a = parseAsk(mailKey('conv-1'), (await storage.read(asksPath(mailKey('conv-1')))).content);
+    const a = (await rowAsk(storage, mailKey('conv-1')));
     expect(a.snoozed).toContain('2026-11-01');
     await expect(runAction(fromTriage(res(), 'a'), { action: 'snooze' }, { ctx })).rejects.toThrow(/until/);
     expect(await runAction(fromTriage(res(), 'a'), { action: 'ask-me-later' }, { ctx })).toEqual({ ok: true });
@@ -95,7 +97,7 @@ describe('ask actions', () => {
     // the stored item keeps its ask key; a bad one is dropped
     expect(parseItems(JSON.parse(JSON.stringify([item, { ...item, askKey: '../x' }]))).map((i) => i.askKey)).toEqual([groupKey(msg()), undefined]);
     await runAction(item, { action: 'mark-done' }, { ctx });
-    expect(parseAsk(groupKey(msg()), (await storage.read(asksPath(groupKey(msg())))).content).state).toBe('done');
+    expect((await rowAsk(storage, groupKey(msg()))).state).toBe('done');
   });
   it('create-task adds a task from the subject', async () => {
     const { ctx } = mkCtx();
@@ -185,6 +187,6 @@ describe('chat to ask', () => {
     const { putAsk: put } = await import('../../src/core/asks');
     await put(ctx, m.id, ask, 'inbox');
     expect(await put(ctx, m.id, ask, 'inbox')).toMatchObject({ created: false });
-    expect(await storage.read(asksPath(m.id))).toBeTruthy();
+    expect(await rowAsk(storage, m.id)).toBeTruthy();
   });
 });

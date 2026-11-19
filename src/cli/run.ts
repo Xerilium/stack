@@ -15,7 +15,7 @@ import {
 import { parseProject } from '../core/parser';
 import { checkTask } from '../core/quality';
 import { formatCount, formatIssue, isError, lintProject, lintRow, lintTitle, type LintIssue } from '../core/task-lint';
-import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
+import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, importAsks, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
 import { runInventory } from '../core/session-inventory';
 import { PRI_LINKS, PrisInvalid, PriStore, type Pri } from '../core/pris';
@@ -108,7 +108,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string; s
   'remove-completed': { flags: ['project', 'queries', 'no-update'], usage: 'remove-completed [--project name] [--queries] [--no-update]', help: 'delete checked rows' },
   web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset', 'bind'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset] [--bind loopback|tailnet]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches; --bind tailnet also serves paired devices on your Tailscale addresses)', summary: 'serve the web app on localhost' },
   devices: { flags: [], usage: 'devices add <name> | list | revoke <id>', help: 'pair a phone with the tailnet host (docs/phone-access.md); add prints a one-time pairing code', summary: 'pair a phone with the tailnet host' },
-  asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days', 'flow', 'seq', 'ref', 'apply', 'applies'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen --flow slug --seq n --ref project:line|tasks/<file>.md:<line> --apply "<action>" --applies "a|b"] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside', summary: 'the ask queue for the owner' },
+  asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days', 'flow', 'seq', 'ref', 'apply', 'applies', 'dry-run'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen --flow slug --seq n --ref project:line|tasks/<file>.md:<line> --apply "<action>" --applies "a|b"] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n] | import [--dry-run]', help: 'ask queue for the owner (nested 🙋 task rows): agents put and handle asks; archive deletes old done ask rows; import turns open ask files into rows once', summary: 'the ask queue for the owner' },
   email: { flags: ['account', 'mode', 'max', 'dry-run', 'offline', 'fixture', 'extra', 'project', 'all'], usage: 'email run [--all] [--mode observe|drafts] [--max n] [--dry-run [--offline] [--fixture f.json]] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]', help: 'one triage pass on the signed-in mailbox (asks, drafts only, inbox-zero batches), learn your writing voice, or show status; never sends mail', summary: 'one triage pass on the mailbox; never sends mail' },
   graph: { flags: ['client-id', 'tenant', 'with', 'cache', 'account'], usage: 'graph login --client-id <id> [--tenant t] [--account addr] [--with calendar,mail,drafts] [--cache path] | status | logout', help: 'sign in to Microsoft Graph (device code) for the live calendar and mail; read-only scopes', summary: 'sign in to Microsoft Graph for calendar and mail' },
   inbox: { flags: ['from', 'text', 'expect', 'project', 'state', 'note', 'all', 'once', 'watch', 'agent'], usage: 'inbox reply tasks/<file>.md:<line> --from <agent> --text t [--expect t] | list [--project p] [--agent slug] [--state open|handled|all] [--all] [--json] | handle <id> [--note t] [--from <agent>] | run [--project p] [--once|--watch] [--json] | sources [--json]', help: 'reply on a task as an agent (tasks/.stack/inbox, from: agent), list the owner\'s open instructions, mark one handled (docs/agent-instructions.md), deliver open messages to their agents (claude -p), or show each inbox source and how to connect it', summary: 'agent replies, owner instructions, and inbox sources' },
@@ -395,7 +395,14 @@ async function asksCmd(ctx: LifecycleContext, p: ReturnType<typeof parseArgs>): 
       const r = await archiveAsks(ctx, { days });
       return { json: { ok: true, ...r }, text: r.archived.length ? `archived ${r.archived.join(' ')}` : 'no change: nothing to archive' };
     }
-    default: throw new UsageError('Usage: stack asks put|list|handle|archive (see stack --help)');
+    case 'import': {
+      // @req FR:task-asks/import.cmd
+      if (key) throw new UsageError(`Unexpected argument: ${key}`);
+      const dry = f['dry-run'] === true;
+      const r = await importAsks(ctx, { dryRun: dry });
+      return { json: { ok: true, dryRun: dry, ...r }, text: [...r.imported.map((k) => `imported ${k}`), ...r.skipped.map((k) => `skipped ${k}`), `${r.imported.length} asks in ${r.files.length} files${dry ? ' (dry run)' : ''}`].join('\n') };
+    }
+    default: throw new UsageError('Usage: stack asks put|list|handle|archive|import (see stack --help)');
   }
 }
 

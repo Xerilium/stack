@@ -1,11 +1,12 @@
 import { createHash } from 'crypto';
-import { asksPath, parseAsk } from '../../src/core/asks';
+import { askKeys, askRows, askText } from '../helpers/ask-rows';
+const rowAsk = async (s: Parameters<typeof askRows>[0], key: string) => (await askRows(s)).find((r) => r.key === key)!.ask;
 import { NotFoundError } from '../../src/core/storage';
 import { QUIET_CLASSES, groupKey, mailKey, newSummary, recordResult, resolveAsk, tally, toAsk } from '../../src/email/to-ask';
 import type { TriageResult } from '../../src/email/types';
 import { NOW, mkCtx, msg } from './fixtures';
 
-const read = async (s: { read(p: string): Promise<{ content: string }> }, key: string) => parseAsk(key, (await s.read(asksPath(key))).content);
+const read = async (s: Parameters<typeof askRows>[0], key: string) => (await rowAsk(s, key));
 const draft = { text: `⟦AI draft: review before sending⟧\n${'Thanks, that works for me. '.repeat(40)}`, webLink: 'https://outlook.example.test/mail/drafts/D1' };
 const reply = (over: Partial<TriageResult> = {}): TriageResult => ({ message: msg(), class: 'needs_reply', confidence: 0.9, reason: 'Direct question', urgency: 2, draft, ...over });
 const KEY = mailKey('conv-1');
@@ -50,7 +51,7 @@ describe('ask from a needs_reply result', () => {
   it('redacts secrets in the detail and never writes the original body', async () => {
     const { storage, ctx } = mkCtx();
     await recordResult(ctx, reply({ message: msg({ bodyPreview: 'ORIGINAL-BODY-TEXT' }), draft: { ...draft, text: 'Use sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789 now' } }));
-    const raw = (await storage.read(asksPath(KEY))).content;
+    const raw = (await askText(storage, KEY));
     expect(raw).not.toContain('abcdefghijklmnopqrstuvwxyz0123456789');
     expect(raw).not.toContain('ORIGINAL-BODY-TEXT');
   });
@@ -65,7 +66,7 @@ describe('ask from a needs_reply result', () => {
     const { storage, ctx } = mkCtx();
     expect(await recordResult(ctx, reply())).toEqual({ key: KEY, created: true });
     expect(await recordResult(ctx, reply({ confidence: 0.3 }))).toEqual({ key: KEY, created: false });
-    expect(await storage.listAsks!()).toEqual([asksPath(KEY)]);
+    expect(await askKeys(storage)).toEqual([(KEY)]);
     expect((await read(storage, KEY)).recommend).toBe('Edit then send');
   });
 
@@ -107,7 +108,7 @@ describe('ask from a needs_decision or sensitive result', () => {
     expect(a).toMatchObject({ kind: 'go-do', ask: 'Sensitive mail from Counsel: Settlement terms', from: 'email-triage', link: m.webLink });
     // only the group count line (FR:email-triage/ask.group), never the body
     expect(a.detail).toMatch(/^Mails: 1 \([0-9a-f]{8}\)$/);
-    const raw = (await storage.read(asksPath(key))).content;
+    const raw = (await askText(storage, key));
     expect(raw).not.toContain('SECRET-BODY-TEXT');
     expect(raw).not.toContain('Thanks, that works');
     expect(a.why).toBeUndefined();
@@ -126,7 +127,7 @@ describe('quiet classes', () => {
       expect(await recordResult(ctx, r)).toBeNull();
       tally(summary, r, 'rule');
     }
-    expect(await storage.listAsks!()).toEqual([]);
+    expect(await askKeys(storage)).toEqual([]);
     expect(summary).toMatchObject({ messages: 6, rules: 6, model: 0, asks: 0, counts: { newsletter: 1, receipt: 1, calendar: 1, skip: 1, fyi: 1, spam: 1 } });
   });
 
@@ -159,6 +160,7 @@ describe('resolving on an owner reply', () => {
 
   it('only swallows a missing ask', async () => {
     const { storage, ctx } = mkCtx();
+    storage.seed('tasks/a.md', '# A\n'); // asks are rows in task files: a read must happen for a read error to show
     storage.read = async () => { throw new NotFoundError('x'); };
     await expect(resolveAsk(ctx, msg())).resolves.toBe(false);
     storage.read = async () => { throw new Error('disk'); };

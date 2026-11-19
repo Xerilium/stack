@@ -1,5 +1,6 @@
 import { putAsk } from "../../src/core/asks";
 import { NOW, setup } from "./helpers";
+import { askKeys, askText } from "../helpers/ask-rows";
 
 // Security follow-up: an agent token must not rewrite a permission prompt, so the owner never approves a misdescribed tool call.
 // @req FR:agent-sessions/perm.ask
@@ -35,7 +36,7 @@ describe("perm-* asks are reserved for the broker", () => {
     });
     expect(r.status).toBe(403);
     expect(
-      (await s.storage.read("tasks/.stack/asks/perm-abcd1234-0001.md")).content,
+      await askText(s.storage, "perm-abcd1234-0001"),
     ).toContain("rm -rf");
   });
 
@@ -46,7 +47,7 @@ describe("perm-* asks are reserved for the broker", () => {
       body: { ask: "Allow?", kind: "decide", options: ["Allow once", "Deny"] },
     });
     expect(r.status).toBe(403);
-    expect(await s.storage.listAsks()).toEqual([]);
+    expect(await askKeys(s.storage)).toEqual([]);
   });
 
   it("a token can still write its own asks", async () => {

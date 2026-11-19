@@ -4,7 +4,10 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { createRunManager, createSdkDriver, READ_ONLY_TOOLS, WRITE_TOOLS, type AgentDriver, type Run, type SdkLike, type Update } from '../../src/agents';
 import { agentPromptOptions, assignTask, listReviews, parseVerdict, personaOf, reviewTask, sessionTitle, startAgentRun, taskContext } from '../../src/agents/team';
-import { listAsks } from '../../src/core/asks';
+import { listAsks, readAskRows } from '../../src/core/asks';
+
+/** The file with its ask rows (and their lines) taken out. */
+const withoutAskRows = (src: string) => { const lines = src.split('\n'); for (const r of readAskRows(src).reverse()) lines.splice(r.line, r.end - r.line + 1); return lines.join('\n'); };
 import { putAgent, reviewOf, type ScannedAgent } from '../../src/core/agents';
 import { MemoryStorage } from '../../src/core/storage';
 
@@ -106,7 +109,7 @@ describe('reviewTask', () => {
     const asks = (await listAsks(ctx, { state: 'open' })).items;
     expect(asks.map((a) => [a.kind, a.ask, a.from, a.project, a.blocks])).toEqual([['go-do', 'Share the DistroKid login', 'cid-manager', 'flantastic-4', 1], ['answer', 'Confirm the release date', 'cid-manager', 'flantastic-4', 1]]);
     expect(asks[0].why).toBe('Release the single 🟡 — no credentials');
-    expect((await storage.read('tasks/flantastic-4.md')).content).toBe(F4); // no 🙋 row
+    expect(withoutAskRows((await storage.read('tasks/flantastic-4.md')).content)).toBe(F4); // no 🙋 row but the ask rows
     const list = await listReviews(ctx, 'flantastic-4');
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({ ref: 'flantastic-4:7', verdict: 'partial' });

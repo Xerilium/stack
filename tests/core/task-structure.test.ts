@@ -4,6 +4,7 @@ import { join } from 'path';
 import { FsStorage, MemoryStorage, PathError, validatePath } from '../../src/core/storage';
 import { isReadme, logFile, projectId, projectPath, systemDir } from '../../src/core/task-paths';
 import { archiveAsks, listAsks, putAsk, readAsk } from '../../src/core/asks';
+import { askKeys, askRows } from '../helpers/ask-rows';
 import { putAgent, agentFor, listTeam, reviewPrefix } from '../../src/core/agents';
 import { GitHubStorage } from '../../src/host/github-storage';
 import { FakeGitHub } from '../host/fake-github';
@@ -216,12 +217,14 @@ describe('logs and inbox beside the project', () => {
 
 // @req FR:task-structure/system.root
 describe('root system writes', () => {
-  it('writes new asks, agents, and wake files in tasks/.stack', async () => {
+  // @req FR:task-asks/place.default: a new ask is a row in tasks/asks.md; agents and wake files stay in tasks/.stack
+  it('writes new asks to tasks/asks.md, agents and wake files in tasks/.stack', async () => {
     const s = new MemoryStorage();
     const ctx = { storage: s, now: () => NOW };
     await putAsk(ctx, 'k1', { ask: 'Approve it', kind: 'approve', from: 'cos' }, 'cos');
     await putAgent(ctx, 'ag', { name: 'Ag' });
-    expect(await s.listAsks()).toEqual(['tasks/.stack/asks/k1.md']);
+    expect(await s.listAsks()).toEqual([]);
+    expect((await askRows(s)).map((r) => [r.key, r.path])).toEqual([['k1', 'tasks/asks.md']]);
     expect(await s.listAgents()).toEqual(['tasks/.stack/agents/ag.md']);
     expect(wakePath('Allyte CoS')).toBe('tasks/.stack/wake/allyte-cos.md');
   });
@@ -236,25 +239,26 @@ describe('root system writes', () => {
 
 // @req FR:task-structure/system.ask-key
 describe('ask key at any level', () => {
-  const ASK = '# Ask: k2\n\n- state: done\n- ask: Approve it\n- kind: approve\n- from: cos\n- created: 2026-10-01T00:00:00.000Z\n- updated: 2026-10-01T00:00:00.000Z\n';
-  it('reads, updates, and archives a nested ask in its own folder', async () => {
+  // @req FR:task-asks/place.unique: asks are rows in task files at any level; the row stays in its own file
+  const ASK = '# Goal\n\n## Open\n\n- [x] 🙋 Approve it\n  > id: k2\n  > kind: approve\n  > from: cos\n  > created: 2026-10-01T00:00:00.000Z\n  > updated: 2026-10-01T00:00:00.000Z\n';
+  it('reads, updates, and archives a nested ask in its own file', async () => {
     const s = new MemoryStorage();
-    s.seed('tasks/x/.stack/asks/k2.md', ASK.replace('state: done', 'state: open'));
+    s.seed('tasks/x/goal.md', ASK.replace('[x]', '[ ]'));
     const ctx = { storage: s, now: () => NOW };
     expect((await readAsk(ctx, 'k2'))?.ask.ask).toBe('Approve it');
     expect((await listAsks(ctx, { state: 'all' })).items.map((a) => a.key)).toEqual(['k2']);
     await putAsk(ctx, 'k2', { ask: 'Approve it now', kind: 'approve', from: 'cos' }, 'cos');
-    expect(await s.listAsks()).toEqual(['tasks/x/.stack/asks/k2.md']);
-    await s.write('tasks/x/.stack/asks/k2.md', ASK);
+    expect((await askRows(s)).map((r) => [r.key, r.path, r.ask.ask])).toEqual([['k2', 'tasks/x/goal.md', 'Approve it now']]);
+    await s.write('tasks/x/goal.md', ASK);
     expect((await archiveAsks(ctx, { days: 1 })).archived).toEqual(['k2']);
-    await expect(s.read('tasks/x/.stack/asks/archive/k2.md')).resolves.toBeDefined();
-    expect(await s.listAsks()).toEqual([]);
+    expect(await askKeys(s)).toEqual([]);
+    expect((await s.read('tasks/x/goal.md')).content).toBe('# Goal\n\n## Open\n\n');
   });
 
-  it('resolves a key in two folders to the first path in sort order', async () => {
+  it('resolves a key in two files to the first path in sort order', async () => {
     const s = new MemoryStorage();
-    s.seed('tasks/b/.stack/asks/k2.md', ASK.replace('Approve it', 'B'));
-    s.seed('tasks/a/.stack/asks/k2.md', ASK.replace('Approve it', 'A'));
+    s.seed('tasks/b/goal.md', ASK.replace('Approve it', 'B'));
+    s.seed('tasks/a/goal.md', ASK.replace('Approve it', 'A'));
     expect((await readAsk({ storage: s, now: () => NOW }, 'k2'))?.ask.ask).toBe('A');
   });
 });

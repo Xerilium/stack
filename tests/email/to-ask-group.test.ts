@@ -1,7 +1,9 @@
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { asksPath, handleAsk, parseAsk } from '../../src/core/asks';
+import { handleAsk } from '../../src/core/asks';
+import { askKeys, askRows } from '../helpers/ask-rows';
+const rowAsk = async (s: Parameters<typeof askRows>[0], key: string) => (await askRows(s)).find((r) => r.key === key)!.ask;
 import { emailCmd } from '../../src/cli/email';
 import { groupKey, mailKey, newSummary, recordResult, resolveAsk, resolveThreads, tally } from '../../src/email/to-ask';
 import type { TriageResult } from '../../src/email/types';
@@ -9,7 +11,7 @@ import { FileTokenCache } from '../../src/graph/auth';
 import { mkCtx, msg, NOW } from './fixtures';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'email-group-'));
-const read = async (s: { read(p: string): Promise<{ content: string }> }, key: string) => parseAsk(key, (await s.read(asksPath(key))).content);
+const read = async (s: Parameters<typeof askRows>[0], key: string) => (await rowAsk(s, key));
 const NOTICE = 'New app(s) connected to your Microsoft account';
 const ms = { name: 'Microsoft account team', address: 'account-security-noreply@accountprotection.example.test' };
 const decide = (id: string, over: Partial<TriageResult['message']> = {}): TriageResult => ({
@@ -36,7 +38,7 @@ describe('grouped decide asks', () => {
     expect(await recordResult(ctx, decide('b'))).toEqual({ key, created: false });
     const a = await read(storage, key);
     expect(a).toMatchObject({ state: 'open', kind: 'decide', ask: `Decide on ${ms.name}: ${NOTICE} (2 mails)`, link: 'https://outlook.example.test/mail/id/b' });
-    expect(await storage.listAsks!()).toHaveLength(1);
+    expect(await askKeys(storage)).toHaveLength(1);
   });
 
   // @req FR:email-triage/ask.group.dedupe
@@ -67,7 +69,7 @@ describe('grouped decide asks', () => {
     const { storage, ctx } = mkCtx();
     await recordResult(ctx, decide('a'));
     await recordResult(ctx, decide('b', { from: { name: 'Other', address: 'other@example.test' } }));
-    expect(await storage.listAsks!()).toHaveLength(2);
+    expect(await askKeys(storage)).toHaveLength(2);
   });
 
   it('sensitive results group the same way', async () => {
@@ -75,7 +77,7 @@ describe('grouped decide asks', () => {
     const s = (id: string): TriageResult => ({ message: msg({ id, conversationId: `c-${id}`, subject: 'Payroll update', from: ms }), class: 'sensitive', confidence: 1 });
     await recordResult(ctx, s('a'));
     await recordResult(ctx, s('b'));
-    const asks = await storage.listAsks!();
+    const asks = await askKeys(storage);
     expect(asks).toHaveLength(1);
     expect((await read(storage, groupKey(s('a').message))).ask).toBe(`Sensitive mail from ${ms.name}: Payroll update (2 mails)`);
   });
@@ -86,7 +88,7 @@ describe('grouped decide asks', () => {
     await recordResult(ctx, decide('a', { subject: ' ' }));
     await recordResult(ctx, decide('b', { subject: 'Re: ' }));
     await recordResult(ctx, decide('c', { from: { name: 'x', address: '' } }));
-    expect((await storage.listAsks!()).sort()).toEqual(['a', 'b', 'c'].map((x) => asksPath(mailKey(`conv-${x}`))).sort());
+    expect((await askKeys(storage)).sort()).toEqual(['a', 'b', 'c'].map((x) => (mailKey(`conv-${x}`))).sort());
   });
 
   // @req FR:email-triage/ask.group.reply
@@ -94,7 +96,7 @@ describe('grouped decide asks', () => {
     const { storage, ctx } = mkCtx();
     const draft = { text: 'Thanks', webLink: 'https://outlook.example.test/mail/drafts/D' };
     for (const id of ['a', 'b']) await recordResult(ctx, { ...decide(id), class: 'needs_reply', draft });
-    expect((await storage.listAsks!()).sort()).toEqual([asksPath(mailKey('conv-a')), asksPath(mailKey('conv-b'))].sort());
+    expect((await askKeys(storage)).sort()).toEqual([(mailKey('conv-a')), (mailKey('conv-b'))].sort());
   });
 
   // @req FR:email-triage/ask.group.reopen @req FR:email-triage/ask.group.done

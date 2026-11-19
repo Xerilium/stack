@@ -1,15 +1,20 @@
 /**
- * Live ask queue core: one markdown file per ask (`tasks/.stack/asks/<key>.md`) that agents write, the owner answers, and agents handle.
+ * Live ask queue core: an ask is a nested 🙋 task row (`> key: value` metadata) under the task it blocks, that agents write,
+ * the owner answers, and agents handle. The old one-file-per-ask format (`tasks/.stack/asks/<key>.md`) is read only by `importAsks`.
  * @req FR:ask-queue/ask.path @req FR:ask-queue/ask.format @req FR:ask-queue/ask.safe @req FR:ask-queue/ask.score @req FR:ask-queue/ask.rank
  * @req FR:ask-queue/flow.put @req FR:ask-queue/flow.answer @req FR:ask-queue/flow.handle @req FR:ask-queue/flow.default @req FR:ask-queue/flow.thread
  * @req FR:quick-triage/flow.fields @req FR:quick-triage/flow.apply @req FR:quick-triage/flow.text @req FR:quick-triage/flow.order
+ * @req FR:task-asks/core.contract
  */
 import { LifecycleError, type LifecycleContext } from './lifecycle';
 import { ConflictError, NotFoundError, writeAll, type FileWrite } from './storage';
 import { redact } from './triage';
-import { ROOT_SYSTEM } from './task-paths';
+import { isReadme, projectPath, ROOT_SYSTEM, TASK_PATH } from './task-paths';
 import { updateWake } from './ask-wake';
-import { currentRows, inboxTitle } from './inbox';
+import { currentRows, inboxTitle, rowKey } from './inbox';
+import { parseProject, type Task } from './parser';
+import { ASK_KEY, isAskRow } from './task-ids';
+import { fencedLines } from './task-lint';
 import { applyAction, describe as describeAction, parseAction, parseTaskRef, readRow, type Action } from './ask-actions';
 
 export const ASK_KINDS = ['approve', 'decide', 'review', 'go-do', 'answer'] as const;
@@ -63,13 +68,13 @@ export interface ListedAsk extends Omit<Ask, 'extra' | 'thread'> {
 export interface AskList { items: ListedAsk[]; total: number; latest?: string; snoozed: number }
 
 /** Parsed asks by storage and path, reused while the file version is unchanged, so a refresh re-parses only what moved. */
-const parsed = new WeakMap<object, Map<string, { version: string; ask: Ask }>>();
+const parsed = new WeakMap<object, Map<string, { version: string; rows: AskRow[] }>>();
 
 const MAX_ASK = 200;
 const MAX_LINE = 500;
 const MAX_TEXT = 1000;
 const MAX_DETAIL = 20_000;
-const KEY = /^[a-z0-9][a-z0-9._-]{0,79}$/;
+const KEY = ASK_KEY;
 const FIELDS = ['state', 'ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'created', 'updated', 'answer', 'text', 'answered', 'outcome', 'handled', 'note', 'snoozed', 'flow', 'seq', 'ref', 'apply', 'applies', 'reftext', 'writer'] as const;
 const FLOW = /^[a-z0-9][a-z0-9._-]{0,79}$/;
 const actionOk = (t: string) => { try { parseAction(t); return true; } catch { return false; } };
@@ -127,30 +132,223 @@ export function parseAsk(key: string, content: string): Ask {
     if (line === '' || line.startsWith('#') || line.startsWith('<!--')) continue;
     const m = /^- ([a-z]+): (.*)$/.exec(line);
     if (!m || !(FIELDS as readonly string[]).includes(m[1])) { if (line.startsWith('- ')) a.extra.push(line); continue; }
-    const v = m[2].trim();
-    switch (m[1]) {
-      case 'state': if (oneOf(ASK_STATES, v)) a.state = v; break;
-      case 'kind': if (oneOf(ASK_KINDS, v)) a.kind = v; break;
-      case 'priority': if (oneOf(ASK_PRIORITIES, v)) a.priority = v; break;
-      case 'answer': if (oneOf(ASK_ANSWERS, v)) a.answer = v; break;
-      case 'outcome': if (oneOf(ASK_OUTCOMES, v)) a.outcome = v; break;
-      case 'reversible': a.reversible = v === 'yes'; break;
-      case 'blocks': if (/^\d{1,2}$/.test(v)) a.blocks = Number(v); break;
-      case 'effort': if (/^\d{1,3}[mh]$/.test(v)) a.effort = v; break;
-      case 'link': if (isHttps(v)) a.link = v; break;
-      case 'options': a.options = v.split(' | ').map((o) => o.trim()).filter(Boolean); break;
-      case 'flow': if (FLOW.test(v)) a.flow = v; break;
-      case 'seq': if (/^\d{1,2}$/.test(v) && Number(v) >= 1) a.seq = Number(v); break;
-      case 'ref': if (refOk(v)) a.ref = v; break;
-      case 'reftext': a.refText = v; break;
-      case 'apply': if (actionOk(v)) a.apply = v; break;
-      case 'applies': { const parts = v.split(' | ').map((o) => o.trim()); if (parts.every(actionOk)) a.applies = parts; break; }
-      case 'by': case 'created': case 'updated': case 'answered': case 'snoozed': if (isoOk(v)) a[m[1]] = v; break;
-      default: (a as unknown as Record<string, string>)[m[1]] = v;
-    }
+    setField(a, m[1], m[2].trim());
   }
   a.detail = detail.join('\n').trim();
   return a;
+}
+
+/** One known field from its stored text; a bad value is dropped. */
+function setField(a: Ask, k: string, v: string): void {
+  switch (k) {
+    case 'state': if (oneOf(ASK_STATES, v)) a.state = v; break;
+    case 'kind': if (oneOf(ASK_KINDS, v)) a.kind = v; break;
+    case 'priority': if (oneOf(ASK_PRIORITIES, v)) a.priority = v; break;
+    case 'answer': if (oneOf(ASK_ANSWERS, v)) a.answer = v; break;
+    case 'outcome': if (oneOf(ASK_OUTCOMES, v)) a.outcome = v; break;
+    case 'reversible': a.reversible = v === 'yes'; break;
+    case 'blocks': if (/^\d{1,2}$/.test(v)) a.blocks = Number(v); break;
+    case 'effort': if (/^\d{1,3}[mh]$/.test(v)) a.effort = v; break;
+    case 'link': if (isHttps(v)) a.link = v; break;
+    case 'options': a.options = v.split(' | ').map((o) => o.trim()).filter(Boolean); break;
+    case 'flow': if (FLOW.test(v)) a.flow = v; break;
+    case 'seq': if (/^\d{1,2}$/.test(v) && Number(v) >= 1) a.seq = Number(v); break;
+    case 'ref': if (refOk(v)) a.ref = v; break;
+    case 'reftext': a.refText = v; break;
+    case 'apply': if (actionOk(v)) a.apply = v; break;
+    case 'applies': { const parts = v.split(' | ').map((o) => o.trim()); if (parts.every(actionOk)) a.applies = parts; break; }
+    case 'by': case 'created': case 'updated': case 'answered': case 'snoozed': if (isoOk(v)) a[k] = v; break;
+    default: (a as unknown as Record<string, string>)[k] = v;
+  }
+}
+
+// ---------------------------------------------------------------- rows
+
+/** The file for an ask with no task and no project file. @req FR:task-asks/place.default */
+export const ASKS_FILE = 'tasks/asks.md';
+const ASKS_HEAD = '# Asks\n\n## Open\n\n';
+/** Priority emoji on the row; `normal` has none. @req FR:task-asks/format.fields */
+const PRIORITY_MARK: Record<AskPriority, string> = { crit: '🚨', high: '‼️', normal: '', low: '🔻' };
+const MARKS = /^\s*(🙋|🚨|‼️?|🔻)(?=\s|$)\s*/u;
+/** Metadata keys that are row parts (text, emoji, checkbox), never read from metadata. */
+const ROW_PARTS = new Set(['id', 'ask', 'priority', 'effort']);
+const META_EXTRA = /^[a-z][a-z0-9_-]*:(?: .*)?$/;
+const MARKER = /^\\*## (Detail|Thread)\s*$/;
+const clean = (l: string) => l.replace(/^﻿/, '').replace(/\r$/, '');
+const lead = (l: string) => /^\s*/.exec(clean(l))![0];
+const width = (ws: string) => ws.replace(/\t/g, '    ').length;
+const blank = (l: string | undefined) => l === undefined || clean(l).trim() === '';
+
+/**
+ * The ask as row lines: the 🙋 row, `> key: value` metadata, then `> ## Detail` and `> ## Thread` blockquote lines.
+ * @req FR:task-asks/format.row @req FR:task-asks/format.fields
+ */
+export function formatAskRow(a: Ask, indent = ''): string[] {
+  const sub = `${indent}  `;
+  const mark = PRIORITY_MARK[a.priority];
+  // `state` only when the checkbox and `answer` cannot tell it.
+  const told = a.state === 'done' || a.state === (a.answer ? 'answered' : 'open');
+  const f: [string, string | undefined][] = [
+    ['id', a.key], ['state', told ? undefined : a.state], ['kind', a.kind], ['from', a.from], ['project', a.project], ['why', a.why], ['recommend', a.recommend],
+    ['options', a.options?.join(' | ')], ['default', a.default], ['by', a.by], ['reversible', a.reversible ? 'yes' : undefined], ['link', a.link],
+    ['time', a.effort], ['blocks', a.blocks ? String(a.blocks) : undefined], ['created', a.created], ['updated', a.updated],
+    ['answer', a.answer], ['text', a.text], ['answered', a.answered], ['outcome', a.outcome], ['handled', a.handled], ['note', a.note], ['snoozed', a.snoozed],
+    ['flow', a.flow], ['seq', a.seq === undefined ? undefined : String(a.seq)], ['ref', a.ref], ['reftext', a.refText], ['apply', a.apply], ['applies', a.applies?.join(' | ')],
+    ['writer', a.writer],
+  ];
+  const lines = [
+    `${indent}- [${a.state === 'done' ? 'x' : ' '}] 🙋 ${mark ? `${mark} ` : ''}${a.ask}`,
+    ...f.filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `${sub}> ${k}: ${v}`),
+    ...a.extra.filter((e) => META_EXTRA.test(e)).map((e) => `${sub}> ${e}`),
+  ];
+  const quote = (l: string) => (l === '' ? `${sub}>` : `${sub}> ${l}`);
+  if (a.detail.trim()) lines.push(`${sub}> ## Detail`, ...a.detail.trim().split('\n').map((l) => quote(MARKER.test(l) ? `\\${l}` : l)));
+  if (a.thread.length) lines.push(`${sub}> ## Thread`, ...a.thread.map(quote));
+  return lines;
+}
+
+/** Last line (inclusive) of the row's own blockquote lines. */
+function blockEnd(lines: string[], i: number): number {
+  const w = width(lead(lines[i]));
+  let j = i;
+  while (j + 1 < lines.length) { const m = /^(\s*)>/.exec(clean(lines[j + 1])); if (!m || width(m[1]) <= w) break; j++; }
+  return j;
+}
+
+/** Last non-blank line (inclusive) of the row's subtree: children, notes, metadata. */
+function subtreeEnd(lines: string[], i: number): number {
+  const w = width(lead(lines[i]));
+  let last = i;
+  for (let j = i + 1; j < lines.length; j++) {
+    if (blank(lines[j])) continue;
+    if (clean(lines[j]).startsWith('#') || width(lead(lines[j])) <= w) break;
+    last = j;
+  }
+  return last;
+}
+
+/** The ask of a 🙋 row with `kind` metadata; null for any other row. @req FR:task-asks/format.row @req FR:task-asks/format.fields */
+function askOfRow(t: Task, lines: string[], end: number): Ask | null {
+  const meta = t.meta ?? [];
+  const key = meta.find(([k]) => k === 'id')?.[1];
+  if (!isAskRow(t) || !key || !KEY.test(key)) return null;
+  const a: Ask = { key, state: 'open', ask: '', kind: 'approve', from: '', reversible: false, priority: 'normal', blocks: 0, created: '', updated: '', detail: '', thread: [], extra: [] };
+  let text = t.text;
+  let pri: AskPriority | undefined;
+  for (let m = MARKS.exec(text); m; m = MARKS.exec(text)) {
+    if (!pri) pri = (Object.keys(PRIORITY_MARK) as AskPriority[]).find((p) => PRIORITY_MARK[p] && PRIORITY_MARK[p].startsWith(m![1]));
+    text = text.slice(m[0].length);
+  }
+  a.ask = text.trim();
+  if (pri) a.priority = pri;
+  let state: AskState | undefined;
+  for (const [k, v] of meta) {
+    if (k === 'id') continue;
+    if (k === 'state') { if (oneOf(ASK_STATES, v)) state = v; continue; }
+    if (k === 'time') { setField(a, 'effort', v); continue; }
+    if (ROW_PARTS.has(k) || !(FIELDS as readonly string[]).includes(k)) { a.extra.push(v ? `${k}: ${v}` : `${k}:`); continue; }
+    setField(a, k, v);
+  }
+  a.state = t.checked ? 'done' : state ?? (a.answer ? 'answered' : 'open');
+  let section: 'head' | 'detail' | 'thread' = 'head';
+  const detail: string[] = [];
+  for (let j = t.line + 1; j <= end; j++) {
+    const q = clean(lines[j]).trimStart();
+    const body = q === '>' ? '' : q.slice(q.startsWith('> ') ? 2 : 1);
+    if (body.trimEnd() === '## Detail') { section = 'detail'; continue; }
+    if (body.trimEnd() === '## Thread') { section = 'thread'; continue; }
+    if (section === 'detail') detail.push(MARKER.test(body) ? body.slice(1) : body);
+    else if (section === 'thread' && body.startsWith('- ')) a.thread.push(body);
+  }
+  a.detail = detail.join('\n').trim();
+  return a;
+}
+
+export interface AskRow { ask: Ask; line: number; end: number }
+
+/** Every ask row of a task file, in file order (rows in a code fence are examples). @req FR:task-asks/format.row */
+export function readAskRows(content: string): AskRow[] {
+  const p = parseProject(content);
+  const fenced = fencedLines(p.lines);
+  const out: AskRow[] = [];
+  const walk = (ts: Task[]) => { for (const t of ts) {
+    if (!fenced.has(t.line)) { const end = blockEnd(p.lines, t.line); const a = askOfRow(t, p.lines, end); if (a) out.push({ ask: a, line: t.line, end }); }
+    walk(t.children);
+  } };
+  for (const s of p.sections) walk(s.tasks);
+  return out;
+}
+
+/**
+ * Replaces `del` lines at `at` with `rows`, in the file's line ending; a file with no final newline keeps none.
+ * @req FR:task-asks/format.roundtrip
+ */
+function spliceRows(lines: string[], at: number, del: number, rows: string[]): void {
+  const eol = lines.some((l) => l.endsWith('\r')) ? '\r' : '';
+  const atEnd = at + del === lines.length;
+  if (atEnd && at > 0) {
+    if (rows.length && del === 0 && eol && !lines[at - 1].endsWith('\r')) lines[at - 1] += eol;
+    if (!rows.length) lines[at - 1] = lines[at - 1].replace(/\r$/, '');
+  }
+  lines.splice(at, del, ...rows.map((r, i) => r + (atEnd && i === rows.length - 1 ? '' : eol)));
+}
+
+/** Where a new row goes at the end of the first `## ` section; null when the file has none. */
+function sectionEnd(lines: string[]): { at: number; gap: boolean } | null {
+  const h = lines.findIndex((l) => clean(l).startsWith('## '));
+  if (h < 0) return null;
+  let k = h + 1;
+  while (k < lines.length && !clean(lines[k]).startsWith('## ')) k++;
+  let last = k - 1;
+  while (last > h && blank(lines[last])) last--;
+  // Right under the heading, keep one blank line between it and the first row.
+  if (last === h) return blank(lines[h + 1]) && h + 1 < k ? { at: h + 2, gap: false } : { at: h + 1, gap: true };
+  return { at: last + 1, gap: false };
+}
+
+/** A row by line, else by its text when that is unique (the line moved); null when gone. */
+function findRow(lines: string[], line: number, text?: string): number | null {
+  const ROW = /^\s*- \[[ xX]\] (.+)$/;
+  const at = (i: number) => ROW.exec(clean(lines[i] ?? ''))?.[1];
+  const cur = at(line);
+  if (cur !== undefined && (text === undefined || rowKey(cur) === rowKey(text))) return line;
+  if (text === undefined) return null;
+  const hits = lines.map((_, i) => i).filter((i) => { const t = at(i); return t !== undefined && rowKey(t) === rowKey(text); });
+  return hits.length === 1 ? hits[0] : null;
+}
+
+type Pending = Map<string, { lines: string[]; version: string | null }>;
+
+async function load(ctx: LifecycleContext, files: Pending, path: string): Promise<{ lines: string[]; version: string | null } | null> {
+  const hit = files.get(path);
+  if (hit) return hit;
+  try { const f = await ctx.storage.read(path); const v = { lines: f.content.split('\n'), version: f.version }; files.set(path, v); return v; }
+  catch (e) { if (e instanceof NotFoundError) return null; throw e; }
+}
+
+/**
+ * Inserts a new ask row: last child of its `ref` row, else end of its project's first section, else `tasks/asks.md`. Returns the path.
+ * @req FR:task-asks/place.ref @req FR:task-asks/place.project @req FR:task-asks/place.default
+ */
+async function place(ctx: LifecycleContext, files: Pending, a: Ask): Promise<string> {
+  if (a.ref) {
+    const r = parseTaskRef(a.ref);
+    const f = await load(ctx, files, r.path);
+    const line = f ? findRow(f.lines, r.line, a.refText) : null;
+    if (f && line !== null) { spliceRows(f.lines, subtreeEnd(f.lines, line) + 1, 0, formatAskRow(a, `${lead(f.lines[line])}  `)); return r.path; }
+  }
+  const path = a.project ? projectPath(a.project) : '';
+  if (a.project && TASK_PATH.test(path) && !isReadme(path) && path !== ASKS_FILE) {
+    const f = await load(ctx, files, path);
+    const s = f ? sectionEnd(f.lines) : null;
+    if (f && s) { spliceRows(f.lines, s.at, 0, [...(s.gap ? [''] : []), ...formatAskRow(a)]); return path; }
+  }
+  let f = await load(ctx, files, ASKS_FILE);
+  if (!f) { f = { lines: ASKS_HEAD.split('\n'), version: null }; files.set(ASKS_FILE, f); }
+  let s = sectionEnd(f.lines);
+  if (!s) { spliceRows(f.lines, f.lines.length - (blank(f.lines[f.lines.length - 1]) ? 1 : 0), 0, ['', '## Open', '']); s = sectionEnd(f.lines)!; }
+  spliceRows(f.lines, s.at, 0, [...(s.gap ? [''] : []), ...formatAskRow(a)]);
+  return ASKS_FILE;
 }
 
 // ---------------------------------------------------------------- score
@@ -176,26 +374,39 @@ export function scoreAsk(a: Ask, now: Date): number {
 
 const clock = (ctx: LifecycleContext) => (ctx.now ?? (() => new Date()))();
 
+/** One ask row and the file read it came from. */
+interface Found extends AskRow { path: string; version: string; content: string }
+
 /**
- * The file of an ask key at any `.stack` level (first in sort order), else the root path for a new ask.
- * @req FR:task-structure/system.ask-key @req FR:task-structure/system.root
+ * The task file that holds an ask key's row (the first in sort order), else `tasks/asks.md`.
+ * @req FR:task-asks/place.unique
  */
 export async function askFile(ctx: LifecycleContext, key: string): Promise<string> {
-  const root = asksPath(key);
-  const name = `/${key}.md`;
-  return ((await ctx.storage.listAsks?.()) ?? []).find((p) => p.endsWith(name)) ?? root;
+  asksPath(key);
+  return (await locate(ctx, key))?.path ?? ASKS_FILE;
+}
+
+async function locate(ctx: LifecycleContext, key: string): Promise<Found | null> {
+  return (await readRows(ctx)).find((r) => r.ask.key === key) ?? null;
 }
 
 export async function readAsk(ctx: LifecycleContext, key: string): Promise<{ ask: Ask; version: string; path: string } | null> {
-  const path = await askFile(ctx, key);
-  try {
-    const f = await ctx.storage.read(path);
-    return { ask: parseAsk(key, f.content), version: f.version, path };
-  } catch (e) { if (e instanceof NotFoundError) return null; throw e; }
+  const f = await locate(ctx, key);
+  return f ? { ask: f.ask, version: f.version, path: f.path } : null;
 }
 
-async function save(ctx: LifecycleContext, path: string, a: Ask, version: string | null, message: string): Promise<void> {
-  await ctx.storage.write(path, formatAsk(a), { expectedVersion: version, message });
+/** Rewrites the ask's own row and lines in place, or inserts a new row (`FR:task-asks/place.*`). @req FR:task-asks/format.roundtrip */
+async function save(ctx: LifecycleContext, cur: Found | null, a: Ask, message: string): Promise<void> {
+  if (cur) {
+    const lines = cur.content.split('\n');
+    spliceRows(lines, cur.line, cur.end - cur.line + 1, formatAskRow(a, lead(lines[cur.line])));
+    await ctx.storage.write(cur.path, lines.join('\n'), { expectedVersion: cur.version, message });
+    return;
+  }
+  const files: Pending = new Map();
+  const path = await place(ctx, files, a);
+  const f = files.get(path)!;
+  await ctx.storage.write(path, f.lines.join('\n'), { expectedVersion: f.version, message });
 }
 
 /** The api ref (`<project>:<line>`, 0-based) of a stored `tasks/<file>.md:<line>` (1-based). */
@@ -205,10 +416,10 @@ export const apiRefOf = (stored: string): string | undefined => { const m = /^ta
 type Step<T> = { next: Ask; message: string; result: T } | { skip: T };
 async function mutate<T>(ctx: LifecycleContext, key: string, fn: (cur: { ask: Ask; version: string } | null) => Step<T>): Promise<T> {
   for (let tries = 0; ; tries++) {
-    const cur = await readAsk(ctx, key);
+    const cur = await locate(ctx, key);
     const r = fn(cur);
     if ('skip' in r) return r.skip;
-    try { await save(ctx, cur ? cur.path : asksPath(key), r.next, cur ? cur.version : null, r.message); return r.result; }
+    try { await save(ctx, cur, r.next, r.message); return r.result; }
     catch (e) { if (!(e instanceof ConflictError) || tries >= 5) throw e; }
   }
 }
@@ -313,6 +524,7 @@ export async function answerAsk(ctx: LifecycleContext, key: string, input: Answe
     else if (a.kind === 'answer' && (input.answer === 'reply' || input.answer === 'ask')) action = { kind: 'note', text: `🙋 ${now.slice(0, 10)}: ${text}` };
   }
   const result = await recordAnswer(ctx, key, input, text, now, nowD);
+  // @req FR:task-asks/core.wake: wake files are keyed by ask key and `from`, so they work the same for ask rows.
   if (result.changed && before && !['defer'].includes(input.answer)) await updateWake(ctx, before.ask.from, key, input.answer === 'retract' ? null : input.answer, nowD);
   if (action && before) {
     let r;
@@ -397,65 +609,95 @@ export async function handleAsk(ctx: LifecycleContext, key: string, input: Handl
   return res;
 }
 
-/** Every well-formed ask file, parsed once per version. */
-async function readAll(ctx: LifecycleContext): Promise<Ask[]> {
+/**
+ * Every ask row in every task file, parsed once per file version. A key in two rows: the first in sort order wins.
+ * @req FR:task-asks/place.unique @req FR:task-structure/system.ask-key
+ */
+async function readRows(ctx: LifecycleContext): Promise<Found[]> {
   let cache = parsed.get(ctx.storage);
   if (!cache) { cache = new Map(); parsed.set(ctx.storage, cache); }
-  const all: Ask[] = [];
-  const seen = new Set<string>();
+  const out: Found[] = [];
   const keys = new Set<string>();
-  for (const p of (await ctx.storage.listAsks?.()) ?? []) {
-    const key = p.replace(/^.*\//, '').replace(/\.md$/, '');
-    seen.add(p);
-    // A key in two folders: the first path in sort order wins. @req FR:task-structure/system.ask-key
-    if (keys.has(key)) continue;
-    keys.add(key);
-    try {
-      const f = await ctx.storage.read(p);
-      const hit = cache.get(p);
-      const a = hit && hit.version === f.version ? hit.ask : parseAsk(key, f.content);
-      cache.set(p, { version: f.version, ask: a });
-      if (a.ask && a.from && a.created) all.push(a);
-    } catch (e) { if (!(e instanceof NotFoundError)) throw e; }
+  const seen = new Set<string>();
+  for (const path of (await ctx.storage.list()).filter((p) => !isReadme(p))) {
+    seen.add(path);
+    let f;
+    try { f = await ctx.storage.read(path); } catch (e) { if (e instanceof NotFoundError) continue; throw e; }
+    const hit = cache.get(path);
+    const rows = hit && hit.version === f.version ? hit.rows : readAskRows(f.content);
+    cache.set(path, { version: f.version, rows });
+    for (const r of rows) {
+      if (keys.has(r.ask.key)) continue;
+      keys.add(r.ask.key);
+      out.push({ ...r, path, version: f.version, content: f.content });
+    }
   }
   for (const p of cache.keys()) if (!seen.has(p)) cache.delete(p);
-  return all;
+  return out;
 }
 
-async function exists(ctx: LifecycleContext, path: string): Promise<boolean> {
-  try { await ctx.storage.read(path); return true; } catch (e) { if (e instanceof NotFoundError) return false; throw e; }
+/** Every well-formed ask. */
+async function readAll(ctx: LifecycleContext): Promise<Ask[]> {
+  return (await readRows(ctx)).map((r) => r.ask).filter((a) => a.ask && a.from && a.created);
 }
 
-/** The archive path for a key in a `.stack` folder (the root one by default). @req FR:ask-queue/ask.archive @req FR:task-structure/system.ask-key */
+/** The old archive path for a key in a `.stack` folder (the root one by default). @req FR:ask-queue/ask.archive @req FR:task-structure/system.ask-key */
 export const archivePath = (key: string, dir: string = ROOT_SYSTEM): string => `${dir}/asks/archive/${key}.md`;
 
 /**
- * Moves `done` asks untouched for `days` days to `archive/` in their own `.stack/asks/` folder, one write (one commit) for all of them.
- * The open list never reads the archive, so the queue stays small however many asks agents have closed.
+ * Deletes the rows (with their lines) of `done` asks untouched for `days` days, one write (one commit) for all; git history keeps them.
  * @req FR:ask-queue/ask.archive
+ * @req FR:task-asks/core.archive
  */
 export async function archiveAsks(ctx: LifecycleContext, o: { days?: number } = {}): Promise<{ archived: string[] }> {
   const days = o.days ?? 14;
   if (!Number.isInteger(days) || days < 0 || days > 3650) throw new LifecycleError('days must be a whole number of days (0-3650)');
   const cutoff = clock(ctx).getTime() - days * 86_400_000;
+  const byFile = new Map<string, Found[]>();
+  for (const r of await readRows(ctx)) {
+    const updated = Date.parse(r.ask.updated);
+    // An ask whose `updated` cannot be read is left alone rather than archived at once.
+    if (r.ask.state !== 'done' || !Number.isFinite(updated) || updated > cutoff) continue;
+    byFile.set(r.path, [...(byFile.get(r.path) ?? []), r]);
+  }
   const writes: FileWrite[] = [];
   const archived: string[] = [];
-  for (const a of await readAll(ctx)) {
-    const updated = Date.parse(a.updated);
-    // An ask whose `updated` cannot be read is left alone rather than archived at once.
-    if (a.state !== 'done' || !Number.isFinite(updated) || updated > cutoff) continue;
-    const src = await askFile(ctx, a.key);
-    const dir = src.slice(0, src.lastIndexOf('/asks/'));
-    const f = await ctx.storage.read(src);
-    // A key reused after an earlier archive (email threads come back) gets a dated name (key cut to keep the 80-char limit); nothing already archived is overwritten.
-    let dest = archivePath(a.key, dir);
-    if (await exists(ctx, dest)) dest = archivePath(`${a.key.slice(0, 71)}.${new Date(updated).toISOString().slice(0, 10).replace(/-/g, '')}`, dir);
-    if (await exists(ctx, dest)) continue;
-    writes.push({ path: dest, content: f.content, expectedVersion: null }, { path: src, content: null, expectedVersion: f.version });
-    archived.push(a.key);
+  for (const [path, rows] of byFile) {
+    const lines = rows[0].content.split('\n');
+    for (const r of [...rows].sort((a, b) => b.line - a.line)) { spliceRows(lines, r.line, subtreeEnd(lines, r.line) - r.line + 1, []); archived.push(r.ask.key); }
+    writes.push({ path, content: lines.join('\n'), expectedVersion: rows[0].version });
   }
+  archived.sort();
   if (writes.length) await writeAll(ctx.storage, writes, archived.length === 1 ? `Archive ask: ${archived[0]}` : `Archive ${archived.length} asks`);
   return { archived };
+}
+
+/**
+ * One-time import: each open or answered ask file becomes an ask row (`FR:task-asks/place.*`), in one write; the files stay.
+ * A key already present as a row is skipped.
+ * @req FR:task-asks/import.cmd
+ * @req FR:task-asks/import.idempotent
+ */
+export async function importAsks(ctx: LifecycleContext, o: { dryRun?: boolean } = {}): Promise<{ imported: string[]; skipped: string[]; files: string[] }> {
+  const have = new Set((await readRows(ctx)).map((r) => r.ask.key));
+  const files: Pending = new Map();
+  const changed = new Set<string>();
+  const imported: string[] = [];
+  const skipped = new Set<string>();
+  for (const path of (await ctx.storage.listAsks?.()) ?? []) {
+    const key = path.replace(/^.*\//, '').replace(/\.md$/, '');
+    if (!KEY.test(key)) continue;
+    if (have.has(key)) { skipped.add(key); continue; }
+    const a = parseAsk(key, (await ctx.storage.read(path)).content);
+    if (a.state === 'done' || !a.ask || !a.from || !a.created) continue;
+    a.extra = a.extra.map((e) => e.replace(/^- /, ''));
+    changed.add(await place(ctx, files, a));
+    imported.push(key);
+    have.add(key);
+  }
+  const writes: FileWrite[] = [...changed].sort().map((p) => ({ path: p, content: files.get(p)!.lines.join('\n'), expectedVersion: files.get(p)!.version }));
+  if (writes.length && !o.dryRun) await writeAll(ctx.storage, writes, `Import ${imported.length} asks`);
+  return { imported, skipped: [...skipped].sort(), files: writes.map((w) => w.path) };
 }
 
 /** Ranked list. @req FR:ask-queue/ask.rank @req FR:ask-queue/flow.default */
