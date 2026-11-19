@@ -2,7 +2,8 @@
  * The learned profile lives in the owner's data directory, never in the repository, readable by the owner only.
  * @req FR:email-voice/learn.store
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { randomBytes } from 'crypto';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
 import type { VoiceProfile } from './learn';
@@ -13,12 +14,22 @@ export function voicePath(account: string, base = process.env.STACK_DATA_DIR || 
   return join(base, 'email', account.toLowerCase(), 'voice.json');
 }
 
-/** Writes the profile with mode 0600 in a 0700 directory. */
+/**
+ * Writes the profile with mode 0600 in a 0700 directory, through a temp file and a rename, so a failed save keeps the old profile.
+ * @req FR:email-voice/learn.store.atomic
+ */
 export function saveVoice(path: string, p: VoiceProfile): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   chmodSync(dirname(path), 0o700);
-  writeFileSync(path, `${JSON.stringify(p, null, 2)}\n`, { mode: 0o600 });
-  chmodSync(path, 0o600);
+  const tmp = join(dirname(path), `.voice.${randomBytes(6).toString('hex')}.tmp`);
+  try {
+    writeFileSync(tmp, `${JSON.stringify(p, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
+    chmodSync(tmp, 0o600);
+    renameSync(tmp, path);
+  } catch (e) {
+    rmSync(tmp, { force: true });
+    throw e;
+  }
 }
 
 /** The saved profile, or undefined when none was learned yet. Refuses a file others can read. */
