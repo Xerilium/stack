@@ -34,6 +34,15 @@ test('stale items leave the main list and the badge; one collapsed group at the 
   await expect(group.locator('.ask-li')).toHaveCount(0);
 });
 
+test('only stale items left: the empty state says how many wait for the CoS', async ({ page }) => {
+  const m = await mockApi(page);
+  m.needs = [need('old1', ago(6 * 24)), need('old2', ago(6 * 24))];
+  await page.goto('/#/notifications');
+  await expect(page.getByTestId('asks-empty')).toBeVisible();
+  await expect(page.getByTestId('stale-note')).toHaveText('2 stale items wait below for the CoS to re-verify');
+  await expect(page.getByTestId('stale-group').getByRole('button')).toHaveText('Stale · 2 · CoS must re-verify');
+});
+
 test('opening the group lists the stale items with their actions unchanged', async ({ page }) => {
   const m = await setup(page);
   await page.getByTestId('stale-group').getByRole('button', { name: /^Stale · 11/ }).click();

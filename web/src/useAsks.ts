@@ -126,6 +126,8 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   /** Stale CoS items join the list only while their group is open, after everything else; they never count. @req FR:ask-queue/needs.web.stale.count */
   const [staleOpen, setStaleOpen] = useState(false);
   const stale = useMemo(() => (extras.stale ?? []).filter((t) => !held(t.key)).map((a, i) => ({ ...a, rank: i + 1 })), [extras.stale, holdTick]); // ranked within the group
+  // An emptied group closes, so the next stale item arrives collapsed. @req FR:ask-queue/needs.web.stale.group
+  useEffect(() => { if (!stale.length && staleOpen) setStaleOpen(false); }, [stale.length, staleOpen]);
   const ranked = useMemo(() => (staleOpen ? [...main, ...stale] : main), [main, stale, staleOpen]);
   itemsRef.current = ranked;
   const total = serverTotal + (main.length - items.length);

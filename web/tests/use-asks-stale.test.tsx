@@ -35,4 +35,14 @@ describe('useAsks stale group', () => {
     expect(last.total).toBe(1);
     expect(last.itemsRef.current.map((a) => a.key)).toEqual(['need:fresh', 'need:old1', 'need:old2']);
   });
+
+  it('an emptied group closes, so the next stale item arrives collapsed', async () => {
+    await act(() => { render(<Probe tasks={[]} stale={[ask('need:old1')]} />, root); });
+    await act(() => { last.setStaleOpen(true); });
+    expect(last.staleOpen).toBe(true);
+    await act(() => { render(<Probe tasks={[]} stale={[]} />, root); });
+    expect(last.staleOpen).toBe(false);
+    await act(() => { render(<Probe tasks={[]} stale={[ask('need:old2')]} />, root); });
+    expect(last.staleOpen).toBe(false);
+  });
 });

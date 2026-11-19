@@ -352,6 +352,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
           <div class="tick-art">{Icon.check}</div>
           <p class="big">You're all caught up.</p>
           <p class="sub">No open asks, decisions, or replies · {asks.latest ? `last agent update ${freshness(asks.latest, asks.now)}` : 'no agent has written an ask yet'}</p>
+          {asks.stale.length > 0 && <p class="sub" data-testid="stale-note">{asks.stale.length} stale {asks.stale.length === 1 ? 'item waits' : 'items wait'} below for the CoS to re-verify</p>}
         </div>
       )}
       {(items.length > 0 || ghosts.length > 0) && (
