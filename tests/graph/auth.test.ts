@@ -148,6 +148,11 @@ describe('token cache file', () => {
     mkdirSync(join(work, '.git'));
     writeFileSync(join(work, 'tasks'), '');
     expect(() => new FileTokenCache(join(work, 'graph-token.json'))).not.toThrow();
+    // A git repo below the home folder (dotfiles in ~/.config) next to ~/tasks: tasks/ is not inside that repo.
+    const dot = tmp();
+    mkdirSync(join(dot, 'tasks'));
+    mkdirSync(join(dot, '.config', '.git'), { recursive: true });
+    expect(() => new FileTokenCache(join(dot, '.config', 'stack', 'graph-token.json'))).not.toThrow();
   });
   it('rejects a malformed file', async () => {
     const d = tmp();
