@@ -6,7 +6,7 @@
 import { Avatar } from './AgentAvatar';
 import { nameBeside } from './avatar';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { actionsFor, deadline, freshness, ifSilent, splitTop, type Action, type AskItem } from './asks';
+import { actionsFor, deadline, freshness, ifSilent, loudRow, splitTop, type Action, type AskItem } from './asks';
 import { blockedHelp } from './notify';
 import { Md } from './parts';
 import { parseRow } from './row';
@@ -55,27 +55,28 @@ function rowDeadline(d: ReturnType<typeof deadline>): string | undefined {
   return d.tone === 'late' ? `${d.label} · ${d.rel}` : d.label;
 }
 
-function DeadlineChip({ by, now, long }: { by?: string; now: Date; long?: boolean }) {
+/** `quiet`: a late or soon row that is not the loud one (`loudRow`) shows in ink with a clock, not the warn color. @req FR:ask-queue/web.card */
+function DeadlineChip({ by, now, long, quiet }: { by?: string; now: Date; long?: boolean; quiet?: boolean }) {
   const d = deadline(by, now);
   if (!d) return null;
   const late = d.tone === 'late';
-  return <span class={`dl ${d.tone}`} title={d.rel}>{long && Icon.clock}<span>{d.label}</span>{(long || late) && <span class="rel">· {d.rel}</span>}</span>;
+  const hush = d.tone !== 'calm' && !!quiet;
+  return <span class={`dl ${d.tone}${hush ? ' quiet' : ''}`} title={d.rel}>{(long || hush) && Icon.clock}<span>{d.label}</span>{(long || late) && <span class="rel">· {d.rel}</span>}</span>;
 }
 
-/** What the owner would do with this ask, so the list can be triaged without opening each row. */
+/** What the owner would do with this ask: the plain verb only, never the primary button text. @req FR:ask-queue/web.card */
 function verbOf(a: AskItem): string | undefined {
-  const p = actionsFor(a).find((x) => x.primary)?.label;
-  return { approve: p, decide: 'Decide', review: 'Review', 'go-do': 'Do', answer: 'Answer' }[a.kind];
+  return { approve: 'Approve', decide: 'Decide', review: 'Review', 'go-do': 'Do', answer: 'Answer' }[a.kind];
 }
 
-function Row({ a, n, now, fresh, leaving, onPick }: { a: AskItem; n: number; now: Date; fresh: boolean; leaving?: boolean; onPick: () => void }) {
+function Row({ a, n, now, fresh, leaving, loud, onPick }: { a: AskItem; n: number; now: Date; fresh: boolean; leaving?: boolean; loud?: boolean; onPick: () => void }) {
   const verb = verbOf(a);
   return (
     <li class={`ask-li${fresh ? ' fresh' : ''}${leaving ? ' leaving' : ''}`} data-key={a.key}>
       <button type="button" class="ask-row" onClick={onPick} aria-label={[`${n}. ${a.ask}`, verb, rowDeadline(deadline(a.by, now)), a.project].filter(Boolean).join(', ')}>
         <span class="row-title">{a.ask}</span>
         {fresh && <span class="new" aria-label="New">New</span>}
-        <span class="row-meta"><span class="verb">{verb ?? ''}</span>{a.by ? <DeadlineChip by={a.by} now={now} /> : <span class="dl empty" aria-hidden="true" />}<span class="proj">{a.project ?? ''}</span></span>
+        <span class="row-meta"><span class="verb">{verb ?? ''}</span>{a.by ? <DeadlineChip by={a.by} now={now} quiet={!loud} /> : <span class="dl empty" aria-hidden="true" />}<span class="proj">{a.project ?? ''}</span></span>
       </button>
     </li>
   );
@@ -88,10 +89,12 @@ function Btn({ a, act, run, panel }: { a: Action; act: AskItem; run: (x: Action)
   // what the answer will do to the row, from the ask's apply / applies. @req FR:quick-triage/web.stepper
   const will = a.send?.answer === 'go' && act.apply ? act.apply : a.send?.answer === 'option' && act.applies && act.options ? act.applies[act.options.indexOf(a.send.text ?? '')] : undefined;
   const willText = will && will !== '-' ? changeText(will) : undefined;
-  if (willText && !a.open) return <button type="button" class={`${cls} will`} onClick={() => run(a)} aria-keyshortcuts={a.key}><span>{a.label}{tag}<kbd aria-hidden="true">{key}</kbd></span><small>{willText}</small></button>;
+  if (willText && !a.open) return <button type="button" class={`${cls} will`} onClick={() => run(a)} aria-keyshortcuts={a.key} title={a.label}><span><span class="btn-label">{a.label}</span>{tag}<kbd aria-hidden="true">{key}</kbd></span><small>{willText}</small></button>;
   if (a.open && act.source !== 'task') return <a class={cls} href={act.link} target="_blank" rel="noopener noreferrer" aria-keyshortcuts="o">{a.label} {Icon.out}<kbd aria-hidden="true">{a.key}</kbd></a>;
   if (a.open) return <button type="button" class="btn quiet" onClick={() => run(a)} aria-keyshortcuts="o">{a.label}<kbd aria-hidden="true">{a.key}</kbd></button>;
-  return <button type="button" class={cls} onClick={() => run(a)} aria-keyshortcuts={a.key}>{a.label}{tag}{!(a.primary && panel === 'reply') && <kbd aria-hidden="true">{key}</kbd>}</button>;
+  // one line: a long primary label ends in an ellipsis; the full text is in the title. @req FR:ask-queue/web.responsive
+  if (a.primary) return <button type="button" class={cls} onClick={() => run(a)} aria-keyshortcuts={a.key} title={a.label}><span class="btn-label">{a.label}</span>{tag}{panel !== 'reply' && <kbd aria-hidden="true">{key}</kbd>}</button>;
+  return <button type="button" class={cls} onClick={() => run(a)} aria-keyshortcuts={a.key}>{a.label}{tag}<kbd aria-hidden="true">{key}</kbd></button>;
 }
 
 function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: number; asks: Asks; run: (x: Action) => void; talk?: TalkSlot }) {
@@ -200,6 +203,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
   const [openSent, setOpenSent] = useState(false);
   const [openSnoozed, setOpenSnoozed] = useState(false);
   const { shown, more } = splitTop(items, TOP, asks.showAll);
+  const loud = loudRow(shown.filter((a) => a.key !== cursor), asks.now);
   const live = useRef('');
   const [announce, setAnnounce] = useState('');
   // announce a changed count politely, never on the first load and never by moving focus
@@ -301,7 +305,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
       )}
       {(items.length > 0 || ghosts.length > 0) && (
         <ol class="asks" aria-label="Asks, highest score first">
-          {shown.map((a) => (a.key === cursor ? <Card key={a.key} a={a} n={a.rank ?? 0} total={asks.total} asks={asks} run={run} talk={talk} /> : <Row key={a.key} a={a} n={a.rank ?? 0} now={asks.now} fresh={asks.fresh.has(a.key)} onPick={() => { asks.setCursor(a.key); asks.setPanel('none'); asks.setDetail(false); }} />))}
+          {shown.map((a) => (a.key === cursor ? <Card key={a.key} a={a} n={a.rank ?? 0} total={asks.total} asks={asks} run={run} talk={talk} /> : <Row key={a.key} a={a} n={a.rank ?? 0} now={asks.now} fresh={asks.fresh.has(a.key)} loud={a.key === loud} onPick={() => { asks.setCursor(a.key); asks.setPanel('none'); asks.setDetail(false); }} />))}
           {ghosts.map((g) => <Row key={`gone-${g.key}`} a={g} n={g.rank ?? 0} now={asks.now} fresh={false} leaving onPick={() => undefined} />)}
         </ol>
       )}

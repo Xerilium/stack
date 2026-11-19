@@ -1,6 +1,6 @@
 /** @req FR:ask-queue/web.home @req FR:ask-queue/web.card @req FR:ask-queue/web.actions @req FR:ask-queue/web.optimistic @req FR:ask-queue/web.empty @req FR:ask-queue/live.quiet */
 import { describe, expect, it } from 'vitest';
-import { actionsFor, approveLabel, deadline, deferChoices, freshness, ifSilent, keepCursor, newKeys, pageTitle, replyKind, splitTop, type AskItem } from '../src/asks';
+import { actionsFor, approveLabel, deadline, loudRow, deferChoices, freshness, ifSilent, keepCursor, newKeys, pageTitle, replyKind, splitTop, type AskItem } from '../src/asks';
 
 const at = (h: number, m = 0, d = 28) => new Date(2026, 9, d, h, m);
 const ask = (o: Partial<AskItem> = {}): AskItem => ({
@@ -129,6 +129,20 @@ describe('approveLabel: the primary button names the action', () => {
     expect(l.endsWith('…')).toBe(true);
     expect(l.startsWith('Approve: Pay USAA first')).toBe(true);
   });
+  it('uses an Approve recommendation as the label, never Approve: Approve', () => {
+    expect(approveLabel('Approve')).toBe('Approve');
+    expect(approveLabel('approve both')).toBe('Approve both');
+    expect(approveLabel('APPROVE')).toBe('APPROVE');
+    expect(approveLabel('ack and resolve')).toBe('Approve: ack and resolve');
+    expect(approveLabel('Approvers list')).toBe('Approve: Approvers list');
+    expect(approveLabel('**Approve** both')).toBe('Approve both');
+  });
+  it('clips an Approve recommendation to 40 characters', () => {
+    const l = approveLabel('approve the plan, then the budget, then the hiring list');
+    expect(l).toHaveLength(40);
+    expect(l.startsWith('Approve the plan')).toBe(true);
+    expect(l.endsWith('…')).toBe(true);
+  });
   it('falls back to Approve with no recommendation', () => {
     expect(approveLabel(undefined)).toBe('Approve');
     expect(approveLabel('  ')).toBe('Approve');
@@ -140,5 +154,20 @@ describe('approveLabel: the primary button names the action', () => {
     expect(row[0].label).toBe('Approve: Studio Shed quote');
     expect(actionsFor(ask({ source: 'need' }))[0].label).toBe('Approve');
     expect(JSON.stringify([need, row])).not.toMatch(/Go with it/);
+  });
+});
+
+// @req FR:ask-queue/web.card
+describe('loudRow: at most one row uses the warn color', () => {
+  const now = at(12);
+  it('picks the most recently late row; ties go to the first in rank order', () => {
+    const items = [ask({ key: 'old', by: at(9, 0, 22).toISOString() }), ask({ key: 'new', by: at(10).toISOString() }), ask({ key: 'soon', by: at(15).toISOString() }), ask({ key: 'none' })];
+    expect(loudRow(items, now)).toBe('new');
+    const same = at(10, 0, 22).toISOString();
+    expect(loudRow([ask({ key: 'x', by: same }), ask({ key: 'y', by: same })], now)).toBe('x');
+  });
+  it('with none late, is the soonest due within 24 h; null when none is', () => {
+    expect(loudRow([ask({ key: 'b', by: at(18).toISOString() }), ask({ key: 'a', by: at(15).toISOString() }), ask({})], now)).toBe('a');
+    expect(loudRow([ask({ by: at(9, 0, 30).toISOString() }), ask({})], now)).toBeNull();
   });
 });

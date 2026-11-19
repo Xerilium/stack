@@ -29,7 +29,6 @@
 .ask-row:hover, .ask-row:focus-visible { background: var(--hover); }
 .ask-row .row-title { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-weight: 500; line-height: 1.35; }
 .row-meta { display: contents; }
-.ask-row .verb { flex: none; min-width: 84px; text-align: right; font-size: 12px; font-weight: 600; color: var(--ink2); }
 .ask-row .dl { min-width: 112px; justify-content: flex-end; }
 .ask-row .dl.empty { height: 0; padding: 0; }
 .ask-row:focus-visible, .btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -44,6 +43,9 @@
 .dl.soon { color: var(--warn); }
 .dl.late { color: var(--warn); font-weight: 650; }
 .dl .rel { color: inherit; opacity: .85; }
+/* a late or soon row that is not the loud one: ink, a clock, no warn color. @req FR:ask-queue/web.card */
+.dl.quiet { color: var(--ink2); font-weight: 450; }
+.dl.quiet svg { flex: none; width: 12px; height: 12px; color: var(--muted); }
 
 /* the focal card */
 .ask-card { background: var(--card, var(--panel)); border: 1px solid var(--card-line, var(--line)); border-radius: 16px; padding: 20px 22px 18px; margin: 4px 0 10px; box-shadow: 0 1px 2px rgb(20 20 30 / 4%), 0 8px 24px -12px rgb(20 20 30 / 10%); }
@@ -71,7 +73,9 @@
 .ask-actions, .ask-defer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 18px; }
 .ask-actions .btn, .ask-defer .btn { min-height: 38px; }
 .ask-actions .btn.primary, .asks-view .btn.primary { background: var(--fill); border-color: var(--fill); color: #fff; }
-.ask-actions .btn.primary { min-width: 120px; justify-content: center; }
+.ask-actions .btn.primary { min-width: 120px; max-width: 100%; justify-content: center; }
+/* the primary label stays on one line. @req FR:ask-queue/web.responsive */
+.ask-actions .btn-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 a.btn { text-decoration: none; color: inherit; }
 a.btn.primary { color: #fff; }
 .ask-actions .btn:not(.primary) kbd, .ask-defer kbd, .ask-reply-box .btn:not(.primary) kbd { background: none; border-color: transparent; color: var(--muted); }
@@ -134,13 +138,15 @@ a.btn.primary { color: #fff; }
   .ask-reply-box input { flex: 1 1 100%; min-height: var(--tap); }
   .ask-reply-box .btn { min-height: var(--tap); flex: 1 1 40%; justify-content: center; }
   .ask-eyebrow .dl:not(.late) .rel { display: none; }
+  .ask-eyebrow { flex-wrap: wrap; row-gap: 4px; }
+  .ask-eyebrow .of { white-space: nowrap; }
   /* rows: title on one line, then "Approve · Today 10:48 pm · allyte" */
   .ask-row { min-height: 56px; flex-wrap: wrap; align-content: center; padding: 6px 17px; row-gap: 2px; }
   .ask-row .row-title { flex: 1 1 100%; }
-  .row-meta { display: flex; align-items: center; gap: 8px; flex: 1 1 100%; min-width: 0; }
-  .ask-row .dl { min-width: 0; }
-  .ask-row .proj { width: auto; max-width: 40%; text-align: left; }
-  .ask-row .verb { min-width: 0; text-align: left; }
+  /* the meta wraps instead of clipping: no fixed widths. @req FR:ask-queue/web.responsive */
+  .row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; flex: 1 1 100%; min-width: 0; }
+  .row-meta > *, .ask-row .dl { min-width: 0; }
+  .ask-row .proj { width: auto; max-width: 100%; text-align: left; }
   .ask-row .verb:empty, .ask-row .proj:empty, .ask-row .dl.empty { display: none; }
   .foot-list, .keys-hint { padding-left: 17px; padding-right: 17px; margin-left: 0; margin-right: 0; }
   .more-btn, .foot-btn { padding-left: 17px; }
@@ -158,15 +164,17 @@ a.btn.primary { color: #fff; }
   .ask-li { transition: none; }
 }
 
-/* designer pass: the verb is a quiet tag, not a button */
-.row-meta .verb { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; color: var(--muted); }
+/* the verb is a muted chip in sentence case, not a button. @req FR:ask-queue/web.card */
+.row-meta .verb { flex: none; font-size: 12px; font-weight: 500; color: var(--ink2); background: var(--chip); border-radius: 6px; padding: 1px 7px; min-width: 72px; text-align: center; box-sizing: border-box; }
+@media (max-width: 719px) { .row-meta .verb { min-width: 0; } }
+.row-meta .verb:empty { display: none; }
 
 /* quick triage stepper. @req FR:quick-triage/web.stepper @req FR:quick-triage/web.mobile */
 .ask-eyebrow .of.flow { color: var(--accent); font-weight: 650; }
 .flow-bar { height: 3px; border-radius: 3px; background: var(--chip); margin: 10px 0 0; overflow: hidden; }
 .flow-bar span { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .2s var(--ease); }
 .btn.will { flex-direction: column; align-items: flex-start; gap: 1px; padding-top: 5px; padding-bottom: 5px; }
-.btn.will > span { display: inline-flex; align-items: center; gap: 8px; }
+.btn.will > span { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-width: 0; }
 .btn.will small { font-weight: 400; font-size: 11.5px; color: var(--muted); }
 .btn.will.primary small { color: color-mix(in srgb, var(--accent-ink) 80%, transparent); }
 @media (max-width: 719px) { .ask-actions:has(.btn.will) { flex-direction: column; } .ask-actions:has(.btn.will) .btn { width: 100%; min-height: var(--tap); } }

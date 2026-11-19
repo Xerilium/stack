@@ -304,6 +304,7 @@ Every page uses only these components for these entities.
 - **FR:ui.askcard** (P1): `AskCard` draws every Notifications item. Kinds: ask, PR escalation, mail, summary.
   - Shows: from (`AgentChip`, or the sender for mail), the ask, then a brief: problem, recommendation, options, risks, links (`RefLink`).
   - The primary button names the action, for example `Approve: merge f4-music#97`. "Go with it" does not exist.
+  - A recommendation that starts with the word `approve` is the label as is, with a capital first letter (`Approve`, `Approve both`), never `Approve: Approve`. A word that only starts with those letters (`Approvers list`) keeps the prefix. The label is at most 40 characters.
   - An ask or PR escalation with no brief shows `No brief` and `Ask {agent} for a brief`.
   - A summary item shows its count and one action, for example `Ask agents to fill them in`.
 - **FR:ui.reflink** (P1): `RefLink` draws each ref from `FR:schema.refs` as an inline link. The label is short (`f4-music#97`). A state dot shows when the state is known. All refs in one text are links. No "Open {host}" button exists anywhere.
