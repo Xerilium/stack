@@ -242,6 +242,24 @@ test.describe('Sessions', () => {
     if (process.env.SHOOT) { await page.locator('.agent-card', { hasText: 'Alpha Lead' }).click(); await expect(tabs).toHaveCount(4); await page.screenshot({ path: `../docs/design/screens/agents-team-tabs-${process.env.SHOOT}.png`, fullPage: true }); }
   });
 
+  // The old chat must never show as an overlay while the new one loads: an overlay takes focus, so the next key is lost.
+  // @req FR:agents-team/chat.show
+  test('picking another agent never shows the old chat as an overlay', async ({ page }) => {
+    await open(page, teamSeed(), true);
+    const pane = page.getByTestId('chat-pane');
+    await expect(pane.getByRole('region')).toHaveAccessibleName('👔 CoS · morning brief');
+    await page.evaluate(() => {
+      const w = window as unknown as { overlays: number };
+      w.overlays = 0;
+      new MutationObserver(() => { if (document.querySelector('[role="dialog"], .sess-scrim')) w.overlays++; }).observe(document.body, { childList: true, subtree: true });
+    });
+    await page.locator('.agent-card[data-agent="lonely"]').click(); // an agent with a chat: the chat swaps
+    await expect(pane.getByRole('region')).toHaveAccessibleName('Lonely · tests');
+    await page.locator('.agent-card[data-agent="beta-cos"]').click(); // an agent with no chat: the chat closes
+    await expect(page.getByTestId('chat-empty')).toBeVisible();
+    expect(await page.evaluate(() => (window as unknown as { overlays: number }).overlays)).toBe(0);
+  });
+
   // @req FR:agents-team/chat.empty
   test('an agent with no chat says so and Start chat opens the composer with it chosen', async ({ page }) => {
     await open(page, teamSeed(), true);

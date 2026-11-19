@@ -64,12 +64,17 @@ test.describe('Now screen', () => {
   test('Done plays the check on the card, then the next task opens with no tap; Undo is offered', async ({ page }) => {
     await ten(page);
     await mockApi(page, { tasks: seed() });
+    // The done card stays for 400 ms (DONE_MS) or until the save returns, whichever is later. Hold the save while the card is read, so a slow runner cannot lose it.
+    let save = () => {};
+    const saved = new Promise<void>((ok) => { save = ok; });
+    await page.route('**/api/tasks/complete', async (r) => { await saved; await r.fallback(); });
     await page.goto('/#/now');
     await page.getByRole('button', { name: /^Done/ }).click();
     const card = page.locator('.now-card.done-anim[data-ref="alpha:6"]');
     await expect(card).toBeVisible();
     await expect(card.locator('.now-done-check')).toBeVisible();
     expect(await card.locator('h1').evaluate((el) => getComputedStyle(el).animationName)).toBe('now-done');
+    save();
     await expect(page.locator('.now-card[data-ref="alpha:6"]')).toHaveCount(0); // the next task replaced it
     await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('Nothing now');
     await expect(page.getByRole('status').getByRole('button', { name: 'Undo' })).toBeVisible();

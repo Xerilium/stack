@@ -270,7 +270,10 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
     if (chats.length) { if (!s.open || (known && !chats.some((c) => c.id === s.open))) void s.openDrawer(chats[0].id); } else if (s.open && known) s.closeDrawer();
   }, [chartMode, sel, chatIds, s.phase, s.open, s.composing]);
   const inlineChat = chartMode && !s.composing && !!s.open && chats.some((c) => c.id === s.open);
-  const modal = s.composing || (!!s.open && !inlineChat);
+  // On the chart a listed session is never an overlay: when it is not the selected agent's chat, the effect above swaps or closes it.
+  // Painting it for that one frame would take focus, so the next key (n, j, k) would be lost. @req FR:agents-team/chat.show
+  const leaving = chartMode && !inlineChat && s.items.some((i) => i.id === s.open);
+  const modal = s.composing || (!!s.open && !inlineChat && !leaving);
 
   const stopArm = useRef(0);
   const stopFromList = (id: string) => {
