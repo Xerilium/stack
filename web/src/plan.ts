@@ -18,14 +18,31 @@ export interface Plan { meetings: Busy[]; email?: { start: number; end: number; 
 const MAX_BLOCK = 120;
 const DEFAULT_MIN = 30;
 
-/** Open rows with no open row below them: the things you actually do. */
+/** The field keys of a row (`FR:product-reset/schema.keys`), and `Needs`: the question an agent leaves for the owner. */
+const FIELD_ROW = /^\**\s*(?:next|done when|context|links|owner|blocked by|checked|notes|needs)\s*:/i;
+/**
+ * Open checkbox rows that hold a field of their parent (`- [ ] Context: ...`), each with the ref of that open parent.
+ * Such a row is detail of its parent, not a thing to do. @req FR:web-app/today.plan.field
+ */
+export function fieldRows(tasks: Task[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (let i = 0; i < tasks.length; i++) {
+    const t = tasks[i];
+    if (t.done || t.depth === 0 || !FIELD_ROW.test(t.text.trim())) continue;
+    for (let k = i - 1; k >= 0 && tasks[k].project === t.project; k--) if (tasks[k].depth < t.depth) { if (!tasks[k].done) out.set(t.ref, tasks[k].ref); break; }
+  }
+  return out;
+}
+
+/** Open rows with no open row below them: the things you actually do. A field row is never one, and never keeps its parent from being one. */
 export function openLeaves(tasks: Task[]): Task[] {
+  const field = fieldRows(tasks);
   const out: Task[] = [];
   for (let i = 0; i < tasks.length; i++) {
     const t = tasks[i];
-    if (t.done) continue;
+    if (t.done || field.has(t.ref)) continue;
     let open = false;
-    for (let k = i + 1; k < tasks.length && tasks[k].project === t.project && tasks[k].depth > t.depth; k++) if (!tasks[k].done) { open = true; break; }
+    for (let k = i + 1; k < tasks.length && tasks[k].project === t.project && tasks[k].depth > t.depth; k++) if (!tasks[k].done && !field.has(tasks[k].ref)) { open = true; break; }
     if (!open) out.push(t);
   }
   return out;
@@ -49,7 +66,11 @@ export function byServerRank<T extends { ref: string }>(rows: T[], order: string
 /** Tasks for the plan: yours (not an agent's, not a decision), active, actionable, leaf, in the server's order. @req FR:web-app/today.plan */
 export function planCandidates(tasks: Task[], now: Date, order: string[] | null, first?: string): Task[] {
   const mine = openLeaves(tasks).filter((t) => isActive(t) && actionable(t, now) && !whoOf(t));
-  const ranked = byServerRank(mine, order);
+  // The server ranks a field row as a leaf: its parent takes that place, once. @req FR:web-app/today.plan.field
+  const field = fieldRows(tasks);
+  const up = (ref: string) => field.get(ref) ?? ref;
+  const ranked = byServerRank(mine, order && [...new Set(order.map(up))]);
+  if (first) first = up(first);
   // The server's next task may be a parent: its first open leaf is what you actually do.
   const lead = first && !ranked.some((t) => t.ref === first) ? children(tasks, first).find((c) => ranked.includes(c))?.ref : first;
   const head = lead ? ranked.filter((t) => t.ref === lead) : [];
