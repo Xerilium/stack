@@ -1,0 +1,2 @@
+/* TaskContext: one muted line, clipped to one row. @req FR:now-screen/now.one */
+.task-context { margin: 0 0 var(--s-8); font-size: var(--fs-caption); line-height: 1.4; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }

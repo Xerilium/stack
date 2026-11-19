@@ -12,6 +12,7 @@ import { NowChat, type NowChatProps } from './NowChat';
 import { NowNext, type CalCtl, type Layer } from './NowNext';
 import type { PrioritiesView } from './priorities';
 import { PrioritiesTables } from './PrioritiesTables';
+import { TaskContext } from './TaskContext';
 import './nowscreen.css';
 
 export type NowAct = 'done' | 'defer';
@@ -31,7 +32,8 @@ export function NowScreen({ n, done = false, b, layer, busy, onAct, pri, cal, no
           {n ? (
             <article class={`now-card${done ? ' done-anim' : ''}`} key={n.task.ref} data-ref={n.task.ref}>
               {done && <span class="now-done-check" aria-hidden="true">✓</span>}
-              <h1 class="now-title" id="now-title" aria-describedby="now-why" title={n.title}><Md text={n.title} project={n.task.project} /></h1>
+              {n.context && <TaskContext title={n.context} project={n.task.project} id="now-context" />}
+              <h1 class="now-title" id="now-title" aria-describedby={n.context ? 'now-context now-why' : 'now-why'} title={n.title}><Md text={n.title} project={n.task.project} /></h1>
               <p class="now-why" id="now-why" data-testid="now-why">{n.why}</p>
             </article>
           ) : (

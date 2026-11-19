@@ -23,7 +23,8 @@ export function countdown(due: string | undefined, now: Date): Countdown | null 
   return { text: `in ${d}d`, tone: 'calm' };
 }
 
-export interface HomeItem { task: Task; minutes: number; assumed: boolean; due: Countdown | null }
+/** `leaf`: the ranked leaf when the row shows as its top-level root (Now shows the leaf). @req FR:now-screen/now.one */
+export interface HomeItem { task: Task; minutes: number; assumed: boolean; due: Countdown | null; leaf?: HomeItem }
 /** `done`: a task in the project was done today (absent when unknown). @req FR:pri-first-ranking/daily.web */
 export interface HomeProject { project: string; title: string; top: HomeItem; done?: boolean }
 export interface Home { one: HomeItem | null; fits: boolean; instead: HomeItem | null; projects: HomeProject[] }
@@ -61,23 +62,28 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem
   const hidden = o.exclude ?? new Set<string>();
   const seen = new Set<string>();
   const rows: Task[] = [];
+  const leafOf = new Map<string, Task>(); // root ref -> the first ranked leaf under it
   for (const r of o.ranked) {
     // A leaf shows as its top-level row, unless that row is an agent's or mixed: then the owner's leaf shows.
     const root = r.root ? byRef.get(r.root) : undefined;
     const t = root && !agentRow(root) ? root : byRef.get(r.ref);
     if (!t || t.done || seen.has(t.ref) || hidden.has(t.ref) || hidden.has(r.ref)) continue;
     seen.add(t.ref); rows.push(t);
+    const leaf = byRef.get(r.ref);
+    if (leaf && leaf !== t && !leaf.done) leafOf.set(t.ref, leaf);
   }
   // NOW is the server's first; under it, in-progress (🚧) rows come first, then the server's order.
   const oneTask = rows[0] ?? null;
   const tail = rows.slice(1);
   const rest = [...tail.filter(doing), ...tail.filter((t) => !doing(t))];
   const ordered = oneTask ? [oneTask, ...rest] : [];
-  const one = oneTask ? item(oneTask, now) : null;
+  // A row shown for its ranked leaf takes the leaf's time: fit and the "needs" text are about the step the owner will do. @req FR:now-screen/now.one
+  const withLeaf = (t: Task): HomeItem => { const i = item(t, now); const l = leafOf.get(t.ref); if (!l) return i; const leaf = item(l, now); return { ...i, minutes: leaf.minutes, assumed: leaf.assumed, leaf }; };
+  const one = oneTask ? withLeaf(oneTask) : null;
   const vs = (s: string) => s.replace(/\uFE0F/g, '');
   const may = (i: HomeItem) => !o.allow || vs(i.task.text).includes(vs(o.allow.emoji)) || !!o.allow.projects?.includes(i.task.project);
   const fits = !one || (one.minutes <= o.minutesLeft && may(one));
-  const instead = !fits && o.minutesLeft > 0 ? (rest.map((t) => item(t, now)).find((i) => i.minutes <= o.minutesLeft && may(i)) ?? null) : null;
+  const instead = !fits && o.minutesLeft > 0 ? (rest.map(withLeaf).find((i) => i.minutes <= o.minutesLeft && may(i)) ?? null) : null;
   // projects in the order of their top ranked row. @req FR:web-app/home2.order
   const rankOf = new Map(ordered.map((t, i) => [t.ref, i]));
   const projects: HomeProject[] = [];
