@@ -65,11 +65,11 @@ export function useThread(api: Client, toast: ToastFn, team: Team, sessions: Ses
         const same = followUpSession(thread, agent ? team.team.find((a) => a.slug === agent)?.name : undefined);
         if (same) {
           await api.promptSession(same.id, text, { ref, ...(agent ? { agent } : {}) }); // the persona rides along: a resumed session has none
-          if (keepOpen) open(same.id);
+          if (keepOpen) open(same.id, `Sent to ${agent ?? 'the agent'}`);
         } else {
           const r = await api.newSession(undefined, text, { agent, ref });
           if (r.sessionId) team.noteStarted(ref, r.sessionId);
-          if (keepOpen) open(r.sessionId ?? r.runId);
+          if (keepOpen) open(r.sessionId ?? r.runId, `Sent to ${r.agent ?? agent ?? 'the agent'}`);
         }
       } catch (e) { toastRef.current(`Saved on the task, but the agent did not start: ${e instanceof Error ? e.message : 'failed'}`, 'err'); }
       void sessions.reload();

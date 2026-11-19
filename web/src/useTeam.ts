@@ -88,7 +88,7 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
       if (r.sessionId) noteStarted(key, r.sessionId);
       setTalkState(null);
       await sessions.reload();
-      if (keepOpen) open(r.sessionId ?? r.runId); else toastRef.current(`Sent to ${r.agent ?? 'the agent'}`);
+      if (keepOpen) open(r.sessionId ?? r.runId, `Sent to ${r.agent ?? 'the agent'}`); else toastRef.current(`Sent to ${r.agent ?? 'the agent'}`);
       return true;
     } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to start', 'err'); return false; }
   }, [api, enabled, sessions, noteStarted]);
@@ -101,7 +101,7 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
       const r = await api.assign(ref, agent, note);
       if (r.sessionId) noteStarted(ref, r.sessionId);
       toastRef.current(`Assigned to ${r.agent}`);
-      if (keepOpen) open(r.sessionId ?? r.runId);
+      if (keepOpen) open(r.sessionId ?? r.runId); // a late open needs no toast: the one above says it
       void sessions.reload();
       return true;
     } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to assign', 'err'); return false; }

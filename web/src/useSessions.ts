@@ -101,8 +101,8 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
   /** Counts every close (Esc, the scrim, a page change). */
   const closes = useRef(0);
   const closeDrawer = useCallback(() => { closes.current++; closeStream(); setOpen(null); setComposingState(false); setComposeAgent(null); }, [closeStream]);
-  /** For an open that follows a wait (a session start): call before the wait, open with the result. It opens nothing when a close came first, so no drawer shows on a page the user went to meanwhile. @req FR:agent-sessions/web.drawer.nav.late */
-  const openLater = useCallback(() => { const at = closes.current; return (id: string) => { if (at === closes.current) void openDrawer(id); }; }, [openDrawer]);
+  /** For an open that follows a wait (a session start): call before the wait, open with the result. When a close came first, no drawer shows on the page the user went to meanwhile; a toast (`late`) says the start landed, unless the caller already said it. @req FR:agent-sessions/web.drawer.nav.late @req FR:agent-sessions/web.drawer.nav.late.toast */
+  const openLater = useCallback(() => { const at = closes.current; return (id: string, late?: string) => { if (at === closes.current) void openDrawer(id); else if (late) toastRef.current(late); }; }, [openDrawer]);
 
   const send = useCallback(async (text: string) => {
     const t = text.trim();
@@ -128,8 +128,8 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
     const at = closes.current;
     try {
       const r = await api.newSession(cwd, text.trim(), extra ?? {});
-      // Closed while it started (a page change): the session runs, and no drawer opens over the new page. @req FR:agent-sessions/web.drawer.nav.late
-      if (at !== closes.current) { void load(); return true; }
+      // Closed while it started (a page change): the session runs, no drawer opens over the new page, and a toast says it started. @req FR:agent-sessions/web.drawer.nav.late
+      if (at !== closes.current) { toastRef.current(extra?.agent ? `Sent to ${r.agent ?? extra.agent}` : 'Session started'); void load(); return true; } // @req FR:agent-sessions/web.drawer.nav.late.toast
       setComposingState(false); setComposeAgent(null);
       setOpen(r.sessionId ?? r.runId); setTurns([{ at: new Date().toISOString(), role: 'user', text: text.trim() }]); setTranscript(emptyTranscript());
       listen(r.sessionId ?? r.runId);

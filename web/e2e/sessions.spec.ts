@@ -342,6 +342,7 @@ test.describe('Sessions', () => {
     await expect.poll(() => m.calls.some((c) => c.path === '/sessions')).toBe(true); // the session still starts
     await listed;
     await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.toast', { hasText: 'Session started' })).toBeVisible(); // @req FR:agent-sessions/web.drawer.nav.late.toast
   });
 
   // @req FR:agent-sessions/web.drawer.nav
@@ -440,6 +441,7 @@ test.describe('Sessions', () => {
     await listed;
     await expect.poll(() => m.calls.some((c) => c.path === '/sessions')).toBe(true); // the session still starts
     await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.toast', { hasText: 'Sent to alpha-lead' })).toBeVisible(); // @req FR:agent-sessions/web.drawer.nav.late.toast
   });
 
   // @req FR:agents-team/chart.layout
