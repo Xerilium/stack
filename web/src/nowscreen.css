@@ -119,13 +119,11 @@
 .now-ask:not(.open):hover, .now-ask:not(.open):focus-within { background: var(--card-hover); }
 .now-ask.open { box-shadow: var(--shadow); }
 .now-ask-head { display: flex; align-items: flex-start; gap: var(--s-12); padding: var(--s-16); }
-.now-ask-head .now-mini { margin-top: 2px; }
 /* A long answer never crushes the title: the button takes at most 45%, one line, an ellipsis. @req FR:ux-consolidation/one.messages */
+.now-ask-head .now-mini { margin-top: 2px; max-width: 45%; min-width: 0; overflow: hidden; }
 .now-asks, .now-ask { min-width: 0; } /* a nowrap label never widens the grid track */
-.now-ask { cursor: pointer; }
-.now-ask-head .now-mini { overflow: hidden; }
-.now-ask.open { cursor: auto; }
-.now-ask-head .now-mini { max-width: 45%; min-width: 0; }
+/* The card is the click target; open, only its head toggles it. @req FR:ux-consolidation/one.expand */
+.now-ask:not(.open), .now-ask.open .now-ask-head { cursor: pointer; }
 .now-mini-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* Phone: the body takes row 1, the button row 2. */
 @media (max-width: 479px) { .now-ask-head { flex-wrap: wrap; } .now-ask-head .now-ask-body { flex: 1 1 100%; } .now-ask-head .now-mini { max-width: 100%; margin-top: 0; } }
