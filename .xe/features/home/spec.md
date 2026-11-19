@@ -49,6 +49,7 @@ Home itself (the one thing, fit, up next, projects, countdowns) is `FR:web-app/h
   - **FR:myday.timeline.start** (P1): A block shows its own start time when it starts off the half hour (`10:15a`)
   - **FR:myday.timeline.estimate** (P1): A task block keeps its estimate mark (`~30m`, `2h+`)
     > - @req FR:web-app/today.plan
+  - **FR:myday.timeline.phone** (P1): At 800 px or less, or on touch, the start time and the estimate stay whole on the line under the title. The project name is cut first (`…`). At 480 px or less the status chip and the link tags are not on that line
   - **FR:myday.timeline.a11y** (P1): Assistive tech reads every block's start, length, and schedule block
 - **FR:myday.short** (P2): A task block shorter than 30 minutes is one line: the done circle and the title. Its other actions are in the task detail.
 - **FR:myday.header** (P1): The My day header is the date line, the headline (`{planned} of {available}`), the Available control, and one line that shows only what needs action: at-risk tasks that do not fit, `No calendar`, and the next meeting with `Join`

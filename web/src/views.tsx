@@ -588,7 +588,7 @@ function PlanBlock({ b, p, busy, onAct, message }: { b: Block; p: RowProps; busy
           <p class="what-meta">
             <span>{p.titles.get(b.task.project) ?? b.task.project}</span>
             {b.start % SLOT_MIN > 0 && <span class="at" aria-hidden="true">{clock(b.start)}</span>}
-            {(b.assumed || b.partial) && <span aria-hidden="true" title={b.assumed ? 'No effort set; 30 min assumed' : 'Capped at 2 h'}>{b.assumed ? '~' : ''}{span(b.end - b.start)}{b.partial ? '+' : ''}</span>}
+            {(b.assumed || b.partial) && <span class="est" aria-hidden="true" title={b.assumed ? 'No effort set; 30 min assumed' : 'Capped at 2 h'}>{b.assumed ? '~' : ''}{span(b.end - b.start)}{b.partial ? '+' : ''}</span>}
             <DueNote due={r.due} />
             {chipsOf(b.task.text).filter((c) => c.group === 'status').map((c) => <Chip key={c.group} {...c} onPick={(g) => p.onPick([ref], g)} />)}
             <Tags r={r} />
