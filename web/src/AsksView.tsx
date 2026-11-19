@@ -210,7 +210,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
     live.current = text;
   }, [asks.total, asks.phase]);
 
-  useEffect(() => { document.querySelector('.ask-card')?.scrollIntoView({ block: 'nearest' }); }, [asks.cursor]);
+  useEffect(() => { document.querySelector('.ask-card[data-kind]')?.scrollIntoView({ block: 'nearest' }); }, [asks.cursor]);
 
   const run = (x: Action) => {
     const a = asks.itemsRef.current.find((i) => i.key === asks.cursorRef.current) ?? asks.current;
