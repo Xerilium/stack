@@ -81,6 +81,15 @@ describe('grouped decide asks', () => {
   });
 
   // @req FR:email-triage/ask.group.reply
+  it('a mail with no subject or no sender address stays keyed by its thread', async () => {
+    const { storage, ctx } = mkCtx();
+    await recordResult(ctx, decide('a', { subject: ' ' }));
+    await recordResult(ctx, decide('b', { subject: 'Re: ' }));
+    await recordResult(ctx, decide('c', { from: { name: 'x', address: '' } }));
+    expect((await storage.listAsks!()).sort()).toEqual(['a', 'b', 'c'].map((x) => asksPath(mailKey(`conv-${x}`))).sort());
+  });
+
+  // @req FR:email-triage/ask.group.reply
   it('needs_reply results in two threads still give two review asks', async () => {
     const { storage, ctx } = mkCtx();
     const draft = { text: 'Thanks', webLink: 'https://outlook.example.test/mail/drafts/D' };

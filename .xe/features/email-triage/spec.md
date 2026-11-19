@@ -42,9 +42,9 @@ Mail is the biggest source of interruptions. This module reads a mailbox on a sc
 - **FR:ask.reply** (P1): A `needs_reply` result with a draft becomes an ask of kind `review` keyed `mail-<conversation hash>`: `ask` = `Review draft reply to <sender name>: <subject>`, `recommend` = `Send as drafted` or `Edit then send` by model confidence, `link` = the draft's Outlook web link, `default` = `Draft stays in Drafts (nothing is sent)`, `reversible: yes`, `project` from the mailbox, `from: email-triage`, `## Detail` = the first 600 characters of the draft
 - **FR:ask.decide** (P1): A `needs_decision` result becomes kind `decide` with 2-4 options from the model and a recommendation; `sensitive` becomes kind `go-do` with sender and subject only, no body
 - **FR:ask.group** (P1): `needs_decision` and `sensitive` asks are keyed `mail-<hash>` of the sender address (lowercase) and the subject (lowercase, trimmed, every leading `Re:`, `Fw:` or `Fwd:` dropped)
-  - **FR:ask.group.reply** (P1): `needs_reply` asks stay keyed by conversation
+  - **FR:ask.group.reply** (P1): `needs_reply` asks, and asks for a mail with no sender address or an empty subject, stay keyed by conversation
   - **FR:ask.group.count** (P1): A mail from a thread the open grouped ask does not list adds the thread and ends the ask line with `(<n> mails)`
-  - **FR:ask.group.refresh** (P1): Each mail for an open grouped ask updates its fields from the newest mail, link included
+  - **FR:ask.group.refresh** (P1): Each mail for an open grouped ask sets the fields it has (link, options, summary and the rest) on the ask
   - **FR:ask.group.priority** (P2): An update never lowers the priority of an open grouped ask
   - **FR:ask.group.dedupe** (P1): The last detail line `Mails: <n> (<ids>)` lists short ids of the threads the group has seen
   - **FR:ask.group.done** (P1): A mail from a listed thread leaves a handled grouped ask handled

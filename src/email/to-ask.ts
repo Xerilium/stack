@@ -26,7 +26,7 @@ export const normSubject = (subject: string): string => { let t = subject.trim()
 /** `mail-` plus 12 hex of the sha1 of sender address and normalized subject: one ask for the same notice in many threads. @req FR:email-triage/ask.group */
 export const groupKey = (m: Message): string => `mail-${createHash('sha1').update(`${m.from.address.trim().toLowerCase()}\n${normSubject(m.subject)}`).digest('hex').slice(0, 12)}`;
 /** Decide and sensitive asks are grouped; reply asks stay per thread (each draft is per thread). @req FR:email-triage/ask.group @req FR:email-triage/ask.group.reply */
-const grouped = (r: TriageResult): boolean => r.class === 'needs_decision' || r.class === 'sensitive';
+const grouped = (r: TriageResult): boolean => (r.class === 'needs_decision' || r.class === 'sensitive') && !!r.message.from.address.trim() && !!normSubject(r.message.subject ?? '');
 /** The ask key for a result. */
 export const askKey = (r: TriageResult): string => (grouped(r) ? groupKey(r.message) : mailKey(r.message.conversationId));
 
