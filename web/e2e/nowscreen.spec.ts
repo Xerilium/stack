@@ -64,17 +64,44 @@ test.describe('Now screen', () => {
   test('Done plays the check on the card, then the next task opens with no tap; Undo is offered', async ({ page }) => {
     await ten(page);
     await mockApi(page, { tasks: seed() });
+    // The done card stays for 400 ms (DONE_MS) or until the save returns, whichever is later. Hold the save while the card is read, so a slow runner cannot lose it.
+    let save = () => {};
+    const saved = new Promise<void>((ok) => { save = ok; });
+    await page.route('**/api/tasks/complete', async (r) => { await saved; await r.fallback(); });
     await page.goto('/#/now');
     await page.getByRole('button', { name: /^Done/ }).click();
     const card = page.locator('.now-card.done-anim[data-ref="alpha:6"]');
     await expect(card).toBeVisible();
     await expect(card.locator('.now-done-check')).toBeVisible();
     expect(await card.locator('h1').evaluate((el) => getComputedStyle(el).animationName)).toBe('now-done');
+    save();
     await expect(page.locator('.now-card[data-ref="alpha:6"]')).toHaveCount(0); // the next task replaced it
     await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('Nothing now');
     await expect(page.getByRole('status').getByRole('button', { name: 'Undo' })).toBeVisible();
     const axe = await new AxeBuilder({ page }).include('[data-testid="now"]').analyze();
     expect(axe.violations).toEqual([]);
+  });
+
+  // @req FR:product-reset/ui.done
+  test('a fast save still shows the check: the done card stays for the length of the animation', async ({ page }) => {
+    await ten(page);
+    await mockApi(page, { tasks: seed() });
+    await page.goto('/#/now');
+    await expect(page.locator('.now-card[data-ref="alpha:6"]')).toBeVisible();
+    // Timed in the page on the animation clock: a slow runner can only make the time longer, never shorter.
+    await page.evaluate(() => {
+      const w = window as unknown as { doneMs: number };
+      w.doneMs = -1;
+      let from = -1;
+      const at = () => Number(document.timeline.currentTime);
+      new MutationObserver(() => {
+        const on = !!document.querySelector('.now-card.done-anim[data-ref="alpha:6"]');
+        if (on && from < 0) from = at();
+        if (!on && from >= 0 && w.doneMs < 0) w.doneMs = at() - from;
+      }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+    });
+    await page.getByRole('button', { name: /^Done/ }).click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { doneMs: number }).doneMs)).toBeGreaterThanOrEqual(350); // DONE_MS is 400; one frame of slack
   });
 
   test('a slow save never shows the done task again: the check holds until the next task loads', async ({ page }) => {

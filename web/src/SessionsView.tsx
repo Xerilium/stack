@@ -264,11 +264,12 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
   // The chat under the chart: the selected agent's newest chat opens when the selection changes, when the first one arrives, or when the open one is another agent's.
   // An id the list does not know yet (a session just started) is left alone.
   const chatIds = chats.map((c) => c.id).join('\n');
-  useEffect(() => {
-    if (!chartMode || s.phase !== 'ready' || s.composing) return;
+  /** Shows the newest of `of` (an agent's chats) unless one of them is open already; with none, closes a listed chat. */
+  const showChat = (of: SessionItem[]) => {
     const known = s.items.some((i) => i.id === s.open);
-    if (chats.length) { if (!s.open || (known && !chats.some((c) => c.id === s.open))) void s.openDrawer(chats[0].id); } else if (s.open && known) s.closeDrawer();
-  }, [chartMode, sel, chatIds, s.phase, s.open, s.composing]);
+    if (of.length) { if (!s.open || (known && !of.some((c) => c.id === s.open))) void s.openDrawer(of[0].id); } else if (s.open && known) s.closeDrawer();
+  };
+  useEffect(() => { if (chartMode && s.phase === 'ready' && !s.composing) showChat(chats); }, [chartMode, sel, chatIds, s.phase, s.open, s.composing]);
   const inlineChat = chartMode && !s.composing && !!s.open && chats.some((c) => c.id === s.open);
   const modal = s.composing || (!!s.open && !inlineChat);
 
@@ -286,7 +287,8 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
   // Every agent starts a chat, scanned agents included. @req FR:agent-team/agent.team.scan.run
   const runTeam = agentsOrdered;
   const compose = (slug?: string) => { const want = slug ?? (chartMode ? sel : composeDefault(cursor, runTeam, s.items)); s.setComposing(true, runTeam.some((a) => a.slug === want) ? want : undefined); };
-  const pick = (slug: string) => { setSel(slug); };
+  // The chat changes in the same update as the selection. A paint between the two shows the old chat as an overlay; the overlay takes focus and the next key (n, j, k) is lost. @req FR:agents-team/chat.show
+  const pick = (slug: string) => { setSel(slug); const a = team.find((x) => x.slug === slug); if (a && s.phase === 'ready' && !s.composing) showChat(chatsOf(a)); };
 
   // Keys act on this render's state, not the state of the render whose effect last registered the listener.
   const onKey = (e: KeyboardEvent) => {
