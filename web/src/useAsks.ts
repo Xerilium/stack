@@ -123,9 +123,9 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   // task asks join the list; the ones just answered stay out until the inbox knows
   const [holdTick, bump] = useState(0);
   const main = useMemo(() => mergeNeeds(items, (extras.tasks ?? []).filter((t) => !held(t.key))), [items, extras.tasks, holdTick]); // holdTick stands for the hold map
-  /** Stale CoS items join the list only while their group is open, after everything else; they never count. @req FR:ask-queue/needs.web.stale */
+  /** Stale CoS items join the list only while their group is open, after everything else; they never count. @req FR:ask-queue/needs.web.stale.count */
   const [staleOpen, setStaleOpen] = useState(false);
-  const stale = useMemo(() => (extras.stale ?? []).filter((t) => !held(t.key)).map((a, i) => ({ ...a, rank: i + 1 })), [extras.stale, holdTick]) // ranked within the group;
+  const stale = useMemo(() => (extras.stale ?? []).filter((t) => !held(t.key)).map((a, i) => ({ ...a, rank: i + 1 })), [extras.stale, holdTick]); // ranked within the group
   const staleKeys = useMemo(() => new Set(stale.map((a) => a.key)), [stale]);
   const ranked = useMemo(() => (staleOpen ? [...main, ...stale] : main), [main, stale, staleOpen]);
   itemsRef.current = ranked;

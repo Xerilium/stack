@@ -1,6 +1,6 @@
 /**
  * CoS escalations more than 48 h past `by` leave the list and the badge for a collapsed Stale group.
- * @req FR:ask-queue/needs.web.stale
+ * @req FR:ask-queue/needs.web.stale @req FR:ask-queue/needs.web.stale.group @req FR:ask-queue/needs.web.stale.count @req FR:ask-queue/needs.web.stale.open
  */
 import { expect, test, type Page } from '@playwright/test';
 import { mockApi, type MockNeed } from './mock';

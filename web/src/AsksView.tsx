@@ -212,10 +212,10 @@ function SignInNotice({ onSignIn }: { onSignIn?: () => void }) {
   );
 }
 
-/** CoS items past their date by more than 48 h: one collapsed group at the end; open, the items keep their actions. @req FR:ask-queue/needs.web.stale */
+/** CoS items past their date by more than 48 h: one collapsed group at the end; open, the items keep their actions. @req FR:ask-queue/needs.web.stale.group @req FR:ask-queue/needs.web.stale.open */
 function StaleGroup({ n, open, onToggle, children }: { n: number; open: boolean; onToggle: () => void; children: ComponentChildren }) {
   return (
-    <section class="stale-group" aria-label="Stale" data-testid="stale-group">
+    <section class="asks-foot stale-group" aria-label="Stale" data-testid="stale-group">
       <button type="button" class="foot-btn" aria-expanded={open} onClick={onToggle}>Stale · {n}<span class="hint"> · CoS must re-verify</span></button>
       {open && <ol class="asks" aria-label="Stale asks">{children}</ol>}
     </section>
