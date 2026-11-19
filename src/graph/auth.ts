@@ -189,10 +189,15 @@ export function cachePathsWith(dir: string, explicit?: string): string[] {
   return out;
 }
 
-/** True when `dir` or a parent holds a `tasks/` folder: a Stack task repo, which a token must never enter. */
+const isDir = (p: string): boolean => { try { return statSync(p).isDirectory(); } catch { return false; } };
+/**
+ * True when the folder of `path` or a parent is a Stack task repo, which a token must never enter:
+ * it holds `.xe/config/stack.json`, or it is a git work tree with a `tasks/` folder.
+ * A plain `tasks/` folder (in the home or temp folder) is not a repo: nothing there can be committed.
+ */
 function inTaskRepo(path: string): boolean {
   for (let d = dirname(resolve(path)); ; d = dirname(d)) {
-    if (existsSync(join(d, 'tasks')) && statSync(join(d, 'tasks')).isDirectory()) return true;
+    if (existsSync(join(d, '.xe/config/stack.json')) || (existsSync(join(d, '.git')) && isDir(join(d, 'tasks')))) return true;
     if (dirname(d) === d) return false;
   }
 }

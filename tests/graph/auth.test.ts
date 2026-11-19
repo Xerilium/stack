@@ -113,10 +113,30 @@ describe('token cache file', () => {
     expect(await c.read()).toBeNull();
   });
   it('refuses a path inside a Stack task repo', () => {
+    // A git work tree with tasks/.
     const repo = tmp();
+    mkdirSync(join(repo, '.git'));
     mkdirSync(join(repo, 'tasks'));
     expect(() => new FileTokenCache(join(repo, 'graph-token.json'))).toThrow(/task repo/);
     expect(() => new FileTokenCache(join(repo, 'nested', 'deeper', 'graph-token.json'))).toThrow(/task repo/);
+    // A folder with the Stack config (`stack init`), also before its first task file.
+    const fresh = tmp();
+    mkdirSync(join(fresh, '.xe', 'config'), { recursive: true });
+    writeFileSync(join(fresh, '.xe', 'config', 'stack.json'), '{}\n');
+    expect(() => new FileTokenCache(join(fresh, 'nested', 'graph-token.json'))).toThrow(/task repo/);
+  });
+  // A folder named tasks/ in the home folder or the temp folder is not a task repo: sign-in must still work there.
+  it('accepts a path below a plain tasks/ folder that is not in a Stack repo', async () => {
+    const home = tmp();
+    mkdirSync(join(home, 'tasks'));
+    const c = new FileTokenCache(join(home, '.config', 'stack', 'graph-token.json'));
+    await c.write(token());
+    expect((await c.read())?.refreshToken).toBe(token().refreshToken);
+    // A file named tasks, or a git work tree with no tasks/, is not one either.
+    const work = tmp();
+    mkdirSync(join(work, '.git'));
+    writeFileSync(join(work, 'tasks'), '');
+    expect(() => new FileTokenCache(join(work, 'graph-token.json'))).not.toThrow();
   });
   it('rejects a malformed file', async () => {
     const d = tmp();
