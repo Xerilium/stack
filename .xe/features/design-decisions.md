@@ -325,7 +325,7 @@
 
 **Why**: The owner said no notification was actionable and none had context: a row showed only a title, a verb and a project.
 
-**Trade-offs**: The drop rule uses only what the ask says (its kind, options and link), so a go-do ask with no reason stays and gets `Ask for context`; Stack cannot know that its source is closed. Rejected: one button per action on every row (too much chrome at 375 px); a rewrite on `SelectCard` and `SplitView` (large; `product-reset` Stage 9 owns `AskCard`).
+**Trade-offs**: The drop rule uses only what the ask says (its kind, options and link), so a go-do ask with no reason stays and gets `Ask for context`; Stack cannot know that its source is closed. Stack already refuses a `decide` ask with no options when an agent writes it, so the drop covers ask files changed by hand. Rejected: one button per action on every row (too much chrome at 375 px); a rewrite on `SelectCard` and `SplitView` (large; `product-reset` Stage 9 owns `AskCard`).
 
 ## Now: priorities tables replace the ask cards
 

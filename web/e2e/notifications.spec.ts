@@ -84,6 +84,7 @@ test.describe('Notifications: context and actions on every row', () => {
     { ...ask('pr', 'Approve merging PR 158 into main', 80), kind: 'approve', from: 'stack-architect', project: 'stack', why: 'CI is green; one review is in', link: 'https://github.com/Xerilium/stack/pull/158' },
     { ...ask('mail', 'Review draft reply to Dana', 70), kind: 'review', from: 'email-triage', why: 'Dana asked for the contract terms', link: 'https://outlook.office.com/mail/id/1' },
     { ...ask('sess', 'Unblock the deploy session', 60), from: 'cos', why: 'It waits on a permission', link: 'https://claude.ai/code/session_1' },
+    { ...ask('rec', 'Merge the release branch', 55), kind: 'approve', from: 'Chief of Staff', recommend: 'Merge it today', link: 'https://github.com/Xerilium/stack/issues/152' },
     { ...ask('bare', 'Rename the repo', 50) },
     { ...ask('dead', 'Pick one', 40), kind: 'decide' }, // no options: nothing to do
   ];
@@ -92,10 +93,14 @@ test.describe('Notifications: context and actions on every row', () => {
   test('each row shows who, why and a source link; a row with no action is dropped and not counted', async ({ page }, info) => {
     await setup(page, rich());
     await page.goto('/#/notifications');
-    await expect(page.locator('.ask-li')).toHaveCount(5);
+    await page.getByRole('button', { name: /Show 1 more/ }).click();
+    await expect(page.locator('.ask-li')).toHaveCount(6);
     await expect(row(page, 'dead')).toHaveCount(0);
-    await expect(page.getByRole('heading', { level: 1 }).locator('.count')).toHaveText('5');
-    await expect(item(page).locator('.badge')).toHaveText('5');
+    await expect(page.getByRole('heading', { level: 1 }).locator('.count')).toHaveText('6');
+    await expect(item(page).locator('.badge')).toHaveText('6');
+    // with no reason, the row says what the sender recommends
+    await expect(row(page, 'rec').locator('.ask-ctx-why')).toHaveText('Recommends: Merge it today');
+    await expect(row(page, 'rec').getByRole('link', { name: /Issue stack#152/ })).toBeVisible();
     const pr = row(page, 'pr');
     await expect(pr.locator('.ask-who')).toHaveText('stack-architect');
     await expect(pr.locator('.ask-ctx-why')).toHaveText('CI is green; one review is in');
@@ -120,6 +125,7 @@ test.describe('Notifications: context and actions on every row', () => {
   test('the row menu holds the actions for its state; Approve answers from the row', async ({ page }) => {
     const m = await setup(page, rich());
     await page.goto('/#/notifications');
+    await page.getByRole('button', { name: /Show 1 more/ }).click();
     const names = async (key: string) => { await row(page, key).getByRole('button', { name: /^Actions for/ }).click(); const t = await page.getByRole('menuitem').allTextContents(); await page.keyboard.press('Escape'); return t; };
     expect(await names('pr')).toEqual(['Approve', 'Reject', 'Open', 'Reply', 'Defer']);
     expect(await names('mail')).toEqual(['Looks good', 'Needs changes', 'Open', 'Reply', 'Defer']);
@@ -134,6 +140,7 @@ test.describe('Notifications: context and actions on every row', () => {
   test('Reply from the row opens that notification with the reply box; Ask for context asks the sender', async ({ page }) => {
     const m = await setup(page, rich());
     await page.goto('/#/notifications');
+    await page.getByRole('button', { name: /Show 1 more/ }).click();
     await row(page, 'mail').getByRole('button', { name: /^Actions for/ }).click();
     await page.getByRole('menuitem', { name: 'Reply' }).click();
     await expect(row(page, 'mail').locator('.ask-card')).toBeVisible();

@@ -1,6 +1,6 @@
 /** @req FR:ask-queue/web.home @req FR:ask-queue/web.card @req FR:ask-queue/web.actions @req FR:ask-queue/web.optimistic @req FR:ask-queue/web.empty @req FR:ask-queue/live.quiet */
 import { describe, expect, it } from 'vitest';
-import { actionable, actionsFor, approveLabel, CONTEXT_ASK, rowActions, deadline, loudRow, deferChoices, freshness, ifSilent, keepCursor, newKeys, pageTitle, replyKind, splitTop, type AskItem } from '../src/asks';
+import { actionable, reasonOf, actionsFor, approveLabel, CONTEXT_ASK, rowActions, deadline, loudRow, deferChoices, freshness, ifSilent, keepCursor, newKeys, pageTitle, replyKind, splitTop, type AskItem } from '../src/asks';
 
 const at = (h: number, m = 0, d = 28) => new Date(2026, 9, d, h, m);
 const ask = (o: Partial<AskItem> = {}): AskItem => ({
@@ -189,6 +189,13 @@ describe('row actions', () => {
     expect(labels({ kind: 'answer' })).toEqual(['Answer', 'Defer']); // its reply is written under the task, never sent as a question
     expect(labels({ kind: 'go-do', why: 'w' })).not.toContain('Ask for context');
     expect(labels({ kind: 'approve', source: 'task', ref: 'a:1', recommend: 'Ship it' })).not.toContain('Ask for context'); // a task row is its own context
+  });
+  // @req FR:notifications/list.context
+  it('reasonOf: the reason; with none, the recommendation; else nothing', () => {
+    expect(reasonOf(ask({ why: 'CI is green', recommend: 'Approve' }))).toBe('CI is green');
+    expect(reasonOf(ask({ recommend: 'Merge it today' }))).toBe('Recommends: Merge it today');
+    expect(reasonOf(ask({ why: ' ', recommend: '' }))).toBeNull();
+    expect(reasonOf(ask({}))).toBeNull();
   });
   it('actionable: an answer ask, or a kind that gives an action', () => {
     expect(actionable(ask({ kind: 'approve' }))).toBe(true);

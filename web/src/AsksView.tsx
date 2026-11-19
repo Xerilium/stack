@@ -6,7 +6,7 @@
 import { Avatar } from './AgentAvatar';
 import { nameBeside } from './avatar';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { actionsFor, CONTEXT_ASK, needsContext, deadline, freshness, ifSilent, loudRow, rowActions, splitTop, type Action, type AskItem, type RowAction } from './asks';
+import { actionsFor, CONTEXT_ASK, needsContext, reasonOf, deadline, freshness, ifSilent, loudRow, rowActions, splitTop, type Action, type AskItem, type RowAction } from './asks';
 import { ActionMenu } from './ui/ActionMenu';
 import { SourceLink } from './ui/SourceLink';
 import { blockedHelp } from './notify';
@@ -78,6 +78,7 @@ function verbOf(a: AskItem): string | undefined {
 function Row({ a, n, now, fresh, leaving, loud, onPick, onAct, onOpenTask }: { a: AskItem; n: number; now: Date; fresh: boolean; leaving?: boolean; loud?: boolean; onPick: () => void; onAct?: (x: RowAction) => void; onOpenTask?: (ref: string) => void }) {
   const verb = verbOf(a);
   const taskRef = a.source === 'task' ? a.ref : a.row;
+  const reason = reasonOf(a);
   return (
     <li class={`ask-li ask-li-row${fresh ? ' fresh' : ''}${leaving ? ' leaving' : ''}`} data-key={a.key}>
       <button type="button" class="ask-row" onClick={onPick} aria-label={[`${n}. ${a.ask}`, verb, rowDeadline(deadline(a.by, now)), a.project].filter(Boolean).join(', ')}>
@@ -87,7 +88,7 @@ function Row({ a, n, now, fresh, leaving, loud, onPick, onAct, onOpenTask }: { a
       </button>
       <p class="ask-ctx" onClick={(e) => { if (!(e.target as HTMLElement).closest('a, button')) onPick(); }}>
         <span class="ask-who">{a.from}</span>
-        <span class={`ask-ctx-why${a.why ? '' : ' none'}`}>{a.why ? <Md text={a.why} project={a.project} links={false} /> : 'No reason given'}</span>
+        <span class={`ask-ctx-why${reason ? '' : ' none'}`}>{reason ? <Md text={reason} project={a.project} links={false} /> : 'No reason given'}</span>
         {a.source !== 'task' && <SourceLink href={a.link} />}
         {taskRef && onOpenTask && <button type="button" class="ui-source ask-task-link" onClick={() => onOpenTask(taskRef)}>Task</button>}
       </p>
