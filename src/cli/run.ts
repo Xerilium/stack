@@ -36,6 +36,7 @@ import { PRIORITIES_PATH } from '../core/priorities';
 import { GitStorage } from '../core/storage-git';
 import { generateSummaries } from '../core/summaries';
 import { isReadme, projectId, projectPath } from '../core/task-paths'; // @req FR:task-structure/tree.readme
+import { assignIds, lintIds, moveProject } from '../core/task-ids';
 import { formatRef, parseArgs, parseRef, UsageError } from './args';
 import { inboxSourcesCmd } from './inbox-sources';
 import { inboxRunCmd } from './delivery';
@@ -96,7 +97,9 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string; s
   suspend: { flags: ['days', 'hours', 'expect', 'queries', 'no-update'], usage: 'suspend [ref] [--days n | --hours n] [--expect t] [--queries] [--no-update]', help: 'hide until later' },
   set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis', 'expect'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]', help: 'set emojis and checkbox' },
   retitle: { flags: ['text', 'expect', 'no-update'], usage: 'retitle <ref> --text t [--expect t] [--no-update]', help: 'edit a task row text in place (checkbox, indent, children, notes, and marks stay)', summary: 'edit a task row text in place' },
-  lint: { flags: ['project'], usage: 'lint [--project name] [--json]', help: 'the task bloat lint on open rows: one <path>:<line> <rule> <message> line per issue (title-length, title-status, title-parens, detail-nesting); exit 0 with no issue, else 1; read-only (docs/task-rubric.md)', summary: 'fail on bloated task rows' },
+  lint: { flags: ['project'], usage: 'lint [--project name] [--json]', help: 'the task bloat lint on open rows: one <path>:<line> <rule> <message> line per issue (title-length, title-status, title-parens, detail-nesting, id-duplicate, id-dangling, id-slug, meta-emoji); exit 0 with no issue, else 1; read-only (docs/task-rubric.md)', summary: 'fail on bloated task rows' },
+  ids: { flags: ['project', 'dry-run'], usage: 'ids assign [--project id] [--dry-run]', help: 'add a "> id: <slug>" line under each task row that has none (task ID T:<project>.<slug>); keeps every other byte; one commit', summary: 'give every task a readable ID' },
+  mv: { flags: ['dry-run'], usage: 'mv <from-id> <to-id> [--dry-run]', help: 'move a project file with its logs and inbox, and rewrite every T:, path, and ref: line that names it; one commit', summary: 'move a project and rewrite its refs' },
   check: { flags: [], usage: 'check <ref> [--json]', help: 'the task quality gate: score 0-4 and the missing checks (next, doneWhen, context, single), plus the task lint on the row; exit 0 at 4 with no lint issue, else 1; read-only (docs/task-rubric.md)', summary: 'score one task on the quality gate (read-only)' },
   note: { flags: ['text', 'expect'], usage: 'note add <ref> --text t [--expect t]', help: 'append a nested note bullet under a task (children stay)' },
   tag: { flags: ['unblocker', 'due', 'expect'], usage: 'tag <ref> [--unblocker yes|no] [--due "MMM d"|none] [--expect t]', help: 'set the 🔓 unblocker and 📅 due tags the autopri engine reads', summary: 'set the 🔓 unblocker and 📅 due tags' },
@@ -136,7 +139,10 @@ async function lintFiles(storage: Storage, project?: string): Promise<LintIssue[
   if (project !== undefined && !paths.length) throw new UsageError(`Project not found: ${project}`);
   const out: LintIssue[] = [];
   for (const p of paths) out.push(...lintProject(p, (await storage.read(p)).content));
-  return out;
+  // ID lint reads every file (refs cross files) and reports on the linted ones. @req FR:task-ids/lint.duplicate @req FR:task-ids/lint.dangling
+  const all = await Promise.all((await storage.list()).filter((p) => !isReadme(p)).map(async (path) => ({ path, content: (await storage.read(path)).content })));
+  out.push(...lintIds(all, new Set(paths)));
+  return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.line - b.line));
 }
 
 /**
@@ -777,6 +783,19 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
         text: `${at} ${q.score}/4 ${q.actionable ? 'actionable' : `missing: ${q.missing.join(', ')}`}${rules.length ? ` lint: ${rules.join(', ')}` : ''}`,
         code: q.actionable && !lint.length ? EXIT.ok : EXIT.failure,
       };
+    }
+    // @req FR:task-ids/assign.add
+    case 'ids': {
+      if (p.positionals[0] !== 'assign') throw new UsageError('ids needs a subcommand: assign');
+      if (p.positionals.length > 1) throw new UsageError(`Unexpected argument: ${p.positionals[1]}`);
+      const r = await assignIds(ctx, { project: flag(f, 'project'), dryRun: f['dry-run'] === true });
+      return { json: { ok: true, command: 'ids assign', ...r }, text: [...r.files, `${r.added} IDs in ${r.files.length} files${f['dry-run'] === true ? ' (dry run)' : ''}`].join('\n') };
+    }
+    // @req FR:task-ids/mv.file @req FR:task-ids/mv.report
+    case 'mv': {
+      if (p.positionals.length !== 2) throw new UsageError('mv needs <from-id> <to-id>');
+      const r = await moveProject(ctx, p.positionals[0], p.positionals[1], { dryRun: f['dry-run'] === true }).catch((e: Error) => { throw new LifecycleError(e.message); });
+      return { json: { ok: true, command: 'mv', ...r }, text: [...r.files, `${r.refs} refs in ${r.files.length} files${f['dry-run'] === true ? ' (dry run)' : ''}`].join('\n') };
     }
     // @req FR:task-lint/cli.lint @req FR:task-lint/cli.lint.out @req FR:task-lint/cli.lint.exit @req FR:task-lint/cli.lint.json
     case 'lint': {

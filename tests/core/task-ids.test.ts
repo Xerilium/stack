@@ -2,6 +2,7 @@ import { parseProject, serializeProject, type Task } from '../../src/core/parser
 import { MemoryStorage } from '../../src/core/storage';
 import { assignIds, EMOJI_KEYS, formatTaskId, lintIds, moveProject, parseTaskId, slugOf, TASK_ID_PREFIX, taskIndex } from '../../src/core/task-ids';
 import { run } from '../../src/cli/run';
+import { cleanFormatter, emojiFormatter } from '../../src/core/formatter';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -34,6 +35,14 @@ describe('blockquote metadata', () => {
   it('stops at the first other line and needs an indent', () => {
     const src = '# G\n\n## A\n\n- [ ] One\n  note\n  > id: late\n> id: top\n';
     expect(first(src).meta).toEqual([]);
+  });
+
+  it('survives the emoji and clean formatters', () => {
+    const src = '# G\n\n## A\n\n- [ ] One\n  > id: one\n  > owner: me\n  note\n';
+    const tree = emojiFormatter.parse(src);
+    expect(emojiFormatter.serialize(tree)).toContain('- [ ] One\n  > id: one\n  > owner: me\n  note');
+    const back = emojiFormatter.parse(emojiFormatter.serialize(cleanFormatter.parse(cleanFormatter.serialize(tree))));
+    expect(back.sections[0].tasks[0].meta).toEqual([['id', 'one'], ['owner', 'me']]);
   });
 
   it('reads CRLF files', () => {
@@ -189,6 +198,6 @@ describe('CLI', () => {
     writeFileSync(join(d, 'tasks/b.md'), '# B\n\n## S\n\n- [ ] Two T:a.one\n  > id: two\n');
     const lint = await stack(d, 'lint');
     expect(lint.code).toBe(1);
-    expect(lint.err).toContain('tasks/b.md:5 id-dangling');
+    expect(lint.out + lint.err).toContain('tasks/b.md:5 id-dangling');
   });
 });

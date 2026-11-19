@@ -9,7 +9,7 @@ import { parseProject, type Task } from './parser';
 import { TRIGGER } from './query-tasks';
 import { AGENT_TAG, TIERS } from './tiered-tasks';
 
-export const LINT_RULES = ['title-length', 'title-status', 'title-parens', 'detail-nesting'] as const;
+export const LINT_RULES = ['title-length', 'title-status', 'title-parens', 'detail-nesting', 'id-duplicate', 'id-dangling', 'id-slug', 'meta-emoji'] as const;
 export type LintRule = (typeof LINT_RULES)[number];
 export interface LintFinding { rule: LintRule; message: string }
 /** `line` is 1-based. */

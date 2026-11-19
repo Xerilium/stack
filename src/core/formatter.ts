@@ -24,6 +24,8 @@ const indent = (n: number) => ' '.repeat(n);
 
 function emojiTask(t: Task, depth: number, out: string[]): void {
   out.push(`${indent(depth)}- [${t.checked ? 'x' : ' '}] ${t.text}`);
+  // Metadata first, right under the row, so it parses back as metadata. @req FR:task-ids/meta.roundtrip
+  for (const [k, v] of t.meta ?? []) out.push(`${indent(depth + 2)}> ${k}: ${v}`);
   for (const n of t.notes) out.push(`${indent(depth + 2)}${n}`);
   for (const c of t.children) emojiTask(c, depth + 2, out);
 }
@@ -88,6 +90,7 @@ function cleanTask(v: unknown, path: string, depth: number): Task {
     notes: v.notes === undefined ? [] : strList(v.notes, `${path}.notes`),
     children: (subs as unknown[]).map((c, i) => cleanTask(c, `${path}.subtasks[${i}]`, depth + 2)),
     line: -1,
+    meta: [],
     depth,
   };
 }
@@ -96,7 +99,8 @@ function cleanOut(t: Task): Obj {
   return {
     text: t.text,
     done: t.checked,
-    ...(t.notes.length ? { notes: t.notes } : {}),
+    // Metadata has no clean field: it rides as `> key: value` notes, which the emoji parser reads back as metadata. @req FR:task-ids/meta.roundtrip
+    ...(t.notes.length || t.meta?.length ? { notes: [...(t.meta ?? []).map(([k, v]) => `> ${k}: ${v}`), ...t.notes] } : {}),
     ...(t.children.length ? { subtasks: t.children.map(cleanOut) } : {}),
   };
 }

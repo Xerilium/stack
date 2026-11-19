@@ -5,7 +5,12 @@ export interface Task {
   notes: string[];
   line: number;
   depth: number;
+  /** @req FR:task-ids/meta.model: `> key: value` lines directly under the row, in order; unknown keys kept. Set by `parseProject`. */
+  meta?: [string, string][];
 }
+
+/** One metadata line: indented `> key: value`, key lower case. @req FR:task-ids/meta.parse */
+export const META_LINE = /^(\s+)> ([a-z][a-z0-9_-]*):(?: (.*))?$/;
 export interface Section { heading: string; tasks: Task[]; }
 export interface Project {
   title: string;
@@ -37,8 +42,15 @@ export function parseProject(src: string): Project {
   };
   let section: Section | null = null;
   const stack: Task[] = [];
+  /** The row whose metadata block is still open (only right after the row). @req FR:task-ids/meta.parse */
+  let metaOf: Task | null = null;
   lines.forEach((raw, i) => {
     const l = clean(raw);
+    if (metaOf) {
+      const m = META_LINE.exec(l);
+      if (m && width(m[1]) > metaOf.depth) { metaOf.meta!.push([m[2], (m[3] ?? '').trim()]); return; }
+      metaOf = null;
+    }
     if (!project.title && l.startsWith('# ')) { project.title = l.slice(2).trim(); return; }
     if (l.startsWith('## ')) {
       section = { heading: l.slice(3).trim(), tasks: [] };
@@ -49,10 +61,11 @@ export function parseProject(src: string): Project {
     const t = TASK.exec(l);
     if (t && section) {
       const depth = width(t[1]);
-      const task: Task = { checked: t[2] !== ' ', text: t[3], children: [], notes: [], line: i, depth };
+      const task: Task = { checked: t[2] !== ' ', text: t[3], children: [], notes: [], line: i, depth, meta: [] };
       while (stack.length && stack[stack.length - 1].depth >= depth) stack.pop();
       (stack.length ? stack[stack.length - 1].children : section.tasks).push(task);
       stack.push(task);
+      metaOf = task;
       return;
     }
     if (!section) {

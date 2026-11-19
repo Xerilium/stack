@@ -10,7 +10,7 @@ dependencies: [cli, task-lint, task-parser, task-structure]
 
 # Feature: Task IDs and Metadata
 
-> Status: planned (PR 2 of 3; build after `task-structure`).
+> Status: built (PR 2 of 3).
 
 ## Purpose
 

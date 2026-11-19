@@ -47,7 +47,24 @@ Spec: `.xe/features/task-structure/spec.md`. This is a breaking change. Stack ha
 
 6. Commit, then start `stack web`.
 
-`stack ids assign` and `stack mv` come in the next release (`.xe/features/task-ids/spec.md`). Until then, move files by hand as above.
+### With `stack mv` and `stack ids assign`
+
+After step 2, `stack mv` does steps 3 to 5 for one project, in one commit:
+
+```sh
+stack mv stack xerilium/stack/goal --dry-run   # check the list
+stack mv stack xerilium/stack/goal
+```
+
+Then give every task an ID (`T:<project-id>.<slug>`), once:
+
+```sh
+stack ids assign --dry-run
+stack ids assign
+stack lint   # flags duplicate IDs and refs that do not resolve
+```
+
+Cite a task as `@req T:xerilium/stack/goal.ship-v2`. Priority, status, and the other emoji stay on the task row. Only fields with no emoji (owner, due, next, links) go in `> key: value` lines.
 
 ## What breaks
 
