@@ -81,8 +81,10 @@ describe('POST /tasks/{ref}/enrich', () => {
 
   // @req FR:product-reset/api.enrich @req FR:product-reset/quality.enrich
   it('refuses a row that scores 4, a missing row, and a non-owner caller', async () => {
-    const { call, mint } = await mk();
+    const { call, mint, storage } = await mk();
     expect((await call('owner', '/tasks/flantastic-4:7/enrich')).status).toBe(409);
+    await storage.write('tasks/flantastic-4.md', F4.replace('- [ ] 🙋 Review', '- [x] 🙋 Review'), { expectedVersion: (await storage.read('tasks/flantastic-4.md')).version });
+    expect((await call('owner', '/tasks/flantastic-4:6/enrich')).status).toBe(409); // done row
     expect((await call('owner', '/tasks/flantastic-4:99/enrich')).status).toBe(404);
     expect((await call('owner', '/tasks/nope/enrich')).status).toBe(422);
     expect((await call(await mint('tasks:write'), '/tasks/flantastic-4:6/enrich')).status).toBe(403);

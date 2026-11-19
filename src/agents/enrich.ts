@@ -21,12 +21,14 @@ export const enrichText = (ref: TaskRef, missing: Check[]): string =>
 
 /**
  * Sends the enrich message for the row at `ref`, or returns the one still open on that row.
- * A row that scores 4 is a conflict; a missing row is not found.
+ * A row that scores 4 or is done is a conflict; a missing row is not found.
  */
 export async function enrichTask(ctx: LifecycleContext, ref: TaskRef): Promise<EnrichResult> {
-  const q = checkTask(parseProject((await ctx.storage.read(ref.path)).content), ref.line);
+  const p = parseProject((await ctx.storage.read(ref.path)).content);
+  const q = checkTask(p, ref.line);
   if (!q) throw new NotFoundError('Task not found');
   if (q.actionable) throw new ConflictError('Task is already actionable');
+  if (/^\s*- \[[xX]\]/.test(p.lines[ref.line])) throw new ConflictError('Task is done');
   const c = await taskContext(ctx, ref);
   const agent = deliveryAgent(await listTeam(ctx), c.project, c.section);
   if (!agent) throw new NotFoundError(`No agent for ${c.project}`);

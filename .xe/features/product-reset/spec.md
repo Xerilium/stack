@@ -128,7 +128,7 @@ A task stays one `- [ ]` row. Typed context is nested bullets under the row. Fil
   | `single`   | The owner is not `mixed`, and the title does not join two verbs with `and`, `;` or `then`            |
   - The title for the checks is the row text without owner marks (`🙋`, `🤖`, `🪄`, `🤖:level`), the `📅` due mark, and the leading emoji and punctuation.
   - A leaf has no child task rows.
-  - A note is a nested line of the row itself: a plain line, or a line under `Notes:`. Child task rows, fields, and lines inside other fields are not notes (`FR:schema.grammar`).
+  - A note is a nested line of the row itself: a plain line, or a line under `Notes:` (`FR:schema.grammar`).
   - A ref counts only when it resolves to a repo (`FR:schema.refs`). Refs are counted from the title and the `Links:` field.
 
 - **FR:quality.check** (P1): The gate runs the checks on one row with its fields, notes, children, ancestors and project metadata. It is a pure function of the file text. It never writes.
@@ -137,8 +137,8 @@ A task stays one `- [ ]` row. Typed context is nested bullets under the row. Fil
 - **FR:quality.enrich** (P1): `Ask {agent} to fill it in` sends one thread message of kind `enrich` to the task's agent. The message names the missing checks. The agent edits the row fields per `FR:quality.rubric` and replies in the thread. The card updates when the file changes.
   - The message is an inbox entry (`FR:agent-inbox/inbox.kinds`) with `to: agent` and `agent: {task agent}`, on any row, a `🙋` row too.
   - The task agent is the agent delivery picks for the project and section (`FR:agent-delivery/pick.agent`).
-  - A row that already scores 4 gets no message: the request fails with `already actionable`.
-  - A row with an open `enrich` message gets no second one: the request returns the open message id.
+  - A request for a row that scores 4, or a done row, fails with `conflict`.
+  - A request for a row with an open `enrich` message returns that message id.
 - **FR:quality.enrich.batch** (P1): A bulk enrich sends one `enrich` message per agent, with up to 20 rows each. The host runs the agents one at a time. Rows past 20 go in the next message to that agent, after it replies to the last one. A second bulk enrich within 1 hour sends only rows that are still not actionable.
 - **FR:quality.rubric** (P1): Every agent that creates or edits a task applies this rubric. CoS agents must apply it. The text lives in `docs/task-rubric.md`. Agent files link to it:
 
