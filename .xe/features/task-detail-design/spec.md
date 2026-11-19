@@ -47,6 +47,7 @@ Owner feedback (Nov 11): My day feels like a mess. Rows do not look clickable (o
 
 - **FR:myday.message** (P1): Each My day row has a message icon button (`title` and label `Message <Name>`) in place of Delegate. It opens the task detail with the composer focused and addressed to the owning agent
 - **FR:myday.nodelegate** (P1): No Delegate (🪄) button on My day rows
+- **FR:myday.phone.title** (P1): At 800 px or less, or on touch, the row title spans the row between the tick and the chevron. The project line and the row actions sit on the line under it. The chevron takes its own narrow column
 
 ### FR:a11y: Access
 
