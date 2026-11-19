@@ -1,6 +1,6 @@
 /**
  * PR cards are quiet: a neutral panel, a muted 3 px owner edge, strong = elevation, one accent. On a phone the title uses the full width.
- * @req FR:pr-page/card.color @req FR:pr-page/card.color.phone
+ * @req FR:pr-page/card.color @req FR:pr-page/card.color.edge @req FR:pr-page/card.color.strong @req FR:pr-page/card.color.contrast @req FR:pr-page/card.accent @req FR:pr-page/card.phone
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
@@ -72,4 +72,22 @@ test('at 375 px the title uses at least 85% of the card width; Pin sits in the t
   const top = (await c.locator('.ui-card-top').boundingBox())!;
   expect(pin.y).toBeLessThan(top.y + top.height);
   expect(pin.y + pin.height).toBeGreaterThan(top.y);
+});
+
+test('one accent: primary buttons and the selected tab use the app accent, never the Fluent brand blue', async ({ page }) => {
+  const pg = await open(page);
+  await pg.locator('.pr-card[data-number="3"] .ui-card-open').click();
+  const primary = pg.locator('.fl-btn.primary').first();
+  await expect(primary).toBeVisible();
+  const [bg, tab, accent] = await primary.evaluate((b) => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--accent)';
+    document.body.appendChild(probe);
+    const a = getComputedStyle(probe).color;
+    probe.remove();
+    const t = document.querySelector('[data-testid="prs-page"] [role="tab"][aria-selected="true"]');
+    return [getComputedStyle(b).backgroundColor, t ? getComputedStyle(t).borderBottomColor : '', a];
+  });
+  expect(bg).toBe(accent);
+  expect(tab).toBe(accent);
 });
