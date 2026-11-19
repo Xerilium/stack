@@ -51,7 +51,7 @@ export function mdBlocks(text: string): MdBlockNode[] {
   const flush = () => { if (para.length) out.push({ t: 'p', text: para.join('\n') }); para = []; };
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
-    const fence = /^\s*(`{3,})/.exec(l);
+    const fence = /^\s*(`{3,})[^`]*$/.exec(l);
     if (fence) {
       flush();
       const code: string[] = [];
