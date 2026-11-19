@@ -81,13 +81,14 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
   /** Starts a session for the talk target. @req FR:agent-team/web.talk */
   const start = useCallback(async (t: Talk, agent: string | undefined, text: string, keepOpen: boolean): Promise<boolean> => {
     if (enabled !== true) { toastRef.current('Runs in stack web on your machine', 'err'); return false; }
+    const open = sessions.openLater();
     try {
       const r = await api.newSession(undefined, text, { agent, ...(t.ref ? { ref: t.ref } : { project: t.project }) });
       const key = t.ref ?? t.askKey ?? t.project;
       if (r.sessionId) noteStarted(key, r.sessionId);
       setTalkState(null);
       await sessions.reload();
-      if (keepOpen) void sessions.openDrawer(r.sessionId ?? r.runId); else toastRef.current(`Sent to ${r.agent ?? 'the agent'}`);
+      if (keepOpen) open(r.sessionId ?? r.runId); else toastRef.current(`Sent to ${r.agent ?? 'the agent'}`);
       return true;
     } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to start', 'err'); return false; }
   }, [api, enabled, sessions, noteStarted]);
@@ -95,11 +96,12 @@ export function useTeam(api: Client, toast: ToastFn, sessions: Sessions, enabled
   /** Assign: the row is claimed for the agent and its session starts with the assign prompt; the chip follows it. @req FR:agent-thread/thread.assign */
   const assign = useCallback(async (ref: string, agent?: string, keepOpen = false, note?: string): Promise<boolean> => {
     if (enabled !== true) { toastRef.current('Runs in stack web on your machine', 'err'); return false; }
+    const open = sessions.openLater();
     try {
       const r = await api.assign(ref, agent, note);
       if (r.sessionId) noteStarted(ref, r.sessionId);
       toastRef.current(`Assigned to ${r.agent}`);
-      if (keepOpen) void sessions.openDrawer(r.sessionId ?? r.runId);
+      if (keepOpen) open(r.sessionId ?? r.runId);
       void sessions.reload();
       return true;
     } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to assign', 'err'); return false; }

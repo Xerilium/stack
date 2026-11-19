@@ -333,7 +333,7 @@ export function App() {
   const [teamActive, setTeamActive] = useState(false);
   /** @req FR:agent-sessions/web.view */
   const sessions = useSessions(api, toast, agentsOn, view === 'sessions' || teamActive);
-  // Going to another page closes the open session and the composer: no sheet stays over the next page. A layout effect, so it runs before the next page opens its own chat. @req FR:agent-sessions/web.drawer.nav
+  // Going to another page closes the open session and the composer: no sheet stays over the next page. A layout effect, so it runs before the next page opens its own chat. @req FR:agent-sessions/web.drawer.nav @req FR:agent-sessions/web.drawer.nav.compose
   const shownView = useRef(view);
   useLayoutEffect(() => { if (shownView.current === view) return; shownView.current = view; sessions.closeDrawer(); }, [view]);
   /** @req FR:agent-sessions/web.pins @req FR:agent-sessions/web.groups */

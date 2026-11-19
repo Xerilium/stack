@@ -2,7 +2,7 @@
  * @req FR:agent-team/org.tree @req FR:agent-team/org.tree.row @req FR:agent-team/org.tree.sessions @req FR:agent-team/org.tree.unmatched @req FR:agent-team/org.tree.pinned @req FR:agent-team/org.tree.phone @req FR:agent-team/org.order @req FR:agent-team/org.order.scope @req FR:agent-team/org.match @req FR:agent-team/org.keys @req FR:agent-team/org.a11y
  * @req FR:agent-team/compose.agent @req FR:agent-team/compose.agent.default @req FR:agent-team/compose.agent.filter @req FR:agent-team/compose.folder @req FR:agent-team/compose.prompt @req FR:agent-team/compose.after */
 import { expect, test, type Page } from '@playwright/test';
-import { mockApi, type Mock, type MockSession, type MockTeamAgent } from './mock';
+import { mockApi, seed as taskSeed, type Mock, type MockSession, type MockTeamAgent } from './mock';
 
 const iso = (minAgo: number) => new Date(Date.now() - minAgo * 60_000).toISOString();
 const id = (n: number) => `a1b2c3d4-0000-0000-0000-00000000000${n}`;
@@ -292,7 +292,8 @@ test.describe('Sessions', () => {
   test('leaving Agents closes the chat it showed: no sheet stays over the next page', async ({ page }) => {
     await open(page, teamSeed(), true);
     await expect(page.getByTestId('chat-pane').getByRole('region')).toHaveAccessibleName('👔 CoS · morning brief');
-    await page.evaluate(() => { location.hash = '#/projects'; });
+    await page.getByTestId('nav-notifications').filter({ visible: true }).click(); // the rail on wide screens, the tab bar on phones
+    await expect(page).toHaveURL(/#\/notifications/);
     await expect(page.getByRole('region', { name: 'Agents', exact: true })).toHaveCount(0);
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.locator('.sess-scrim')).toHaveCount(0);
@@ -301,7 +302,7 @@ test.describe('Sessions', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 
-  // @req FR:agent-sessions/web.drawer.nav
+  // @req FR:agent-sessions/web.drawer.nav @req FR:agent-sessions/web.drawer.nav.compose
   test('leaving Agents closes an open drawer and the composer', async ({ page }) => {
     await open(page);
     await page.locator('.sess-row').nth(1).click();
@@ -317,6 +318,41 @@ test.describe('Sessions', () => {
     await page.evaluate(() => { location.hash = '#/sessions'; });
     await expect(page.locator('.sess-row').first()).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+
+  // @req FR:agent-sessions/web.drawer.nav.late
+  test('a session start that ends after a page change opens no drawer there', async ({ page }) => {
+    const m = await open(page);
+    let answer = () => {};
+    const held = new Promise<void>((ok) => { answer = ok; });
+    await page.route('**/api/sessions', async (r) => { if (r.request().method() === 'POST') await held; await r.fallback(); });
+    await page.locator('.sess-tools').getByRole('button', { name: /^New/ }).click();
+    const d = drawer(page);
+    await d.getByLabel('Folder').fill('/x/stack');
+    await d.getByLabel('First prompt').fill('Write the release notes');
+    await d.getByLabel('First prompt').press('ControlOrMeta+Enter');
+    await page.evaluate(() => { location.hash = '#/projects'; });
+    await expect(page.getByRole('region', { name: 'Agents', exact: true })).toHaveCount(0);
+    const listed = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/sessions' && r.request().method() === 'GET'); // the list is read again once the start lands
+    answer();
+    await expect.poll(() => m.calls.some((c) => c.path === '/sessions')).toBe(true); // the session still starts
+    await listed;
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+
+  // @req FR:agent-sessions/web.drawer.nav
+  test('a drawer opened on another page shows there and closes on the next page change', async ({ page }) => {
+    const at = new Date(); at.setHours(10, 0, 0, 0); await page.clock.setFixedTime(at); // inside the work day, so Now has a task
+    const m = await mockApi(page, { tasks: taskSeed() });
+    m.team = [{ slug: 'alpha-lead', name: 'Ada Lead', scope: ['alpha'], mode: 'ad-hoc', prompt: '', defined: true, projects: ['alpha'] }];
+    m.sessions = [mk(1, { title: 'Ada Lead · alpha:6', project: 'alpha', owner: 'alpha', cwd: '/x/alpha', lastActive: new Date().toISOString(), state: 'active' })];
+    await page.goto('/#/now');
+    await page.getByRole('button', { name: 'Open live chat' }).click();
+    await expect(drawer(page).getByRole('heading', { level: 2 })).toHaveText('Ada Lead · alpha:6');
+    await page.evaluate(() => { location.hash = '#/projects'; });
+    await expect(page.getByTestId('now')).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.sess-scrim')).toHaveCount(0);
   });
 
   // @req FR:agents-team/chart.layout

@@ -98,7 +98,11 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
   }, [api, listen]);
 
   const setComposing = useCallback((on: boolean, agent?: string) => { setComposingState(on); setComposeAgent(on ? (agent ?? null) : null); setSendError(''); }, []);
-  const closeDrawer = useCallback(() => { closeStream(); setOpen(null); setComposingState(false); setComposeAgent(null); }, [closeStream]);
+  /** Counts every close (Esc, the scrim, a page change). */
+  const closes = useRef(0);
+  const closeDrawer = useCallback(() => { closes.current++; closeStream(); setOpen(null); setComposingState(false); setComposeAgent(null); }, [closeStream]);
+  /** For an open that follows a wait (a session start): call before the wait, open with the result. It opens nothing when a close came first, so no drawer shows on a page the user went to meanwhile. @req FR:agent-sessions/web.drawer.nav.late */
+  const openLater = useCallback(() => { const at = closes.current; return (id: string) => { if (at === closes.current) void openDrawer(id); }; }, [openDrawer]);
 
   const send = useCallback(async (text: string) => {
     const t = text.trim();
@@ -120,8 +124,11 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
   /** Starts a session: plain in a folder, or for an agent (its persona, its project, an optional folder). @req FR:agent-team/compose.after */
   const start = useCallback(async (cwd: string | undefined, text: string, extra?: { agent?: string; project?: string }) => {
     setSendError('');
+    const at = closes.current;
     try {
       const r = await api.newSession(cwd, text.trim(), extra ?? {});
+      // Closed while it started (a page change): the session runs, and no drawer opens over the new page. @req FR:agent-sessions/web.drawer.nav.late
+      if (at !== closes.current) { void load(); return true; }
       setComposingState(false); setComposeAgent(null);
       setOpen(r.sessionId ?? r.runId); setTurns([{ at: new Date().toISOString(), role: 'user', text: text.trim() }]); setTranscript(emptyTranscript());
       listen(r.sessionId ?? r.runId);
@@ -139,7 +146,7 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
   useEffect(() => () => closeStream(), [closeStream]);
 
   return {
-    items, total, cost, phase, error, cursor, setCursor, open, openDrawer, closeDrawer, turns, turnsError, turnsLoading, transcript, streaming, sendError, send, start, stop,
+    items, total, cost, phase, error, cursor, setCursor, open, openDrawer, openLater, closeDrawer, turns, turnsError, turnsLoading, transcript, streaming, sendError, send, start, stop,
     showCosts, setShowCosts, showAll, setShowAll, composing, setComposing, composeAgent, now, reload: load, note: (text: string) => toastRef.current(text),
   };
 }
