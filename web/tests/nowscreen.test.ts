@@ -27,12 +27,18 @@ describe('nowOf', () => {
   it('is null when nothing is ranked', () => expect(nowOf(home(tasks, []), 120)).toBeNull());
   // @req FR:now-screen/now.one
   it('shows the ranked leaf, with its root as context; Done acts on the leaf', () => {
-    const rows = [T('alpha:1', 'Release FTK v16 🟠'), { ...T('alpha:2', '🚧 FOCUS 1.4 🔴'), depth: 1 }, T('beta:1', 'Plan the trip 🟡', 'beta')];
+    const rows = [T('alpha:1', 'Release FTK v16 🟠'), { ...T('alpha:2', '🚧 FOCUS 1.4 🟢'), depth: 1 }, T('beta:1', 'Plan the trip 🟡', 'beta')];
     const n = nowOf(home(rows, [{ ...R('alpha:2'), root: 'alpha:1' }, R('beta:1', 'beta')]), 120);
     expect(n?.task.ref).toBe('alpha:2');
     expect(n?.title).toBe('FOCUS 1.4');
     expect(n?.context).toBe('Release FTK v16');
     expect(n?.why).toMatch(/^in progress/);
+  });
+  it('measures fit on the leaf, not the root', () => {
+    const rows = [T('alpha:1', 'Release FTK v16 🔴'), { ...T('alpha:2', 'FOCUS 1.4 🟢'), depth: 1 }, T('beta:1', 'Plan the trip 🟢', 'beta')];
+    const n = nowOf(home(rows, [{ ...R('alpha:2'), root: 'alpha:1' }, R('beta:1', 'beta')], 45), 45);
+    expect(n?.task.ref).toBe('alpha:2');
+    expect(n?.why).toMatch(/fits your 45m/);
   });
   it('a ranked top-level row has no context line', () => expect(nowOf(home(tasks, [R('alpha:1')]), 120)?.context).toBeUndefined());
   it("uses the row title without markers", () => expect(nowOf(home(tasks, [R("alpha:1")]), 120)?.title).toBe("Ship the web app"));

@@ -81,8 +81,10 @@ export function homeOf(o: { tasks: Task[]; projects: Project[]; ranked: RankItem
   const one = oneTask ? withLeaf(oneTask) : null;
   const vs = (s: string) => s.replace(/\uFE0F/g, '');
   const may = (i: HomeItem) => !o.allow || vs(i.task.text).includes(vs(o.allow.emoji)) || !!o.allow.projects?.includes(i.task.project);
-  const fits = !one || (one.minutes <= o.minutesLeft && may(one));
-  const instead = !fits && o.minutesLeft > 0 ? (rest.map(withLeaf).find((i) => i.minutes <= o.minutesLeft && may(i)) ?? null) : null;
+  // Fit is measured on the step the owner will do: the ranked leaf when there is one. @req FR:now-screen/now.one
+  const need = (i: HomeItem) => (i.leaf ?? i).minutes;
+  const fits = !one || (need(one) <= o.minutesLeft && may(one));
+  const instead = !fits && o.minutesLeft > 0 ? (rest.map(withLeaf).find((i) => need(i) <= o.minutesLeft && may(i)) ?? null) : null;
   // projects in the order of their top ranked row. @req FR:web-app/home2.order
   const rankOf = new Map(ordered.map((t, i) => [t.ref, i]));
   const projects: HomeProject[] = [];
