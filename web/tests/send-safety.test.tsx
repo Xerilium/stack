@@ -14,7 +14,7 @@ const AT = '2026-11-18T19:00:00Z';
 
 describe('gap rows on the priorities report', () => {
   const cos = { name: 'AM (Roland)', link: 'claude://claude.ai/epitaxy/cos', file: null, session: '22222222-2222-4222-8222-222222222222' };
-  const gap: PriRow = { id: 'am', project: 'AM', file: 'tasks/am.md', agent: null, more: 0, status: null, action: 'AM (Roland) will add a task today: 1️⃣/2️⃣/3️⃣ in tasks/am.md with (agent: ...)', gap: true, cos, ref: null, at: AT, stale: false };
+  const gap: PriRow = { id: 'am', project: 'AM', file: 'tasks/am.md', agent: null, more: 0, status: null, action: 'AM (Roland) will add a task today: ⭐️ in tasks/am.md with (agent: ...)', gap: true, cos, ref: null, at: AT, stale: false };
   const table = (rows: PriRow[]) => ({ at: AT, stale: false, rows });
   const view: PrioritiesView = { at: AT, qm: null, now: table([gap]), prs: { at: AT, stale: false, verified: true, manager: null, rows: [] }, today: table([]), next: table([]) };
 
