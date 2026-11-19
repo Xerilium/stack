@@ -88,6 +88,7 @@ test.describe('Priorities', () => {
   test('status, item text and status, add, remove, and move all save the whole list with the latest rev', async ({ page }) => {
     const m = await open(page);
     await row(page, 'p1').locator('.pri-toggle').click();
+    await expect(row(page, 'p1').getByLabel('Status of Quota-maxxing').locator('option')).toHaveText(['Active', 'Paused', 'Blocked', 'Done']); // word only, as on the chip
     await row(page, 'p1').getByLabel('Status of Quota-maxxing').selectOption('paused');
     await expect(row(page, 'p1').locator('.pri-toggle .ui-chip')).toHaveText('Paused');
     await expect.poll(() => m.pris!.pris[0].status).toBe('paused');

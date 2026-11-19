@@ -59,10 +59,10 @@ function AddLine({ label, placeholder, max, onAdd, onEditing, autoFocus }: { lab
   );
 }
 
-function StatusSelect<S extends string>({ value, label, words, onChange }: { value: S; label: string; words: Record<S, { glyph: string; word: string }>; onChange: (s: S) => void }) {
+function StatusSelect<S extends string>({ value, label, words, glyphs = true, onChange }: { value: S; label: string; words: Record<S, { glyph: string; word: string }>; /** Item statuses show a glyph; a priority status is the word only, as on its chip. */ glyphs?: boolean; onChange: (s: S) => void }) {
   return (
     <select class="status-select" aria-label={label} value={value} onChange={(e) => onChange((e.target as HTMLSelectElement).value as S)}>
-      {(Object.keys(words) as S[]).map((k) => <option key={k} value={k}>{words[k].glyph} {words[k].word}</option>)}
+      {(Object.keys(words) as S[]).map((k) => <option key={k} value={k}>{glyphs ? `${words[k].glyph} ${words[k].word}` : words[k].word}</option>)}
     </select>
   );
 }
@@ -89,7 +89,7 @@ function PriRow({ pri, n, ids, open, onToggle, ctl }: { pri: Pri; n: number; /**
         <div class="pri-panel" id={panel}>
           <div class="pri-edit-row">
             <InlineText cls="pri-title-edit" shown="Rename" value={pri.title} label="Priority title" editLabel="Rename priority" max={LIMITS.title} onEditing={ctl.setEditing} onSave={(t) => ctl.apply(edits.title(pri.id, t))} />
-            <StatusSelect<PriStatus> value={pri.status} label={`Status of ${pri.title}`} words={PRI_STATUS} onChange={(s) => ctl.apply(edits.status(pri.id, s))} />
+            <StatusSelect<PriStatus> value={pri.status} label={`Status of ${pri.title}`} words={PRI_STATUS} glyphs={false} onChange={(s) => ctl.apply(edits.status(pri.id, s))} />
           </div>
           <ul class="pri-items">
             {pri.items.map((it, i) => (
