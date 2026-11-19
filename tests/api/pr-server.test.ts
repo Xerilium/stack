@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createPrServers, type PrServers } from '../../src/api/pr-server';
@@ -34,15 +34,19 @@ function world(pkg: Record<string, unknown> | null = { name: 'r', version: '7.0.
   git(clone, 'config', `url.${origin}.insteadOf`, 'https://github.com/O/R.git');
   return { root, clone, wt: `${clone}.worktrees/pr-7-live` };
 }
-const until = async (s: PrServers, want: string, ms = 20_000) => {
-  const end = Date.now() + ms;
-  for (;;) { const v = s.view('o/r', 7); if (v?.state === want) return v; if (Date.now() > end) throw new Error(`still ${JSON.stringify(v)}`); await new Promise((ok) => setTimeout(ok, 50)); }
-};
+/** Change listeners: every wait is on a service event, never on the clock. */
+const heard = new Set<() => void>();
+/** Resolves when the view of a PR passes `ok`, checked on each change event (the jest timeout is the limit). */
+const when = (s: PrServers, n: number, ok: (v: ReturnType<PrServers['view']>) => boolean, repo = 'o/r') => new Promise<NonNullable<ReturnType<PrServers['view']>>>((done) => {
+  const check = () => { const v = s.view(repo, n); if (ok(v)) { heard.delete(check); done(v!); } };
+  heard.add(check); check();
+});
+const until = (s: PrServers, want: string) => when(s, 7, (v) => v?.state === want);
 
 describe('PR test servers', () => {
   const made: { s: PrServers; root: string }[] = [];
-  const make = (root: string, o: Partial<Parameters<typeof createPrServers>[0]> = {}) => { const s = createPrServers({ roots: [join(root, 'dev')], ...o }); made.push({ s, root }); return s; };
-  afterEach(async () => { for (const m of made.splice(0)) { await m.s.stopAll(); rmSync(m.root, { recursive: true, force: true }); } });
+  const make = (root: string, o: Partial<Parameters<typeof createPrServers>[0]> = {}) => { const s = createPrServers({ roots: [join(root, 'dev')], ...o, onChange: () => { o.onChange?.(); for (const f of [...heard]) f(); } }); made.push({ s, root }); return s; };
+  afterEach(async () => { heard.clear(); for (const m of made.splice(0)) { await m.s.stopAll(); rmSync(m.root, { recursive: true, force: true }); } });
 
   // @req FR:pr-page/server.clone @req FR:pr-page/server.checkout @req FR:pr-page/server.run @req FR:pr-page/server.view @req FR:pr-page/server.port
   it('start: fetches the PR into a worktree, runs the package script on a free port, and reports the URL', async () => {
@@ -102,8 +106,7 @@ describe('PR test servers', () => {
     expect((await until(s, 'failed')).error).toBe('The server stopped: boom');
     // A PR that does not exist.
     await s.start('o/r', 8);
-    const end = Date.now() + 10_000;
-    while (s.view('o/r', 8)?.state === 'starting' && Date.now() < end) await new Promise((ok) => setTimeout(ok, 50));
+    await when(s, 8, (v) => v?.state !== 'starting');
     expect(s.view('o/r', 8)).toMatchObject({ state: 'failed', error: 'Could not fetch o/r#8' });
   }, 40_000);
 
@@ -115,6 +118,58 @@ describe('PR test servers', () => {
     await expect(s.start('o/r', 9)).rejects.toThrow('Stop a test server first: 1 run now');
     await expect(s.start('../x', 1)).rejects.toThrow();
     await expect(s.start('o/r', 0)).rejects.toThrow();
+  }, 30_000);
+
+  // @req FR:pr-page/server.checkout
+  it('two PRs of one repo started together each run their own commit', async () => {
+    const w = world();
+    git(w.clone, 'checkout', '-qb', 'pr9', 'pr');
+    writeFileSync(join(w.clone, 'package.json'), JSON.stringify({ name: 'r', version: '9.0.0', scripts: { start: 'node server.js' } }));
+    git(w.clone, 'commit', '-qam', 'pr9');
+    git(w.clone, 'push', '-q', 'origin', 'pr9:refs/pull/9/head');
+    git(w.clone, 'checkout', '-q', 'main');
+    const s = make(w.root);
+    await Promise.all([s.start('o/r', 7), s.start('o/r', 9)]);
+    const a = await until(s, 'running');
+    await when(s, 9, (v) => v?.state === 'running');
+    expect(await (await fetch(a.url!)).text()).toBe('pr 7.0.0');
+    expect(await (await fetch(s.view('o/r', 9)!.url!)).text()).toBe('pr 9.0.0');
+    // stopAll ends both.
+    await s.stopAll();
+    expect([s.view('o/r', 7), s.view('o/r', 9)]).toEqual([undefined, undefined]);
+    await expect(fetch(a.url!)).rejects.toThrow();
+  }, 40_000);
+
+  // @req FR:pr-page/server.stop @req FR:pr-page/server.env
+  it('stop during the build ends it; a server that ignores SIGTERM does not hang the stop; no host secret reaches the PR', async () => {
+    const w = world({ name: 'r', version: '7.0.0', scripts: { build: 'test -f .built || sleep 30', start: 'node server.js' } });
+    const s = make(w.root, { killMs: 300, env: { ...process.env, GITHUB_TOKEN: 'ghp_x', GH_TOKEN: 'y', STACK_VAPID_PRIVATE_KEY: 'z', NPM_TOKEN: 'n', KEEP_ME: 'ok' } });
+    await s.start('o/r', 7);
+    await when(s, 7, (v) => v?.step === 'build');
+    expect(s.view('o/r', 7)).toMatchObject({ state: 'starting', step: 'build' });
+    const t0 = Date.now();
+    await s.stop('o/r', 7);
+    expect(Date.now() - t0).toBeLessThan(5_000);
+    expect(s.view('o/r', 7)).toBeUndefined();
+    writeFileSync(join(w.wt, '.built'), ''); // the next build returns at once
+    // Ignores SIGTERM and keeps a child with the pipe open: the stop still returns, after SIGKILL.
+    await s.start('o/r', 7, "trap '' TERM; env > env.txt; node server.js --port 5180 & wait");
+    await until(s, 'running');
+    const t1 = Date.now();
+    await s.stop('o/r', 7);
+    expect(Date.now() - t1).toBeLessThan(5_000);
+    const env = readFileSync(join(w.wt, 'env.txt'), 'utf8');
+    expect(env).toContain('KEEP_ME=ok');
+    expect(env).toMatch(/^HOST=127\.0\.0\.1$/m);
+    expect(env).not.toMatch(/GITHUB_TOKEN|GH_TOKEN|VAPID|NPM_TOKEN/);
+  }, 40_000);
+
+  // @req FR:pr-page/server.run
+  it('a server on IPv6 loopback only counts as open', async () => {
+    const w = world();
+    const s = make(w.root);
+    await s.start('o/r', 7, "node -e \"require('http').createServer((q,s)=>s.end('six')).listen(process.env.PORT,'::1')\"");
+    expect((await until(s, 'running')).url).toMatch(/^http:\/\/localhost:\d+$/);
   }, 30_000);
 
   // @req FR:pr-page/server.run

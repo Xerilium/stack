@@ -427,8 +427,8 @@ describe('PR routes', () => {
     const auth = createAuth({ owners: [], tokens });
     const token = auth.wrap(createApiHandler({ ...deps, authorize: auth.authorize }));
     const owner = createApiHandler({ ...deps, authorize: () => true });
-    const call = async (who: string, method: string, path: string, body?: unknown) => {
-      const headers: Record<string, string> = { 'content-type': 'application/json', ...(who === 'owner' ? OWNER : { authorization: `Bearer ${who}` }) };
+    const call = async (who: string, method: string, path: string, body?: unknown, extra: Record<string, string> = {}) => {
+      const headers: Record<string, string> = { 'content-type': 'application/json', ...extra, ...(who === 'owner' ? OWNER : { authorization: `Bearer ${who}` }) };
       const res = await (who === 'owner' ? owner : token)(new Request(`https://x.test/api${path}`, { method, headers, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }));
       const t = await res.text();
       return { status: res.status, json: t ? JSON.parse(t) : undefined, text: t };
@@ -571,12 +571,23 @@ describe('PR routes', () => {
     expect((await m.call('owner', 'GET', '/prs')).json.rows.find((r: { number: number }) => r.number === 1).server).toMatchObject({ state: 'starting' });
     expect((await m.call('owner', 'POST', '/prs/server', { repo: 'o/r', number: 1, op: 'stop' })).json).toEqual({ server: null });
     expect(m.srvCalls[1]).toBe('stop o/r#1');
+    // Stop works for a PR that left the board (merged or closed), so its process never stays. @req FR:pr-page/api.server
+    expect((await m.call('owner', 'POST', '/prs/server', { repo: 'o/r', number: 99, op: 'stop' })).json).toEqual({ server: null });
+    // A paired device (not this machine) cannot start one, and sees servers false. @req FR:pr-page/server.host
+    expect((await m.call('owner', 'POST', '/prs/server', { repo: 'o/r', number: 1, op: 'start' }, { 'x-stack-remote': '1' })).status).toBe(403);
+    expect((await m.call('owner', 'GET', '/prs', undefined, { 'x-stack-remote': '1' })).json.servers).toBe(false);
     // Not on the board, a bad op, a token.
     expect((await m.call('owner', 'POST', '/prs/server', { repo: 'o/r', number: 99, op: 'start' })).status).toBe(403);
     expect((await m.call('owner', 'POST', '/prs/server', { repo: 'o/r', number: 1, op: 'restart' })).status).toBe(422);
     const t = (await m.tokens.create({ name: 'cos', scopes: ['tasks:read', 'tasks:write'] as never })).token;
     expect((await m.call(t, 'POST', '/prs/server', { repo: 'o/r', number: 1, op: 'start' })).status).toBe(403);
-    expect(m.srvCalls).toHaveLength(2);
+    expect(m.srvCalls).toEqual(['start o/r#1 pnpm web --port 5180', 'stop o/r#1', 'stop o/r#99']);
+    // A Server line cut at 200 characters never runs. @req FR:pr-page/server.plan
+    const long = mk({ servers: true, check: `- Server: \`${'x'.repeat(260)}\`` });
+    const cut = await long.call('owner', 'POST', '/prs/server', { repo: 'o/r', number: 1, op: 'start' });
+    expect(cut.status).toBe(409);
+    expect(cut.json.error.message).toBe('The Server line is over 200 characters');
+    expect(long.srvCalls).toEqual([]);
   });
   it('a host that cannot start servers: servers false and 404', async () => {
     const m = mk();

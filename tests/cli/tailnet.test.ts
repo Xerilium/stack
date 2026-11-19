@@ -243,6 +243,14 @@ describe('remote gate', () => {
     expect((await call(s.url, '/.auth/pair', { method: 'POST', headers: { ...host, ...json, origin: 'https://evil.example' }, body: JSON.stringify({ token: f.phone.token }) })).status).toBe(403);
   });
 
+  // @req FR:pr-page/server.host
+  it('a paired device cannot start a test server on the host', async () => {
+    const c = { ...host, ...json, authorization: `Bearer ${f.phone.token}` };
+    const r = await call(s.url, '/api/prs/server', { method: 'POST', headers: c, body: JSON.stringify({ repo: 'o/r', number: 1, op: 'start' }) });
+    expect(r.status).toBe(403);
+    expect(r.body).toContain('Start a test server on the computer that runs Stack');
+  });
+
   // @req FR:tailnet-access/pair.@cli.revoke @req FR:tailnet-access/pair.logout
   it('a revoked device is 401 at once; logout clears the cookie', async () => {
     const c = { ...host, cookie: `stack_device=${f.phone.token}` };

@@ -451,6 +451,8 @@ async function liveCall<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+/** The request came from a paired device, not this machine (the local host sets the marker). @req FR:pr-page/server.host */
+const isRemote = (c: Ctx) => c.req.headers.get('x-stack-remote') === '1';
 const ownerOnly = (c: Ctx, why: string) => { if (!isOwner(c.req)) throw new ApiError('forbidden', why); };
 const prStore = (c: Ctx): PrPriorityStore => { if (!c.deps.prPriority) throw new ApiError('not_found', 'No PR priority store on this host'); return c.deps.prPriority; };
 /** The list view (cached facts only) plus open recommendations. @req FR:pr-priority/view.item */
@@ -1027,7 +1029,9 @@ export const ROUTES: Route[] = [
       // Signed out: one honest state, never an empty board. @req FR:pr-page/auth.state
       if (c.deps.prAuth && !(await c.deps.prAuth.ready())) return json(200, { auth: await c.deps.prAuth.status() });
       if (refresh) await boardOf(c).refresh();
-      return json(200, await boardOf(c).get());
+      const board = await boardOf(c).get();
+      // A paired device cannot start a server on the host. @req FR:pr-page/server.host
+      return json(200, isRemote(c) ? { ...board, servers: false } : board);
     },
   },
   {
@@ -1135,13 +1139,17 @@ export const ROUTES: Route[] = [
     async run(c) {
       noQuery(c);
       ownerOnly(c, 'Only the owner can start a test server');
+      if (isRemote(c)) throw new ApiError('forbidden', 'Start a test server on the computer that runs Stack');
       const b = validate<{ repo: string; number: number; op: 'start' | 'stop' }>(await readBody(c.req), PR_SERVER_BODY.schema, PR_SERVER_BODY.required);
       const s = c.deps.prServers;
       if (!s) throw new ApiError('not_found', 'This host cannot start a test server');
+      // Stop needs no board row: a PR that merged or closed must still stop.
+      if (b.op === 'stop') { await s.stop(b.repo, b.number); return json(200, { server: null }); }
       const row = await onBoard(c, b);
-      if (b.op === 'stop') { await s.stop(row.repo, row.number); return json(200, { server: null }); }
-      // The command is the Server line of the check file, when it has one. @req FR:pr-page/server.plan
-      return json(200, { server: await s.start(row.repo, row.number, row.detail.check?.server) });
+      // The command is the Server line of the check file, when it has one. A line the parser cut is not the command. @req FR:pr-page/server.plan
+      const cmd = row.detail.check?.server;
+      if (cmd?.endsWith('…')) throw new ApiError('conflict', 'The Server line is over 200 characters');
+      return json(200, { server: await s.start(row.repo, row.number, cmd) });
     },
   },
   {

@@ -206,7 +206,7 @@ class BodyTooLarge extends Error {}
 const isOwnerData = (path: string): boolean => path === '/api' || path.startsWith('/api/') || path === '/events' || /^\/sessions\/[^/]+\/events$/.test(path);
 
 /** Headers a remote caller may not pass to the api: identity and credentials are set by the gate only. */
-const REMOTE_DROP = new Set(['x-ms-client-principal', 'authorization', 'x-stack-token', 'cookie']);
+const REMOTE_DROP = new Set(['x-ms-client-principal', 'authorization', 'x-stack-token', 'cookie', 'x-stack-remote']);
 
 /**
  * `remote`: the client's own principal, token and cookie headers are dropped. With `token` the request runs as that device token
@@ -218,6 +218,8 @@ async function toRequest(req: IncomingMessage, origin: string, remote?: { token?
   if (method !== 'GET' && method !== 'HEAD') { let n = 0; for await (const c of req) { n += (c as Buffer).length; if (n > 1_000_000) throw new BodyTooLarge('body too large'); chunks.push(c as Buffer); } }
   const headers = new Headers();
   for (const [k, v] of Object.entries(req.headers)) if (v !== undefined && !(remote && REMOTE_DROP.has(k))) headers.set(k, Array.isArray(v) ? v.join(', ') : v);
+  // A request from a paired device, not this machine: the api keeps host-only actions from it. @req FR:pr-page/server.host
+  if (remote) headers.set('x-stack-remote', '1');
   if (remote?.token !== undefined) {
     headers.set('authorization', `Bearer ${remote.token}`);
     return new Request(origin + (req.url ?? '/'), { method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined });
