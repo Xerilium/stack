@@ -126,7 +126,6 @@ A task stays one `- [ ]` row. Typed context is nested bullets under the row. Fil
   | `doneWhen` | A `Done when:` field exists, or the row links exactly one PR or issue (done is merged or closed)     |
   | `context`  | The row has a `Context:` field, a `Links:` field, a PR or issue ref in the title, or 1+ notes        |
   | `single`   | The owner is not `mixed`, and the title does not join two verbs with `and`, `;` or `then`            |
-
   - The title for the checks is the row text without owner marks (`🙋`, `🤖`, `🪄`, `🤖:level`), the `📅` due mark, and the leading emoji and punctuation.
   - A leaf has no child task rows.
   - A note is a nested line that is not a child task row, not a field, and not inside a field. Lines under `Notes:` are notes (`FR:schema.grammar`).
