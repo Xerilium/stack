@@ -57,7 +57,7 @@ test.describe('first-run onboarding', () => {
     await expect(page.getByTestId('onboarding')).toBeVisible();
     await expect(page.getByText('Step 1 of 5')).toBeVisible();
     await expect(heading(page)).toHaveText('Where do your tasks live?');
-    // Product names and acronyms keep their case. @req FR:first-run-onboarding/step.repo
+    // Product names and acronyms keep their case. @req FR:first-run-onboarding/step.repo.copy
     await expect(page.getByText('Stack keeps tasks as Markdown files in a Git repo. Point it at yours.', { exact: true })).toBeVisible();
     await expect(page.getByText('A folder on this computer that is a Git repo, or a URL to clone.', { exact: true })).toBeVisible();
     await page.getByLabel('Folder path or Git URL', { exact: true }).fill('~/tasks');
