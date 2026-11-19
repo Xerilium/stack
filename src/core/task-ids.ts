@@ -6,7 +6,7 @@ import { parseProject, type Task } from './parser';
 import { NotFoundError, writeAll, type FileWrite, type Storage } from './storage';
 import { inboxFile, isReadme, logFile, PROJECT_ID, projectId, projectPath, ROOT_SYSTEM, TASK_PATH } from './task-paths';
 import { fencedLines, type LintIssue } from './task-lint';
-import { HUMAN_MARK } from './owner';
+import { isAskRow } from './owner';
 
 /** The one place the prefix is spelled. @req FR:task-ids/id.format */
 export const TASK_ID_PREFIX = 'T:';
@@ -19,8 +19,7 @@ export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
  * @req FR:task-asks/format.row
  */
 export const ASK_KEY = /^[a-z0-9][a-z0-9._-]{0,79}$/;
-/** A 🙋 row with `kind` metadata is an ask. @req FR:task-asks/format.row */
-export const isAskRow = (t: Task): boolean => HUMAN_MARK.test(t.text) && !!t.meta?.some(([k]) => k === 'kind');
+export { isAskRow };
 /** Metadata keys of fields that are emoji in Stack; the emoji stays the source of truth. @req FR:task-ids/meta.emoji */
 export const EMOJI_KEYS = ['priority', 'status', 'due', 'start', 'effort', 'impact', 'tier', 'parked', 'suspended', 'human', 'autonomy'] as const;
 /** @req FR:task-ids/meta.fields: known metadata keys (typed links one per line); others are kept as unknown. */
@@ -207,7 +206,9 @@ export function lintIds(files: TaskFile[], only?: Set<string>): LintIssue[] {
       (t.meta ?? []).forEach(([k, v], i) => {
         const line = t.line + i + 2;
         if (k === 'id') {
-          if (isAskRow(t) ? !ASK_KEY.test(v) : !SLUG.test(v) || v.length > SLUG_MAX) out.push({ path: f.path, line, rule: 'id-slug', message: `Task ID "${v}" is not a slug (a-z, 0-9, -; up to ${SLUG_MAX}).` });
+          // @req FR:task-asks/format.key: an ask row's id follows the ask key rule, and the message says so.
+          if (isAskRow(t) && !ASK_KEY.test(v)) out.push({ path: f.path, line, rule: 'id-slug', message: `Ask key "${v}" is not valid (a-z, 0-9, ., _, -; starts with a-z or 0-9; up to 80).` });
+          else if (!isAskRow(t) && (!SLUG.test(v) || v.length > SLUG_MAX)) out.push({ path: f.path, line, rule: 'id-slug', message: `Task ID "${v}" is not a slug (a-z, 0-9, -; up to ${SLUG_MAX}).` });
           else if (seen.has(v)) out.push({ path: f.path, line, rule: 'id-duplicate', message: `Task ID "${v}" is used twice in this file.` });
           seen.add(v);
         }

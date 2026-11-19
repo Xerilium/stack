@@ -10,6 +10,10 @@ import { lintIds } from '../../src/core/task-ids';
 import { lintProject } from '../../src/core/task-lint';
 import { MemoryStorage, type FileWrite } from '../../src/core/storage';
 import { run } from '../../src/cli/run';
+import { dailyGoal, LifecycleError, nextTask, rankStack, removeCompleted } from '../../src/core/lifecycle';
+import { generateSummaries } from '../../src/core/summaries';
+import { getDefaults } from '../../src/core/config';
+import { mailKey, resolveThreads } from '../../src/email/to-ask';
 
 const NOW = new Date('2026-10-28T14:00:00Z');
 const at = (h: number) => new Date(NOW.getTime() + h * 3600_000).toISOString();
@@ -314,6 +318,171 @@ describe('import is idempotent', () => {
     const again = await importAsks(ctx);
     expect(again).toEqual({ imported: [], skipped: ['b', 'pr-879-approve'], files: [] });
     expect((await read(storage, 'tasks/asks.md')).match(/> id: b$/gm)).toHaveLength(1);
+  });
+});
+
+const ACTIVE = ['# Alpha', '', '## 🔄 Active', '', '- [ ] Ship v2', '  > id: ship-v2', '- [ ] Other task', ''].join('\n');
+
+// @req FR:task-asks/rank.skip
+describe('ask rows are not ranked tasks', () => {
+  it('rankStack and nextTask skip ask rows; the parent stays a leaf', async () => {
+    const { ctx } = mk({ 'tasks/alpha.md': ACTIVE });
+    await putAsk(ctx, 'k1', { ...base, ref: 'alpha:4' }, 'cos');
+    await putAsk(ctx, 'k2', { ...base, ask: 'Top ask', project: 'alpha', priority: 'crit' }, 'cos');
+    const texts = (await rankStack(ctx, NOW, undefined, { ignoreBlocks: true, owner: 'any' })).map((r) => r.text);
+    expect(texts.sort()).toEqual(['Other task', 'Ship v2']);
+    expect((await nextTask(ctx, NOW))?.text).not.toContain('🙋');
+  });
+  it('a file with only ask rows adds no ranked tasks', async () => {
+    const { ctx } = mk({ 'tasks/asks.md': ['# Asks', '', '## 🔄 Active', '', ...formatAskRow(full({ priority: 'crit' })), ''].join('\n') });
+    expect(await rankStack(ctx, NOW, undefined, { ignoreBlocks: true, owner: 'any' })).toEqual([]);
+    expect(await nextTask(ctx, NOW)).toBeNull();
+  });
+  it('the summaries skip ask rows and do not count them as checkpoints', () => {
+    const content = ['# Alpha', '', '## 🔄 Active', '', '- [ ] Ship v2', ...formatAskRow(full({ ask: 'Approve the ask row', detail: 'body' }), '  '), ''].join('\n');
+    const out = generateSummaries({ projects: [{ fileName: 'alpha.md', content }], config: getDefaults(), now: NOW });
+    expect(out.readme + out.stack + out.projects).not.toContain('Approve the ask row');
+    expect(out.readme).not.toContain('checkpoint');
+    expect(out.stack).toContain('Ship v2');
+  });
+  it('a handled ask is not a done task for the daily goal', async () => {
+    const { storage, ctx } = mk({ 'tasks/alpha.md': ACTIVE });
+    await putAsk(ctx, 'k1', { ...base, ref: 'alpha:4' }, 'cos');
+    await handleAsk(ctx, 'k1', { outcome: 'handled' }, 'cos');
+    (storage as MemoryStorage & { lineActivity: (p: string) => Promise<number[]> }).lineActivity = async (p: string) => (await read(storage, p)).split('\n').map(() => Infinity);
+    expect((await dailyGoal(ctx, NOW)).find((r) => r.name === 'alpha')?.done).toBe(false);
+  });
+});
+
+// @req FR:task-asks/format.clean
+describe('ask text cannot set row properties', () => {
+  it('put strips Stack marks from the text; a leading priority emoji is not read as priority', async () => {
+    const { storage, ctx } = mk();
+    await putAsk(ctx, 'k1', { ...base, ask: '🚨 ‼️ 🚧 Approve 🅿️ 💤 ⭐️ 1️⃣ 🤖 🪄 🙋 📅 ⏰ ⏫ 🟢 ⬆️ 🌐 now' }, 'cos');
+    const a = (await readAsk(ctx, 'k1'))!.ask;
+    expect(a).toMatchObject({ ask: 'Approve now', priority: 'normal' });
+    expect(await read(storage, 'tasks/asks.md')).toContain('- [ ] 🙋 Approve now\n');
+    await expect(putAsk(ctx, 'k2', { ...base, ask: '🚨 ‼️' }, 'cos')).rejects.toThrow(LifecycleError);
+  });
+  it('import strips Stack marks from the text', async () => {
+    const { ctx } = mk({ 'tasks/.stack/asks/a1.md': askFileOf({ key: 'a1', ask: '🚨 Pay 🅿️ it' }) });
+    await importAsks(ctx);
+    expect((await readAsk(ctx, 'a1'))!.ask).toMatchObject({ ask: 'Pay it', priority: 'normal' });
+  });
+});
+
+// @req FR:task-asks/core.archive
+describe('archive never loses owner content', () => {
+  it('skips a done ask whose subtree holds an open row or an owner note', async () => {
+    const { storage, ctx } = mk();
+    await putAsk(ctx, 'kid', { ...base, ask: 'Has a child' }, 'cos');
+    await putAsk(ctx, 'note', { ...base, ask: 'Has a note' }, 'cos');
+    await putAsk(ctx, 'plain', { ...base, ask: 'Plain' }, 'cos');
+    for (const k of ['kid', 'note', 'plain']) await handleAsk(ctx, k, { outcome: 'handled' }, 'cos');
+    const lines = (await read(storage, 'tasks/asks.md')).split('\n');
+    // the last line of the ask's own block
+    const after = (key: string) => { let i = lines.indexOf(`  > id: ${key}`); while (lines[i + 1]?.startsWith('  >')) i++; return i; };
+    lines.splice(after('note') + 1, 0, '  - my note');
+    lines.splice(after('kid') + 1, 0, '  - [ ] Follow up');
+    storage.seed('tasks/asks.md', lines.join('\n'));
+    const later = { storage, now: () => new Date(NOW.getTime() + 15 * 86_400_000) };
+    expect(await archiveAsks(later, { days: 14 })).toEqual({ archived: ['plain'] });
+    const src = await read(storage, 'tasks/asks.md');
+    expect(src).toContain('  - [ ] Follow up');
+    expect(src).toContain('  - my note');
+    expect(src).not.toContain('Plain');
+  });
+  it('removeCompleted keeps done ask rows', async () => {
+    const { storage, ctx } = mk({ 'tasks/alpha.md': ACTIVE.replace('- [ ] Other task', '- [x] Other task') });
+    await putAsk(ctx, 'k1', { ...base, ref: 'alpha:4' }, 'cos');
+    await handleAsk(ctx, 'k1', { outcome: 'handled' }, 'cos');
+    expect(await removeCompleted(ctx)).toMatchObject({ removed: 1 });
+    expect(await read(storage, 'tasks/alpha.md')).not.toContain('Other task');
+    expect((await readAsk(ctx, 'k1'))?.ask.state).toBe('done');
+  });
+});
+
+// @req FR:task-asks/place.unique
+describe('ask keys never collide', () => {
+  it('refuses a new key that is a task id in any file', async () => {
+    const { ctx } = mk({ 'tasks/alpha.md': ALPHA });
+    await expect(putAsk(ctx, 'ship-v2', base, 'cos')).rejects.toThrow(LifecycleError);
+    await expect(putAsk(ctx, 'ship-v2', base, 'cos')).rejects.toThrow(/task ID/);
+  });
+  it('two creates of one key in different files: the second updates the first', async () => {
+    const { storage, ctx } = mk({ 'tasks/alpha.md': ALPHA, 'tasks/beta.md': ALPHA.replace('# Alpha', '# Beta') });
+    const [a, b] = await Promise.all([putAsk(ctx, 'k1', { ...base, project: 'alpha' }, 'cos'), putAsk(ctx, 'k1', { ...base, project: 'beta', why: 'second' }, 'cos')]);
+    expect([a.created, b.created].sort()).toEqual([false, true]);
+    const all = (await read(storage, 'tasks/alpha.md')) + (await read(storage, 'tasks/beta.md'));
+    expect(all.match(/> id: k1$/gm)).toHaveLength(1);
+  });
+  it('two creates of one key in one file: one row', async () => {
+    const { storage, ctx } = mk({ 'tasks/alpha.md': ALPHA });
+    const r = await Promise.all([putAsk(ctx, 'k1', { ...base, project: 'alpha' }, 'cos'), putAsk(ctx, 'k1', { ...base, project: 'alpha', why: 'second' }, 'cos')]);
+    expect(r.map((x) => x.created).sort()).toEqual([false, true]);
+    expect((await read(storage, 'tasks/alpha.md')).match(/> id: k1$/gm)).toHaveLength(1);
+  });
+});
+
+// @req FR:task-asks/format.detail
+describe('detail and thread anywhere in the subtree', () => {
+  it('an owner note before the detail keeps it, and a write does not duplicate it', async () => {
+    const { storage, ctx } = mk();
+    await putAsk(ctx, 'k1', { ...base, detail: 'The body' }, 'cos');
+    await answerAsk(ctx, 'k1', { answer: 'reply', text: 'first' });
+    const lines = (await read(storage, 'tasks/asks.md')).split('\n');
+    lines.splice(lines.indexOf('  > ## Detail'), 0, '  - owner note');
+    storage.seed('tasks/asks.md', lines.join('\n'));
+    const a = (await readAsk(ctx, 'k1'))!.ask;
+    expect(a.detail).toBe('The body');
+    expect(a.thread).toHaveLength(1);
+    await handleAsk(ctx, 'k1', { outcome: 'reopen', reply: 'second' }, 'cos');
+    const src = await read(storage, 'tasks/asks.md');
+    expect(src.match(/> ## Detail/g)).toHaveLength(1);
+    expect(src.match(/> ## Thread/g)).toHaveLength(1);
+    expect(src.match(/> The body/g)).toHaveLength(1);
+    expect(src).toContain('  - owner note');
+    expect((await readAsk(ctx, 'k1'))!.ask.thread).toHaveLength(2);
+  });
+});
+
+// @req FR:task-asks/format.key
+describe('the ID lint names the ask key rule on ask rows', () => {
+  it('says the ask key rule, not the slug rule', () => {
+    const src = ['# A', '', '## S', '', '- [ ] 🙋 Do it', '  > id: Bad Key', '  > kind: approve', ''].join('\n');
+    const issues = lintIds([{ path: 'tasks/a.md', content: src }]);
+    expect(issues.map((i) => i.rule)).toEqual(['id-slug']);
+    expect(issues[0].message).toMatch(/ask key/i);
+    expect(issues[0].message).not.toMatch(/not a slug/);
+  });
+});
+
+// @req FR:task-asks/core.reads
+describe('one read per attempt', () => {
+  const counting = (storage: MemoryStorage) => {
+    let n = 0;
+    const orig = storage.list.bind(storage);
+    storage.list = async () => { n++; return orig(); };
+    return () => { const v = n; n = 0; return v; };
+  };
+  it('put, answer, and handle list the task files once each (a create adds one key check)', async () => {
+    const { storage, ctx } = mk({ 'tasks/alpha.md': ALPHA });
+    const lists = counting(storage);
+    await putAsk(ctx, 'k1', { ...base, project: 'alpha' }, 'cos');
+    expect(lists()).toBe(2);
+    await putAsk(ctx, 'k1', { why: 'changed' }, 'cos');
+    expect(lists()).toBe(1);
+    await answerAsk(ctx, 'k1', { answer: 'go' });
+    expect(lists()).toBe(1);
+    await handleAsk(ctx, 'k1', { outcome: 'handled' }, 'cos');
+    expect(lists()).toBe(1);
+  });
+  it('resolveThreads lists the asks once', async () => {
+    const { storage, ctx } = mk();
+    for (const c of ['c1', 'c2', 'c3']) await putAsk(ctx, mailKey(c), { ...base, from: 'email', detail: `mail ${c}` }, 'email');
+    const lists = counting(storage);
+    await resolveThreads(ctx, ['nope']);
+    expect(lists()).toBeLessThanOrEqual(2);
   });
 });
 

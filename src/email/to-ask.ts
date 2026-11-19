@@ -165,11 +165,10 @@ export async function resolveThreads(ctx: LifecycleContext, conversationIds: str
   for (const c of conversationIds) if (await resolveKey(ctx, mailKey(c))) n++;
   const threads = new Set(conversationIds.map(threadId));
   if (!threads.size) return n;
-  for (const { key: k } of (await listAsks(ctx, { state: 'all', limit: Number.MAX_SAFE_INTEGER })).items) {
-    const key = /^mail-[0-9a-f]{12}$/.test(k) ? k : undefined;
-    const a = key ? (await readAsk(ctx, key))?.ask : undefined;
-    if (!a || a.state === 'done' || a.from !== ACTOR || !mailsOf(a.detail).ids.some((id) => threads.has(id))) continue;
-    if (await resolveKey(ctx, key!)) n++;
+  // @req FR:task-asks/core.reads: one listing, not one read per ask.
+  for (const a of (await listAsks(ctx, { state: 'all', limit: Number.MAX_SAFE_INTEGER })).items) {
+    if (!/^mail-[0-9a-f]{12}$/.test(a.key) || a.state === 'done' || a.from !== ACTOR || !mailsOf(a.detail).ids.some((id) => threads.has(id))) continue;
+    if (await resolveKey(ctx, a.key)) n++;
   }
   return n;
 }

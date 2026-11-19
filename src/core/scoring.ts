@@ -1,6 +1,7 @@
 import type { StackConfig } from './config';
 import { escapeRe } from './regex';
 import type { Project, Task as ParsedTask } from './parser';
+import { isAskRow } from './owner';
 
 export class ScoringError extends Error {}
 
@@ -727,7 +728,8 @@ export function toScoringProject(project: Project, fallbackName = ''): ScoringPr
 
   const active = project.sections.find(s => ACTIVE.test(s.heading));
   const flat: ParsedTask[] = [];
-  const walk = (ts: ParsedTask[]) => { for (const t of ts) { flat.push(t); walk(t.children); } };
+  // @req FR:task-asks/rank.skip: an ask row and its subtree are not tasks; they show only in the ask queue.
+  const walk = (ts: ParsedTask[]) => { for (const t of ts) { if (isAskRow(t)) continue; flat.push(t); walk(t.children); } };
   if (active) walk(active.tasks);
 
   const tasks: ScoringTask[] = [];

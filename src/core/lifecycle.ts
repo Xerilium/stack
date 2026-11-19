@@ -8,7 +8,7 @@ import { parseProject, Project } from './parser';
 import { isReadme, projectId } from './task-paths';
 import { rollRecurring } from './recurring';
 import { DEFAULT_ENGINE, daysUntilDue, getEngine, parseAliases, rankTasks, STALE_CAP, STALE_DAYS, type RankOptions, type ScoredTask, ScoringTask, type ScoringProject, type StaleInfo, toScoringProject } from './scoring';
-import { rowOwner } from './owner';
+import { askLines, isAskRow, rowOwner } from './owner';
 import { applyTags, formatExplain, matchTruth, parseTruth, type ExplainRow, type Tags, type TruthMatch } from './autopri-tags';
 import { autopriEngine, autopriParts, registerAutopriEngine } from './autopri';
 import type { Pri } from './pris';
@@ -300,7 +300,8 @@ function parentTexts(doc: Doc): Map<number, { text: string; root?: number }> {
 function scoringRows(doc: Doc): number[] {
   const active = doc.project.sections.find((s) => ACTIVE.test(s.heading));
   const flat: number[] = [];
-  const walk = (ts: Project['sections'][number]['tasks']) => { for (const t of ts) { flat.push(t.line); walk(t.children); } };
+  // @req FR:task-asks/rank.skip: the same rows `toScoringProject` keeps, so the k-th row maps to the k-th scoring task.
+  const walk = (ts: Project['sections'][number]['tasks']) => { for (const t of ts) { if (isAskRow(t)) continue; flat.push(t.line); walk(t.children); } };
   if (active) walk(active.tasks);
   return flat.filter((ln) => TASK_LINE.test(stripBom(bare(doc.project.lines[ln]))));
 }
@@ -779,7 +780,9 @@ export async function dailyGoal(ctx: LifecycleContext, at?: Date): Promise<Daily
     // Or a checked owner row changed today; an uncommitted change (Infinity) is today's. @req FR:pri-first-ranking/daily.done.edit
     const times = committed || typeof ctx.storage.lineActivity !== 'function' ? [] : await ctx.storage.lineActivity(d.path);
     const up = times.length ? ancestorsAll(d.project.lines) : [];
-    const done = committed || d.project.lines.some((l, i) => /^\s*- \[[xX]\]/.test(l) && times[i] !== undefined && (times[i] === Infinity || day(times[i]) === today) && rowOwner(ROW.exec(l)?.[3] ?? l, up[i] ?? []) === 'me');
+    // @req FR:task-asks/rank.skip: a handled ask is not a done task.
+    const asks = times.length ? askLines(d.project.sections, d.project.lines) : new Set<number>();
+    const done = committed || d.project.lines.some((l, i) => /^\s*- \[[xX]\]/.test(l) && !asks.has(i) && times[i] !== undefined && (times[i] === Infinity || day(times[i]) === today) && rowOwner(ROW.exec(l)?.[3] ?? l, up[i] ?? []) === 'me');
     const row = out.get(name) ?? { project: name, done: false };
     row.name = d.name;
     row.done = row.done || done;
@@ -811,8 +814,10 @@ export async function removeCompleted(ctx: LifecycleContext, opts: { project?: s
     const limit = contentEnd(src);
     const out: string[] = [];
     let n = 0;
+    // @req FR:task-asks/core.archive: ask rows stay; `archiveAsks` owns their age rule.
+    const asks = askLines(doc.project.sections, src);
     for (let i = 0; i < src.length; i++) {
-      if (i < limit && /^(\s*)- \[x\] (.+)$/.test(bare(src[i]))) {
+      if (i < limit && !asks.has(i) && /^(\s*)- \[x\] (.+)$/.test(bare(src[i]))) {
         n++;
         i = blockEnd(src, i, limit) - 1;
       } else {

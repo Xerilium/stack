@@ -1,5 +1,6 @@
 import type { StackConfig } from './config';
 import { parseProject } from './parser';
+import { askLines } from './owner';
 import { matcherFor, parsePriorities } from './priorities';
 import {
   extractEmojis, legacyEngine, activeTimeBlocks, getEngine, rankTasks, stackEngine, toScoringProject, weighProjects,
@@ -303,12 +304,21 @@ function projectIdentity(fileName: string, content: string): { name: string; dis
 
 interface RawTask { text: string; level: number; parentIndex: number; quotes: string[]; lists: string[] }
 
+/** @req FR:task-asks/rank.skip: lines of ask rows and their subtrees; the summaries never read them as tasks. */
+function askSpan(content: string): Set<number> {
+  if (!content.includes('🙋')) return new Set();
+  const p = parseProject(content);
+  return askLines(p.sections, p.lines);
+}
+
 /** @req FR:summaries/generate.parse */
 function scanTasks(content: string): RawTask[] {
   const tasks: RawTask[] = [];
   let inActive = false;
   let hierarchy: number[] = [];
-  for (const line of content.split('\n')) {
+  const asks = askSpan(content);
+  for (const [i, line] of content.split('\n').entries()) {
+    if (asks.has(i)) continue;
     if (/^## 🔄 Active/i.test(line)) { inActive = true; continue; }
     if (/^## /.test(line) && inActive) break;
     if (!inActive) continue;
@@ -702,7 +712,9 @@ function countReadyAi(contents: string[]): number {
   for (const content of contents) {
     let inActive = false;
     let stack: number[] = [];
-    for (const line of content.split('\n')) {
+    const asks = askSpan(content);
+    for (const [i, line] of content.split('\n').entries()) {
+      if (asks.has(i)) continue;
       if (/^## 🔄 Active/i.test(line)) { inActive = true; continue; }
       if (/^## /.test(line) && inActive) break;
       if (!inActive) continue;
@@ -728,7 +740,10 @@ function countCheckpoints(contents: string[]): number {
     let inActive = false;
     const state = new Map<number, boolean>();
     let last = -1;
-    for (const line of content.split('\n')) {
+    // @req FR:task-asks/rank.skip: an ask row is in the ask queue, not a checkpoint.
+    const asks = askSpan(content);
+    for (const [i, line] of content.split('\n').entries()) {
+      if (asks.has(i)) continue;
       if (/^## 🔄 Active/i.test(line)) { inActive = true; continue; }
       if (/^## /.test(line) && inActive) break;
       if (!inActive) continue;

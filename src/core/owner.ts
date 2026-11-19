@@ -10,6 +10,32 @@ export const HUMAN_MARK = /🙋/u;
 /** An agent's mark: 🪄, or 🤖 that is not the `🤖:level` autonomy marker. */
 export const AGENT_MARK = /🪄|🤖(?!:)/u;
 
+/** A 🙋 row with `kind` metadata is an ask. @req FR:task-asks/format.row */
+export const isAskRow = (t: { text: string; meta?: [string, string][] }): boolean => HUMAN_MARK.test(t.text) && !!t.meta?.some(([k]) => k === 'kind');
+
+interface TreeRow { text: string; line: number; children: TreeRow[]; meta?: [string, string][] }
+
+/**
+ * Every line of every ask row's span: the row, then each following line that is blank or indented deeper.
+ * @req FR:task-asks/rank.skip
+ */
+export function askLines(sections: { tasks: TreeRow[] }[], lines: string[]): Set<number> {
+  const out = new Set<number>();
+  const indent = (l: string) => /^\s*/.exec(l.replace(/^﻿/, ''))![0].replace(/\t/g, '    ').length;
+  const walk = (ts: TreeRow[]) => { for (const t of ts) {
+    if (!isAskRow(t)) { walk(t.children); continue; }
+    const w = indent(lines[t.line]);
+    out.add(t.line);
+    for (let j = t.line + 1; j < lines.length; j++) {
+      const l = lines[j].replace(/\r$/, '');
+      if (l.trim() !== '' && (l.startsWith('#') || indent(l) <= w)) break;
+      out.add(j);
+    }
+  } };
+  for (const s of sections) walk(s.tasks);
+  return out;
+}
+
 /** The owner a row's own marks give; undefined when it has none. */
 export function markOf(text: string): RowOwner | undefined {
   const me = HUMAN_MARK.test(text);
