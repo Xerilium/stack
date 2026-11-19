@@ -65,6 +65,7 @@ Owner needs QM in its own section on QM days so that he sees each project's QM s
 - **FR:qm.rows** (P1): The section MUST show one row per project file with a linked task, in file name order, named by the file's project.
 - **FR:qm.off** (P1): When the day order leaves the priority out today, or all its windows today have ended, the section MUST show one row with the action `Not a priority today` (not a gap).
 - **FR:qm.later** (P1): When it opens later today, each action MUST start with its start time (`3 PM: `).
+- **FR:qm.today** (P1): The section MUST say whether QM is a priority today.
 
 ### FR:order: Order the sections by day and time
 
@@ -133,12 +134,17 @@ Agents need the same rows in JSON so that they report the owner's priorities wit
 Owner needs the report on the Now page so that he sees it without a new screen.
 
 - **FR:web.place** (P1): Now MUST show the report in place of the Waiting on you block, with no new nav item, rail item or card.
-- **FR:web.sections** (P1): Now MUST show the sections in this order: QM (when the list has one), **Now**, **PRs**, **Today**, **Next 3 days**.
-  - **FR:web.sections.head** (P1): Each section MUST have an `h2` and its stamp `as of <time>` (`, stale` when stale), with the time in the report's configured time zone.
-  - **FR:web.tables.rule** (P1): Each section MUST start with a rule (`hr`).
-  - **FR:web.sections.cols** (P1): Project sections MUST have the columns **Project**, **Agent**, **🤖 Status**, **👱‍♂️ Next action**; the PR section **PR**, **Agent**, **👱‍♂️ Next action**, **Time**.
-  - **FR:web.sections.gap** (P1): A gap row MUST show its action in muted text with the word `Gap:` first.
-  - **FR:web.sections.empty** (P1): An empty section MUST show one row `Nothing here`.
+- **FR:web.tabs** (P1): Now MUST show the sections as tabs, one table at a time, in this order: QM (when the list has one), **Now**, **PRs**, **Today**, **Next 3 days**.
+  - **FR:web.tabs.count** (P1): Each tab title MUST end with its count of real rows (`Now (3)`). Gap rows MUST NOT count.
+  - **FR:web.tabs.default** (P1): The first tab shown MUST be QM when QM is a priority today, else Now.
+  - **FR:web.tabs.hash** (P1): The chosen tab MUST be kept in the URL hash (`#/now?pri=prs`) and restored on load.
+  - **FR:web.tabs.keys** (P1): Tabs MUST follow the ARIA tabs pattern: arrow keys, Home and End move between tabs.
+  - **FR:web.tabs.head** (P1): Each panel MUST start with its stamp `as of <time>` (`, stale` when stale), with the time in the report's configured time zone.
+- **FR:web.table** (P1): Project tables MUST have the columns **Project**, **Agent**, **🤖 Status**, **👱‍♂️ Next action**; the PR table **PR**, **Agent**, **👱‍♂️ Next action**, **Time**.
+  - **FR:web.table.line** (P1): Each cell MUST show one line and end a cut line with `…`.
+  - **FR:web.table.detail** (P1): A tap on the next action (or Enter or Space on it) MUST show the full row; a second tap MUST fold it.
+  - **FR:web.table.gap** (P1): A gap row MUST show its action in muted text with the word `Gap:` first.
+  - **FR:web.table.empty** (P1): An empty table MUST show one row `Nothing here`.
 - **FR:web.links** (P1): Each linked agent and each PR number MUST be a link.
   - **FR:web.links.none** (P1): `--` MUST be plain text.
 - **FR:web.live** (P1): Now MUST read `GET /priorities` on load, on each live change and every 60 s while visible.
@@ -146,9 +152,10 @@ Owner needs the report on the Now page so that he sees it without a new screen.
 
 ### NFR:a11y: Design and access
 
-- **NFR:a11y.tokens** (P1): The report MUST use the Fluent 2 tokens (`docs/design-system.md`) in light and dark.
-- **NFR:a11y.keys** (P1): Each link MUST work by keyboard with a visible focus ring.
-- **NFR:a11y.mobile** (P1): Below 600 px each row MUST show as a block (project and status on line 1, next action on line 2, agent on line 3); the page MUST NOT scroll sideways.
+- **NFR:a11y.tokens** (P1): The report MUST use the Fluent 2 tokens (`docs/design-system.md`) in light and dark: a card table, 12 px headers, 10 px by 12 px cells.
+- **NFR:a11y.keys** (P1): Each tab, link and detail toggle MUST work by keyboard with a visible focus ring.
+- **NFR:a11y.target** (P1): Each tab and detail toggle MUST be at least 44 px tall on touch.
+- **NFR:a11y.mobile** (P1): Below 600 px each row MUST show as a block (project and status on line 1, next action on line 2, agent on line 3); the tab list MUST scroll inside its own box; the page MUST NOT scroll sideways.
 - **NFR:a11y.axe** (P1): Now with the report MUST have no axe violations (WCAG 2.2 AA) at 375 px and 1280 px.
 
 ## Data Model
@@ -157,7 +164,7 @@ Owner needs the report on the Now page so that he sees it without a new screen.
 - **FR:$tiered** (P1): **`TieredTask`** — `path`, `line` (0-based), `project`, `aliases`, `tier` (1, 2 or 3), `text`, `agent` (string or null), `more` (count of more agents), `status` (`working`, `pairing`, `done`, `idle`, `blocked`, `queued`, `unknown`, or null with no agent).
 - **FR:$row** (P1): **`PriRow`** — `id`, `project`, `agent` (`{ name, link }`, link null when unlinked, or null), `status` (as in `TieredTask`), `action`, `gap` (boolean), `ref` (`path:line` or null), `at`, `stale`.
 - **FR:$pr** (P1): **`PrRow`** — `emoji`, `number`, `url`, `agent` (as in `PriRow`), `action`, `minutes`, `server` and `details` (links, null unless a live row).
-- **FR:$view** (P1): **`PrioritiesView`** — `at` (the clock), `timeZone` (optional IANA zone), `qm` (a `PriTable` with `title`, or null), `now`, `today`, `next` (each a `PriTable`: `at`, `stale`, `rows`) and `prs` (a `PrTable`: `at`, `stale`, `verified`, `manager`, `rows`).
+- **FR:$view** (P1): **`PrioritiesView`** — `at` (the clock), `timeZone` (optional IANA zone), `qm` (a `PriTable` with `title` and `today`, or null), `now`, `today`, `next` (each a `PriTable`: `at`, `stale`, `rows`) and `prs` (a `PrTable`: `at`, `stale`, `verified`, `manager`, `rows`).
 
 ## Architecture Constraints
 

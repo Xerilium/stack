@@ -1,46 +1,52 @@
-/* Now's priorities report: plain dense tables; one block per row on a phone. Fluent 2 tokens only; dark through the token values.
-   @req NFR:priorities-tables/a11y.tokens @req NFR:priorities-tables/a11y.mobile */
-.pri-tables { display: grid; gap: var(--fl-s-l); margin-top: var(--fl-s-xxl); min-width: 0; }
+/* Now's priorities report: tabs over one card table (Fluent 2 tokens; dark through the token values). Roomy rows, one line
+   per cell; a tap on the next action shows the full row. One block per row on a phone.
+   @req NFR:priorities-tables/a11y.tokens @req NFR:priorities-tables/a11y.mobile @req NFR:priorities-tables/a11y.target */
+.pri-tables { margin-top: var(--fl-s-xxl); min-width: 0; }
 @media (min-width: 1100px) { .now > .pri-tables { grid-column: 1 / -1; } }
-.pri-section { min-width: 0; }
-.pri-rule { width: 100%; margin: 0 0 var(--fl-s-m); border: 0; border-top: 1px solid var(--fl-stroke1); }
-.pri-h2 { margin: 0 0 var(--fl-s-s); font-size: var(--fl-sub2); line-height: var(--fl-sub2-lh); font-weight: 600; color: var(--fl-fg1); }
-.pri-stamp { font-size: var(--fl-caption); line-height: var(--fl-caption-lh); font-weight: 400; color: var(--fl-fg2); margin-inline-start: var(--fl-s-s); }
+
+/* Tabs. @req FR:priorities-tables/web.tabs */
+.pri-tabs { display: flex; gap: var(--fl-s-xs); overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--fl-stroke2); margin-bottom: var(--fl-s-m); }
+.pri-tabs::-webkit-scrollbar { display: none; }
+.pri-tab { flex: none; min-height: 44px; padding: 0 var(--fl-s-m); border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; color: var(--fl-fg2); font: 400 var(--fl-body)/var(--fl-body-lh) var(--fl-font, inherit); cursor: pointer; white-space: nowrap; border-radius: var(--fl-r-md) var(--fl-r-md) 0 0; }
+.pri-tab:hover { color: var(--fl-fg1); background: var(--fl-bg1-hover); }
+.pri-tab[aria-selected="true"] { color: var(--fl-fg1); font-weight: 600; border-bottom-color: var(--fl-brand); }
+
+.pri-stamp { margin: 0 0 var(--fl-s-s); font-size: var(--fl-caption); line-height: var(--fl-caption-lh); color: var(--fl-fg3); }
 .pri-stamp.stale, .pri-stale { font-weight: 600; color: var(--fl-fg1); }
 .pri-stale { font-size: var(--fl-caption); }
-.pri-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: var(--fl-body); line-height: var(--fl-body-lh); color: var(--fl-fg1); }
-.pri-table th, .pri-table td { text-align: start; vertical-align: top; padding: var(--fl-s-xs) var(--fl-s-m); border-bottom: 1px solid var(--fl-stroke2); overflow-wrap: anywhere; }
-.pri-table th { font-size: var(--fl-caption); line-height: var(--fl-caption-lh); font-weight: 600; color: var(--fl-fg2); white-space: nowrap; }
-.pri-table th:first-child, .pri-table td:first-child { padding-inline-start: 0; }
-.pri-c-project { font-weight: 600; }
-.pri-c-status, .pri-c-time, .pri-c-pr, .pri-c-agent { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* One column grid for every section, so columns line up down the page. */
-.pri-table th:nth-child(1) { width: 9rem; } .pri-table th:nth-child(2) { width: 10rem; } .pri-pri .pri-table th:nth-child(3) { width: 8rem; } .pri-prs .pri-table th:nth-child(1) { width: 9rem; } .pri-prs .pri-table th:nth-child(4) { width: 4rem; }
-.pri-c-project { overflow-wrap: anywhere; white-space: normal; }
-.pri-c-time { text-align: end; font-variant-numeric: tabular-nums; }
-.pri-table th:last-child { text-align: start; }
-.pri-prs .pri-table th:last-child { text-align: end; }
-.pri-muted { color: var(--fl-fg2); }
-.pri-table a, .pri-manager a { color: var(--fl-brand-fg); text-decoration: underline; text-underline-offset: 2px; }
-.pri-tables a:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 1px; border-radius: var(--fl-r-sm); }
-/* 44 px targets on touch. @req FR:ux-consolidation/one.layout */
-/* Padding grows the target, a matching negative margin keeps the line height. */
-@media (hover: none) { .pri-table a { display: inline-block; padding-block: 12px; margin-block: -12px; } }
+.pri-manager { margin: 0 0 var(--fl-s-s); font-size: var(--fl-caption); line-height: var(--fl-caption-lh); color: var(--fl-fg2); }
+
+/* Card table, as in Option A: 12 px headers, 10 px by 12 px cells. @req FR:priorities-tables/web.table */
+.pri-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; background: var(--fl-bg1); border-radius: var(--fl-r-xl); box-shadow: var(--fl-shadow4); overflow: hidden; font-size: var(--fl-body); line-height: var(--fl-body-lh); color: var(--fl-fg1); }
+.pri-table th { text-align: start; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--fl-fg3); padding: 8px 12px; border-bottom: 1px solid var(--fl-stroke2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pri-table td { text-align: start; vertical-align: middle; padding: 10px 12px; border-bottom: 1px solid var(--fl-stroke2); }
 .pri-table tbody tr:last-child td { border-bottom: 0; }
+.pri-table tbody tr:hover td { background: var(--fl-bg1-hover); }
+.pri-table th:nth-child(1) { width: 9rem; } .pri-table th:nth-child(2) { width: 10rem; } .pri-pri th:nth-child(3) { width: 8.5rem; } .pri-prs th:nth-child(1) { width: 7rem; } .pri-prs th:nth-child(4) { width: 4.5rem; text-align: end; }
+/* One line per cell, cut with an ellipsis; an open row shows all. @req FR:priorities-tables/web.table.line */
+.pri-table td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pri-table tr.pri-open td { white-space: normal; overflow-wrap: anywhere; }
+.pri-c-project { font-weight: 600; }
+.pri-c-time { text-align: end; font-variant-numeric: tabular-nums; }
+.pri-muted { color: var(--fl-fg3); }
+.pri-table a, .pri-manager a { color: var(--fl-brand-fg); text-decoration: underline; text-underline-offset: 2px; }
+/* The detail toggle: the action text itself, quiet until hovered. @req FR:priorities-tables/web.table.detail */
+.pri-more { display: block; width: 100%; padding: 0; margin: 0; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; white-space: inherit; overflow: hidden; text-overflow: ellipsis; }
+.pri-tables a:focus-visible, .pri-tab:focus-visible, .pri-more:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 1px; border-radius: var(--fl-r-sm); }
+/* 44 px targets on touch: padding grows the target, a matching negative margin keeps the line. @req FR:ux-consolidation/one.layout */
+@media (hover: none) { .pri-table a, .pri-more { padding-block: 12px; margin-block: -12px; } .pri-table a { display: inline-block; } }
 
 /* Phone: each row is a block. Line 1: project (or PR) and status (or time); line 2: the action; line 3: the agent. */
 @media (max-width: 599px) {
   .pri-table, .pri-table tbody { display: block; }
   .pri-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .pri-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "a b" "c c" "d d"; column-gap: var(--fl-s-m); padding: var(--fl-s-s) 0; border-bottom: 1px solid var(--fl-stroke2); }
+  .pri-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "a b" "c c" "d d"; gap: 2px var(--fl-s-s); padding: 10px 12px; border-bottom: 1px solid var(--fl-stroke2); }
   .pri-table tbody tr:last-child { border-bottom: 0; }
   .pri-table tr.pri-only { display: block; }
-  .pri-table td { display: block; padding: 0; border: 0; width: auto; }
-  .pri-c-project, .pri-c-pr { grid-area: a; white-space: normal; }
+  .pri-table td { display: block; padding: 0; border: 0; width: auto; background: none !important; }
+  .pri-c-project, .pri-c-pr { grid-area: a; }
   .pri-c-status, .pri-c-time { grid-area: b; font-size: var(--fl-caption); line-height: var(--fl-caption-lh); color: var(--fl-fg2); }
   .pri-c-action { grid-area: c; }
   .pri-c-agent { grid-area: d; font-size: var(--fl-caption); line-height: var(--fl-caption-lh); color: var(--fl-fg2); }
   .pri-c-agent.pri-muted, .pri-c-status.pri-muted { display: none; }
-  .pri-c-agent, .pri-c-status { overflow: visible; white-space: normal; }
 }
-.pri-manager { margin: 0 0 var(--fl-s-s); font-size: var(--fl-caption); line-height: var(--fl-caption-lh); color: var(--fl-fg2); }

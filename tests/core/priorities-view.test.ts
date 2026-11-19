@@ -91,13 +91,15 @@ describe('QM', () => {
   it('gets its own first section, one row per project, linked before the other priorities', () => {
     const v = view([pri('stack'), qm(), pri('catalyst')], tasks());
     expect(v.qm?.title).toBe('QM');
+    expect(v.qm?.today).toBe(true);
     expect(v.qm?.rows.map((r) => [r.project, r.action, r.agent?.name ?? null])).toEqual([['catalyst', 'Approve the QM 5', null], ['stack', 'QM 3pm final calls on plan PR 119', 'qm-planner']]);
     expect(v.now.rows.map((r) => [r.id, r.action])).toEqual([['stack', 'Ship v2'], ['catalyst', GAP]]);
   });
-  // @req FR:priorities-tables/qm.off
+  // @req FR:priorities-tables/qm.off @req FR:priorities-tables/qm.today
   it('says Not a priority today on an off day', () => {
     const thu = new Date('2026-11-19T19:00:00Z');
     const v = view([qm(), pri('stack')], tasks(), { now: thu });
+    expect(v.qm?.today).toBe(false);
     expect(v.qm?.rows).toMatchObject([{ id: 'qm', project: 'QM', action: 'Not a priority today', gap: false, agent: null, status: null }]);
   });
   // @req FR:priorities-tables/qm.later

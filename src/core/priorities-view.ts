@@ -21,7 +21,7 @@ export interface ViewInput { pris: Pri[]; tasks: TieredTask[]; now: Date; timeZo
 export interface Agent { name: string; link: string | null }
 export interface PriRow { id: string; project: string; agent: Agent | null; status: AgentStatus | null; action: string; gap: boolean; ref: string | null; at: string; stale: boolean }
 export interface PriTable { at: string; stale: boolean; rows: PriRow[] }
-export interface QmTable extends PriTable { title: string }
+export interface QmTable extends PriTable { title: string; /** QM is a priority today (its day order and windows keep it in). @req FR:priorities-tables/qm.today */ today: boolean }
 export interface PrRow { emoji: string; number: number; url: string; agent: Agent | null; action: string; minutes: number; server: string | null; details: string | null }
 export interface PrTable { at: string; stale: boolean; verified: boolean; /** The Sweep Manager session, shown above the table. */ manager: Agent | null; rows: PrRow[] }
 export interface PrioritiesView { at: string; /** IANA zone the report was built in; stamps show times in it. */ timeZone?: string; qm: QmTable | null; now: PriTable; prs: PrTable; today: PriTable; next: PriTable }
@@ -149,7 +149,7 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
       rows = [...files.keys()].sort().map((path) => { const x = pick(files.get(path)!)!; return rowOf(qmPri, x, when, cut(x.project)); });
       if (!rows.length) rows = [gapRow(qmPri, GAP)];
     }
-    qm = { title: projectOf(qmPri), ...table(rows) };
+    qm = { title: projectOf(qmPri), today: t.state !== 'past', ...table(rows) };
   }
 
   const open: PriRow[] = []; const today: PriRow[] = [];

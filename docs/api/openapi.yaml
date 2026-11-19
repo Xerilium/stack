@@ -4066,12 +4066,16 @@ components:
       nullable: true
       required:
         - title
+        - today
         - at
         - stale
         - rows
       properties:
         title:
           type: string
+        today:
+          type: boolean
+          description: QM is a priority today
         at:
           type: string
           format: date-time
