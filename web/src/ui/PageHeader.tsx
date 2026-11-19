@@ -1,6 +1,7 @@
 /**
  * The top of a page: an `h1` title, an optional muted `meta` after it, an optional `sub` line, and optional `actions` at the right.
  * @req FR:ui-kit/header @req FR:ui-kit/header.wrap
+ * @owns class:ui-head
  */
 import type { ComponentChildren } from 'preact';
 import './ui.css';
