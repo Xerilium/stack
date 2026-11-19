@@ -126,6 +126,9 @@ export function App() {
   /** The same ranking across the whole day's time blocks, for My day and the week. @req FR:web-app/today.plan */
   const [dayOrder, setDayOrder] = useState<string[] | null>(null);
   const [needs, setNeeds] = useState<NeedItem[]>([]);
+  /** The Chief of Staff file and the inbox replies answered (or failed) once: the Needs you count waits for them. @req FR:ask-queue/web.home.count */
+  const [needsRead, setNeedsRead] = useState(false);
+  const [inboxRead, setInboxRead] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
@@ -295,6 +298,7 @@ export function App() {
     if (c.status === 'fulfilled') { setEvents(c.value.items); setCalError(c.value.error ?? ''); setCalOn(c.value.configured); setCalSource(sourceOf(c.value, new Date())); } else { setCalError('Calendar unavailable'); setCalSource({ kind: 'calendar', state: 'error' }); }
     if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(a.reason instanceof Error ? a.reason.message : 'Failed to load');
     if (i.status === 'fulfilled') setInbox(i.value);
+    setInboxRead(true);
   }, []);
   /** Live mode: what the server has not committed yet. @req FR:web-shell/state.unsaved */
   const unsaved = useUnsaved(api, (m) => toast(m, 'err'), local);
@@ -316,7 +320,7 @@ export function App() {
       void api.daily().then(setDoneToday, () => setDoneToday(undefined)); // @req FR:pri-first-ranking/daily.web
       const [rk, t, p] = await Promise.all([api.rank(100), api.tasks(), api.projects()]);
       setRanked(rk); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setRefProjects(p); setProjects(p); setPhase('ready');
-      api.needs().then(setNeeds, () => setNeeds([])); // the CoS file is optional; never blocks the page
+      api.needs().then(setNeeds, () => setNeeds([])).finally(() => setNeedsRead(true)); // the CoS file is optional; never blocks the page
       void unsaved.check(); // @req FR:live-deploy/web.unsaved.refresh (after each own write and change event, both end here)
     } catch (e) {
       if (e instanceof ApiFailure && e.status === 401) { toLogin(); return; }
@@ -370,6 +374,7 @@ export function App() {
     if (note) void raise(note);
   }, {
     tasks: needRows,
+    tasksReady: phase !== 'loading' && needsRead && inboxRead,
     onTask: (a, s) => answerTask(a, s),
     onOpenTask: (ref) => { setFocusRef(ref); },
     onSync: () => void unsaved.check(),
@@ -815,7 +820,7 @@ export function App() {
     { id: 'go-home', label: `Go to ${LABEL.home}`, hint: HINT.home, group: 'Go to', run: () => go('home') }, // @req FR:ux-consolidation/nav.home
     { id: 'go-today', label: 'Go to My day', hint: HINT.today, group: 'Go to', run: () => go('today') },
     ...(sched ? [{ id: 'tomorrow', label: tmr ? 'My day: back to today' : 'Plan tomorrow', group: 'Go to' as Group, run: () => { go('today'); void toggleTomorrow(); } }] : []), // @req FR:home/day.tomorrow
-    { id: 'go-asks', label: `Go to ${LABEL.asks}${notices ? ` (${notices})` : ''}`, hint: HINT.asks, group: 'Go to', run: () => go('asks') }, // @req FR:notifications/list.route
+    { id: 'go-asks', label: `Go to ${LABEL.asks}${asks.countReady && notices ? ` (${notices})` : ''}`, hint: HINT.asks, group: 'Go to', run: () => go('asks') }, // @req FR:notifications/list.route
     { id: 'go-priorities', label: `Go to ${LABEL.priorities}`, group: 'Go to', run: () => go('priorities') }, // @req FR:notifications/pris.route
     // @req FR:pr-page/nav.phone: the phone reaches Pull requests through More.
     ...(prsNav().on ? [{ id: 'go-prs', label: `Go to ${LABEL.prs}${prsNav().need ? ` (${prsNav().need})` : prsNav().signIn ? ' (sign in)' : ''}`, hint: HINT.prs, group: 'Go to' as Group, run: () => go('prs') }] : []),
@@ -977,7 +982,7 @@ export function App() {
   // @req FR:web-shell/nav.rail
   const inboxDot = inboxAttention ? <span class="nav-dot" role="img" aria-label="Inbox: an account needs attention" data-testid="inbox-dot" /> : null;
   /** @req FR:inbox-page/web.dot */
-  const badge = (v: View) => (v === 'asks' && notices > 0 ? <span class="badge" aria-label={`${notices} open`}>{notices}</span> : v === 'inbox' ? inboxDot : null);
+  const badge = (v: View) => (v === 'asks' && asks.countReady && notices > 0 ? <span class="badge" aria-label={`${notices} open`}>{notices}</span> : v === 'inbox' ? inboxDot : null);
   /** Each rail item names its chord in the tooltip; no key badge shows. @req FR:web-shell/nav.keys.hint @req FR:task-detail-design/rules.nokeys */
   // The PR entry renders itself: absent only where the host has no board; the board loads at app start. @req FR:pr-page/nav.rail @req FR:pr-page/icon.absent @req FR:pr-page/nav.load
   const nav = () => RAIL.map((v) => v === 'prs' ? <PrsNavItem key={v} api={api} active={view === v} label={LABEL[v]} hint={HINT[v]} onGo={() => go(v)} /> : (
