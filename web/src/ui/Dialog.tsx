@@ -1,5 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
+import './ui.css';
 
 /**
  * A modal dialog: a scrim, a titled box, a focus trap, Escape to close, and focus back to the opener on close.

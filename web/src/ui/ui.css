@@ -1,4 +1,4 @@
-/* The shared component set: card, flag, status chip, actions menu and bar. Tokens only, light and dark.
+/* The shared component set: card, flag, status chip, actions menu and bar, tabs, split view, day grid, empty state, dialog, toasts. Light and dark.
  * A consumer sets the card tone with --ui-edge, --ui-soft, --ui-strong, --ui-ink, --ui-ink2.
  * @req FR:ui-kit/card @req FR:ui-kit/flag @req FR:ui-kit/chip @req FR:ui-kit/menu @req FR:ui-kit/bar @req FR:ui-kit/daygrid @req FR:ui-kit/message */
 
@@ -146,3 +146,31 @@
 .ui-error p { margin: 0; }
 .ui-error-what { font-weight: 600; color: var(--ink); }
 .ui-error-next { color: var(--ink2); }
+
+/* Empty state: what is empty, then the next step. @req FR:ui-kit/empty @req FR:first-run-onboarding/polish.empty */
+.empty-state { padding: var(--s-24) 0; color: var(--muted); display: flex; flex-direction: column; gap: var(--s-8); align-items: flex-start; }
+.empty-state p { margin: 0; }
+.empty-what { color: var(--ink2); font-size: var(--fs-body); }
+.empty-next { font-size: var(--fs-secondary); }
+.empty-next a { display: inline-flex; align-items: center; min-height: 24px; }
+@media (pointer: coarse) { .empty-next a { min-height: var(--tap); } }
+
+/* Dialog: a titled box over a scrim; a bottom sheet on a phone unless sheet is false. @req FR:ui-kit/dialog @req FR:ui-kit/dialog.sheet */
+.scrim { position: fixed; inset: 0; background: rgb(10 10 20 / 32%); backdrop-filter: blur(2px); display: flex; align-items: flex-start; justify-content: center; padding-top: 14vh; z-index: 20; animation: fade .12s; }
+.dialog { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; width: min(560px, calc(100vw - 32px)); max-height: 76vh; overflow: auto; box-shadow: var(--shadow); }
+.dialog-title { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+.dialog > input { width: 100%; min-height: 40px; font-size: 16px; border: 0; border-bottom: 1px solid var(--line); padding: 0 2px; background: none; outline: none; }
+
+/* Toasts: one live region at the bottom, above the phone tab bar. @req FR:ui-kit/toasts */
+.toasts { position: fixed; left: 50%; transform: translateX(-50%); width: max-content; bottom: 24px; z-index: 30; display: flex; flex-direction: column; gap: 8px; align-items: center; max-width: calc(100vw - 32px); }
+.toast { background: var(--ink); color: var(--bg); border-radius: 10px; padding: 9px 14px; display: flex; gap: 10px; align-items: center; box-shadow: var(--shadow); animation: fade .15s var(--ease); }
+.toast.err { background: var(--warn); color: #fff; }
+.toast .link { color: inherit; font-weight: 600; }
+
+@media (max-width: 719px) {
+  .toasts { bottom: 76px; }
+  .scrim { padding-top: 0; align-items: flex-end; }
+  .dialog.sheet { width: 100%; border-radius: 16px 16px 0 0; }
+  .dialog:not(.sheet) { width: calc(100vw - 16px); margin-top: 8vh; align-self: flex-start; }
+  .scrim:has(.dialog:not(.sheet)) { align-items: flex-start; padding-top: 8px; }
+}

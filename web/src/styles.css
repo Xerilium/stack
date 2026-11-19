@@ -149,10 +149,6 @@ h1 { font-size: 26px; line-height: 1.25; letter-spacing: -.02em; font-weight: 65
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } }
 
 .bulk { position: fixed; left: calc(var(--railw) + 40px); right: 40px; max-width: 720px; margin: 0 auto; bottom: 20px; z-index: 5; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; box-shadow: var(--shadow); }
-.scrim { position: fixed; inset: 0; background: rgb(10 10 20 / 32%); backdrop-filter: blur(2px); display: flex; align-items: flex-start; justify-content: center; padding-top: 14vh; z-index: 20; animation: fade .12s; }
-.dialog { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; width: min(560px, calc(100vw - 32px)); max-height: 76vh; overflow: auto; box-shadow: var(--shadow); }
-.dialog-title { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
-.dialog > input { width: 100%; min-height: 40px; font-size: 16px; border: 0; border-bottom: 1px solid var(--line); padding: 0 2px; background: none; outline: none; }
 .preview-line { margin: 10px 0 0; font-size: 12.5px; color: var(--muted); min-height: 1.4em; }
 .preview-line.err { color: var(--warn); }
 .picker-group { border: 0; padding: 0; margin: 0 0 10px; }
@@ -166,10 +162,6 @@ h1 { font-size: 26px; line-height: 1.25; letter-spacing: -.02em; font-weight: 65
 .cmds .none { color: var(--muted); cursor: default; }
 .keys { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0 0 12px; }
 .keys dt, .keys dd { margin: 0; }
-.toasts { position: fixed; left: 50%; transform: translateX(-50%); width: max-content; bottom: 24px; z-index: 30; display: flex; flex-direction: column; gap: 8px; align-items: center; max-width: calc(100vw - 32px); }
-.toast { background: var(--ink); color: var(--bg); border-radius: 10px; padding: 9px 14px; display: flex; gap: 10px; align-items: center; box-shadow: var(--shadow); animation: fade .15s var(--ease); }
-.toast.err { background: var(--warn); color: #fff; }
-.toast .link { color: inherit; font-weight: 600; }
 
 /* the rail at 720px and wider; the tab bar below. @req FR:web-shell/layout.breakpoint */
 @media (max-width: 719px) {
@@ -195,11 +187,6 @@ h1 { font-size: 26px; line-height: 1.25; letter-spacing: -.02em; font-weight: 65
   .bar, .proj-hrs { display: none; }
   .desk { display: none; }
   .bulk { left: 8px; right: 8px; bottom: 64px; }
-  .toasts { bottom: 76px; }
-  .scrim { padding-top: 0; align-items: flex-end; }
-  .dialog.sheet { width: 100%; border-radius: 16px 16px 0 0; }
-  .dialog:not(.sheet) { width: calc(100vw - 16px); margin-top: 8vh; align-self: flex-start; }
-  .scrim:has(.dialog:not(.sheet)) { align-items: flex-start; padding-top: 8px; }
   .picker-opts .opt { flex: 1 1 40%; min-height: var(--tap); }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

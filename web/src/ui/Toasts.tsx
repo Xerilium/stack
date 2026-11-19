@@ -6,6 +6,8 @@
  * @owns class:toasts
  * @owns class:toast
  */
+import './ui.css';
+
 export interface Toast { id: number; text: string; kind: 'ok' | 'err'; undo?: () => void }
 export function Toasts({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number) => void }) {
   return (
