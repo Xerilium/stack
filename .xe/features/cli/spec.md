@@ -26,7 +26,7 @@ Owner needs one `stack` binary that finds the task repo and commits what it chan
 - **FR:run.dir** (P1): `--dir <path>` MUST set the repo root (optional override)
   - Task files are `<dir>/tasks/*.md`; config is `<dir>/.xe/config/stack.json` (defaults when missing)
     > - @req FR:config/load.@function
-- **FR:run.discover** (P1): Without `--dir`, `run` MUST find the repo by walking up from the current directory to a folder with `.xe/config/stack.json` or `tasks/*.md`, then `$STACK_DIR`, then `dir` in `~/.config/stack/config.json`, else the current directory. `init` walks up only (`FR:cmd.init.here`)
+- **FR:run.discover** (P1): Without `--dir`, every command except `init` MUST find the repo by walking up from the current directory to a folder with `.xe/config/stack.json` or `tasks/*.md`, then `$STACK_DIR`, then `dir` in `~/.config/stack/config.json`, else the current directory
 - **FR:run.git** (P1): Every write MUST be a direct commit through `GitStorage`
   > - @req FR:storage-git/git.commit
   - **FR:run.git.worktree** (P1): A `--dir` that is not a git work tree MUST fail with exit 1 and a hint to run `stack init`
@@ -83,7 +83,7 @@ Owner needs one command per core operation so that the terminal can do everythin
 
 - **FR:cmd.init** (P1): `stack init` MUST create the directory if needed, `git init` when it is not a repo, create `tasks/.gitkeep` and `.xe/config/stack.json` (`{}`) when missing, and commit them
   - Running it again changes nothing (exit 0)
-  - **FR:cmd.init.here** (P1): The target MUST be `--dir`, else the Stack repo at or above the current folder, else the current folder. `$STACK_REPO`, `$STACK_DIR`, and user config are not used
+  - **FR:cmd.init.here** (P1): The target MUST be `--dir`, else the Stack repo at or above the current folder, else the current folder
   - **FR:cmd.init.out** (P2): Text output MUST start with the absolute repo path: `Initialized <dir>: <files>` or `Already initialized: <dir>`
   - **FR:cmd.init.json** (P2): JSON output MUST include `dir`, the absolute repo path
 - **FR:cmd.add-project** (P1): `stack add-project <name> [--description t] [--repo url] [--alias a,b] [--priority n] [--capacity Block=hours,...] [--weekly-capacity n] [--file name] [--force]` MUST call `addProject` and print the new path
