@@ -178,7 +178,7 @@ function isTopLevel(dir: string): boolean {
   try { return realpathSync(git(dir, "rev-parse", "--show-toplevel").trim()) === realpathSync(dir); } catch { return false; }
 }
 
-/** @req FR:cli/cmd.init */
+/** @req FR:cli/cmd.init @req FR:cli/cmd.init.out */
 function init(dir: string): Outcome {
   mkdirSync(dir, { recursive: true });
   const made: string[] = [];
@@ -197,7 +197,7 @@ function init(dir: string): Outcome {
     git(dir, 'add', '--', ...files);
     git(dir, 'commit', '-q', '-m', 'Initialize Stack', '--only', '--', ...files);
   }
-  return { json: { ok: true, created: made }, text: made.length ? `initialized ${made.join(' ')}` : 'no change: already initialized' };
+  return { json: { ok: true, dir, created: made }, text: made.length ? `Initialized ${dir}: ${made.join(' ')}` : `Already initialized: ${dir}` };
 }
 
 function props(f: Record<string, string | true>): TaskProps {
@@ -929,7 +929,8 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     for (const k of Object.keys(p.flags)) if (!GLOBAL.includes(k) && !spec.flags.includes(k)) throw new UsageError(`Unknown option for ${p.command}: --${k}`);
     const home = homedir();
     const explicit = flag(p.flags, 'dir');
-    const found = explicit ? null : findStackDir({ cwd: process.cwd(), env: process.env, home });
+    // init targets --dir or the current folder, never a discovered repo. @req FR:cli/cmd.init.here
+    const found = explicit || p.command === 'init' ? null : findStackDir({ cwd: process.cwd(), env: process.env, home });
     const dir = resolve(explicit ?? found ?? process.cwd());
     // Only --dir or the current folder is fixed at startup; env and user config are read on every setup restart.
     if (p.command === 'web') { const up = walkStackDir(process.cwd()); return await web(p.flags, io, explicit ? { dir: explicit, by: '--dir' } : up ? { dir: up, by: 'the current folder' } : null, home); }

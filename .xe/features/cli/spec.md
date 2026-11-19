@@ -83,6 +83,8 @@ Owner needs one command per core operation so that the terminal can do everythin
 
 - **FR:cmd.init** (P1): `stack init` MUST create the directory if needed, `git init` when it is not a repo, create `tasks/.gitkeep` and `.xe/config/stack.json` (`{}`) when missing, and commit them
   - Running it again changes nothing (exit 0)
+  - **FR:cmd.init.here** (P1): The target MUST be `--dir`, else the current folder; `init` MUST NOT use discovery (`$STACK_REPO`, `$STACK_DIR`, or user config)
+  - **FR:cmd.init.out** (P2): Text output MUST start with the absolute repo path: `Initialized <dir>: <files>` or `Already initialized: <dir>`; JSON MUST include `dir`
 - **FR:cmd.add-project** (P1): `stack add-project <name> [--description t] [--repo url] [--alias a,b] [--priority n] [--capacity Block=hours,...] [--weekly-capacity n] [--file name] [--force]` MUST call `addProject` and print the new path
   > - @req FR:task-lifecycle/project.file
 - **FR:cmd.add** (P1): `stack add <project> <text...> [--section name] [--parent ref]` MUST call `addTask` and print the new task ref
