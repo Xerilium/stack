@@ -158,10 +158,10 @@ export class DeliveryStore {
   }
 }
 
-/** Open owner messages to agents (`instruction`, `reply` or `enrich`), oldest first. @req FR:agent-delivery/pick.entries */
+/** Open owner messages to agents (`instruction` or `reply`), oldest first. @req FR:agent-delivery/pick.entries */
 export async function pendingDeliveries(ctx: LifecycleContext, o: { project?: string } = {}): Promise<ListedEntry[]> {
   const open = await listInbox(ctx, { state: 'open', ...(o.project ? { project: o.project } : {}) });
-  return open.filter((e) => e.to === 'agent' && e.from !== 'agent' && (e.kind === 'instruction' || e.kind === 'reply' || e.kind === 'enrich'));
+  return open.filter((e) => e.to === 'agent' && e.from !== 'agent' && (e.kind === 'instruction' || e.kind === 'reply'));
 }
 
 /** `claude -p` arguments: safe mode, no MCP, nothing kept, the agent's tools, only reads pre-allowed, the never-list denied. @req FR:agent-delivery/run.cli @req FR:agent-delivery/safe.never */
@@ -346,8 +346,7 @@ async function targetOf(d: DeliveryDeps, e: ListedEntry, row: string | undefined
   const ref = row ? toRef(row) : null;
   if (!ref) return null;
   const c = await taskContext(d.ctx, ref).catch(() => null);
-  // The owner's own row: never delivered, except an enrich (the agent edits the row fields only). @req FR:product-reset/quality.enrich
-  if (c?.human && e.kind !== 'enrich') return 'human';
+  if (c?.human) return 'human'; // the owner's own row: never delivered
   if (!c) return null;
   // The recipient Now named (the pick, else the owner) wins when Stack can run it. @req FR:agent-delivery/pick.agent @req FR:product-reset/ui.thread
   const named = !e.from && e.agent ? team.find((a) => a.slug === e.agent && !a.home) : undefined;

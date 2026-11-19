@@ -17,7 +17,7 @@ const baseName = (p: string) => p.replace(/^.*\//, '').replace(/\.md$/, '');
 
 /** The one-line message the agent gets: the missing checks, the rubric, and the gate to run. */
 export const enrichText = (ref: TaskRef, missing: Check[]): string =>
-  `Fill in this task so it passes the quality gate. Missing: ${missing.join(', ')}. Edit only this row and its fields (Next:, Done when:, Context:, Links:, Owner:) per docs/task-rubric.md; do not do the work. Run stack check ${ref.path}:${ref.line + 1} until it scores 4, then reply on the task.`;
+  `Fill in this task so it passes the quality gate. Missing: ${missing.join(', ')}. Edit only this row and its fields (Next:, Done when:, Context:, Links:, Owner:) per docs/task-rubric.md; do not do the work; keep the title words (split a two-action title into child rows). Run stack check ${ref.path}:${ref.line + 1} until it scores 4, then reply on the task.`;
 
 /**
  * Sends the enrich message for the row at `ref`, or returns the one still open on that row.

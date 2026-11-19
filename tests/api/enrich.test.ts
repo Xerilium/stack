@@ -91,9 +91,10 @@ describe('POST /tasks/{ref}/enrich', () => {
   });
 
   // @req FR:agent-delivery/pick.entries @req FR:product-reset/quality.enrich
-  it('delivery picks the enrich message up, on a 🙋 row too', async () => {
+  it('host delivery skips it; the agent inbox list shows it', async () => {
     const { ctx, call } = await mk();
     const r = await call('owner', '/tasks/flantastic-4:6/enrich');
-    expect((await pendingDeliveries(ctx)).map((e) => e.id)).toEqual([r.json.id]);
+    expect(await pendingDeliveries(ctx)).toEqual([]);
+    expect((await listInbox(ctx, { agent: 'cid-manager' })).map((e) => e.id)).toEqual([r.json.id]);
   });
 });
