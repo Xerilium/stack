@@ -28,7 +28,7 @@ The owner needs Stack to see every session so that no session is lost, without r
 - **FR:read.files** (P1): Stack reads `<sessions>/*/*/local_*.json` and `<sessions>/*/*/scheduled-tasks.json`, where `<sessions>` is `STACK_SESSIONS_DIR` or `~/Library/Application Support/Claude/claude-code-sessions`. Stack never writes, renames, or deletes a file there
 - **FR:read.tail** (P1): For a session that is not archived, Stack reads the last 64 KiB of its transcript, and more (at most 4 MiB) only when no whole event fits (`<transcripts>/<cwd with each non-alphanumeric character as "-">/<cliSessionId>.jsonl`, where `<transcripts>` is `STACK_TRANSCRIPTS_DIR` or `~/.claude/projects`). It keeps only the kind of the last main-chain event: `turn-end`, `question` (a pending `AskUserQuestion` or `ExitPlanMode`), `tool` (another pending tool call), `tool-result`, `user` (a user line that starts `[Request interrupted by user` is `turn-end`, and so is a local command or shell line that starts `<command-name>`, `<local-command-`, `<bash-input>`, `<bash-stdout>` or `<bash-stderr>`; compact summaries are skipped), `assistant-text`, `api-error` (a system `api_error` line, or an assistant line marked `isApiErrorMessage`), or `none`. No transcript text leaves the reader
 - **FR:read.bad** (P1): A file that is missing, not JSON, or has no `sessionId` is skipped. One bad file never fails the inventory
-- **FR:read.cache** (P1): Stack caches the facts of each session file in `<home>/sessions.json` by file path, file mtime and size, and transcript mtime. A file whose stats did not change is not read again. Entries for files that are gone are dropped. A cache of another version or another transcripts folder is not used
+- **FR:read.cache** (P1): Stack caches the facts of each session file in `<home>/sessions.json` by file path, file mtime and size, and transcript mtime. A file whose stats did not change is not read again. Entries for files that are gone are dropped. A cache of another version or another transcripts folder is not used. Extra keys in the file (`at` and `inventory` from older versions) are ignored
 - **FR:read.fast** (P2): An inventory of 1,000 session files with a warm cache completes in under 1 s
 
 ### FR:state: Classify each session
@@ -63,10 +63,10 @@ The owner needs a short list of sessions to archive so that the sidebar stays sm
 
 ### FR:store: Inventory result
 
-The owner needs one stored inventory result so that the CLI, the API and the CoS read the same data.
+The owner needs one inventory result shape so that the CLI, the API and the CoS read the same data. Each reader runs the inventory; only the facts cache is stored.
 
 - **FR:store.result** (P1): The inventory result is `{at, total, counts, needsYou, archive, sessions}`. `counts` has one number per state; `needsYou` and `archive` are session items; `sessions` is every item, newest activity first
-- **FR:store.write** (P1): An inventory writes `<home>/sessions.json` (`{version, projectsDir, cache}`) with a temp file and a rename, mode `0600`, only when the cache changed: a new, changed or dropped entry, or a new transcript tail. A run over unchanged session files writes nothing. An older file that also holds `at` and `inventory` still loads as a warm cache. `<home>` is `STACK_HOME` or `~/.stack`. A failed write never fails the inventory. Nothing is written to the content repo
+- **FR:store.write** (P1): Stack writes `<home>/sessions.json` (`{version, projectsDir, cache}`) with a temp file and a rename, mode `0600`, only when the cache changed: a new, changed or dropped entry, or a transcript tail that was read, changed or removed. `<home>` is `STACK_HOME` or `~/.stack`. A failed write never fails the inventory. Nothing is written to the content repo
 
 ### FR:pris: Priorities
 

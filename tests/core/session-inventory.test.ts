@@ -207,6 +207,9 @@ describe('runInventory', () => {
     expect(written()).toBe(true);
     mark(); unlinkSync(join(e.acct, 'local_s3.json')); e.run();
     expect(written()).toBe(true);
+    // a removed transcript writes
+    mark(); unlinkSync(join(e.projects, '-Users-u-dev-todo', 'cli-local_s1.jsonl')); e.run();
+    expect(written()).toBe(true);
     mark(); e.run();
     expect(written()).toBe(false);
   });
