@@ -39,6 +39,6 @@ export async function enrichTask(ctx: LifecycleContext, ref: TaskRef): Promise<E
     const same = open.find((e) => rows.get(e.id) === here);
     if (same) return { id: same.id, agent: same.agent ?? agent.slug, missing: q.missing };
   }
-  const { id } = await sendToInbox(ctx, ref, enrichText(ref, q.missing), 'enrich', undefined, undefined, agent.slug);
+  const { id } = await sendToInbox(ctx, ref, enrichText(ref, q.missing), 'enrich', undefined, undefined, agent.slug, true);
   return { id, agent: agent.slug, missing: q.missing };
 }

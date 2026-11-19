@@ -206,10 +206,10 @@ function makeRoom(content: string, need: number): string {
  * `handled`: the entry is written already handled in the same write (a record, never queue work), e.g. a note sent with Do it.
  * @req FR:agent-inbox/inbox.send @req FR:agent-inbox/inbox.id @req FR:agent-inbox/inbox.cap
  */
-/** `agent`: the slug of the agent the message is for (the Now picker); without it the task's agent reads it. */
-export async function sendToInbox(ctx: LifecycleContext, ref: TaskRef, text: string, kind: InboxKind, expect?: string, handled?: { actor: string; note?: string }, agent?: string): Promise<{ id: string; path: string }> {
+/** `agent`: the slug of the agent the message is for (the Now picker); without it the task's agent reads it. `once`: when an open entry of this kind is already on this row, return it instead of appending (checked inside the version-checked write, so concurrent sends agree). */
+export async function sendToInbox(ctx: LifecycleContext, ref: TaskRef, text: string, kind: InboxKind, expect?: string, handled?: { actor: string; note?: string }, agent?: string, once?: boolean): Promise<{ id: string; path: string }> {
   if (agent !== undefined && (typeof agent !== 'string' || !AGENT_SLUG.test(agent))) throw new LifecycleError('agent must be an agent slug');
-  return appendEntry(ctx, ref, text, kind, expect, agent ? { agent } : {}, handled);
+  return appendEntry(ctx, ref, text, kind, expect, agent ? { agent } : {}, handled, once);
 }
 
 /** An agent's reply on a task: `from: agent`, to the owner, never a queue item for anyone (state handled). @req FR:agent-thread/reply.entry */
@@ -219,7 +219,7 @@ export async function replyFromAgent(ctx: LifecycleContext, ref: TaskRef, text: 
   return appendEntry(ctx, ref, text, 'reply', expect, { from: 'agent', agent: name });
 }
 
-async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, kind: InboxKind, expect: string | undefined, who: { from?: InboxFrom; agent?: string }, handled?: { actor: string; note?: string }): Promise<{ id: string; path: string }> {
+async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, kind: InboxKind, expect: string | undefined, who: { from?: InboxFrom; agent?: string }, handled?: { actor: string; note?: string }, once?: boolean): Promise<{ id: string; path: string }> {
   if (typeof text !== 'string') throw new LifecycleError('text must be a string');
   const t = text.replace(INVISIBLE, '').trim();
   if (t === '' || t.length > MAX_TEXT) throw new LifecycleError(`text must be 1-${MAX_TEXT} characters`);
@@ -237,6 +237,11 @@ async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, ki
   for (let tries = 0; ; tries++) {
     const now = iso(ctx);
     const cur = await readOrNull(ctx, path);
+    if (once && cur) {
+      const task = inboxTitle(row.text);
+      const same = parseInbox(cur.content).find((e) => e.kind === kind && e.state === 'open' && e.ref === `${ref.path}:${ref.line + 1}` && e.task === task);
+      if (same) return { id: same.id, path };
+    }
     const used = new Set(cur ? parseInbox(cur.content).map((e) => e.id) : []);
     let id = newId(now);
     while (used.has(id)) id = newId(now);

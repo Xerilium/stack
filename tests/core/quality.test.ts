@@ -87,6 +87,17 @@ describe('readFields', () => {
   });
 });
 
+describe('readFields nested single-value fields', () => {
+  // @req FR:product-reset/schema.grammar
+  it('a single-value field with only nested lines takes them; the first field still wins', () => {
+    const src = '# X\n\n## A\n\n- [ ] Plan it\n  - Done when:\n    - Venue booked\n    - Date set\n  - Done when: later\n  - Next:\n    - Call the venue\n';
+    const pp = parseProject(src);
+    const r = readFields(pp, pp.sections[0].tasks[0]);
+    expect(r.fields.doneWhen).toBe('Venue booked; Date set');
+    expect(r.fields.next).toBe('Call the venue');
+  });
+});
+
 describe('rowRefs', () => {
   // @req FR:product-reset/schema.refs
   it('resolves full refs, URLs, short refs from Repository, and prefixes; unresolved refs are text', () => {
@@ -95,7 +106,23 @@ describe('rowRefs', () => {
     expect(rowRefs('#55 and finops-hubs#55 and PR 55', meta)).toEqual(['allytehq/finops-hubs#55']);
     expect(rowRefs('FH 1234', meta)).toEqual(['microsoft/finops-toolkit#1234']);
     expect(rowRefs('#55', {})).toEqual([]);
+    expect(rowRefs('[a](https://github.com/o/r/pull/1),[b](https://github.com/o/r/pull/2)', {})).toEqual(['o/r#1', 'o/r#2']);
+    expect(rowRefs('https://github.com/o/r/pull/1/files#x, https://github.com/o/r/issues/2', {})).toEqual(['o/r#1', 'o/r#2']);
+    expect(rowRefs('#5', meta, 'o/r')).toEqual(['o/r#5']);
     expect(rowRefs('call at 5', meta)).toEqual([]);
+  });
+});
+
+describe('checkTask ancestors', () => {
+  // @req FR:product-reset/schema.refs
+  it('a short ref resolves against the nearest ancestor link before project metadata', () => {
+    const src = '# X\n\n## A\n\n- [ ] 🤖 Land the fix\n  - Links: o/r#4\n  - [ ] 🤖 Merge #5\n';
+    const pp = parseProject(src);
+    const line = pp.lines.findIndex((l) => l.includes('Merge #5'));
+    expect(checkTask(pp, line)!.missing).not.toContain('doneWhen');
+    expect(checkTask(pp, line)!.missing).not.toContain('context');
+    const none = parseProject(src.replace('  - Links: o/r#4\n', ''));
+    expect(checkTask(none, none.lines.findIndex((l) => l.includes('Merge #5')))!.missing).toEqual(expect.arrayContaining(['doneWhen', 'context']));
   });
 });
 

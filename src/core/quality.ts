@@ -32,7 +32,7 @@ export function readFields(project: Pick<Project, 'lines'>, task: Pick<Task, 'li
   const notes: string[] = [];
   const lines = project.lines;
   let child = -1; // indent of the child task row being skipped
-  let field: { key: (typeof KEYS)[string]; indent: number } | null = null;
+  let field: { key: (typeof KEYS)[string]; indent: number; first: boolean } | null = null;
   for (let i = task.line + 1; i < lines.length; i++) {
     const l = lines[i].replace(/\r$/, '');
     if (!l.trim()) continue;
@@ -46,14 +46,16 @@ export function readFields(project: Pick<Project, 'lines'>, task: Pick<Task, 'li
       if (field.key === 'context') fields.context.push(v);
       else if (field.key === 'links') fields.links.push(...v.split(',').map((s) => s.trim()).filter(Boolean));
       else if (field.key === 'notes') notes.push(v);
+      else if (field.first && (field.key === 'next' || field.key === 'doneWhen' || field.key === 'owner')) fields[field.key] = fields[field.key] ? `${fields[field.key]}; ${v}` : v;
       continue;
     }
     field = null;
     const m = FIELD.exec(l.trim());
     const key = m ? KEYS[(m[1] ?? m[2]).trim().toLowerCase()] : undefined;
     if (!m || !key) { notes.push(bulletText(l)); continue; }
-    field = { key, indent: ind };
     const v = (m[3] ?? '').trim();
+    // Single-value fields: the first one with content wins; a first one with no inline value takes its nested lines.
+    field = { key, indent: ind, first: (key === 'next' || key === 'doneWhen' || key === 'owner') && fields[key] === undefined && !v };
     if (key === 'context') { if (v) fields.context.push(v); }
     else if (key === 'links') fields.links.push(...v.split(',').map((s) => s.trim()).filter(Boolean));
     else if (key === 'notes') { if (v) notes.push(v); }
@@ -90,21 +92,21 @@ function projectRepos(meta: Record<string, string>): { repos: string[]; prefixes
 
 /**
  * Distinct PR and issue refs in `text` that resolve to a repo, as `owner/repo#N`, in order of appearance.
- * Short refs (`#N`, `PR N`) take the project's first repo; `repo#N` needs a project repo with that name; `{prefix} N` uses `Ref prefixes:`.
+ * Short refs (`#N`, `PR N`) take `lead` (the nearest ancestor's linked repo), else the project's first repo; `repo#N` needs a project repo with that name; `{prefix} N` uses `Ref prefixes:`.
  * @req FR:product-reset/schema.refs
  */
-export function rowRefs(text: string, meta: Record<string, string>): string[] {
+export function rowRefs(text: string, meta: Record<string, string>, lead?: string): string[] {
   const { repos, prefixes } = projectRepos(meta);
   const hits: { at: number; ref: string }[] = [];
   const add = (at: number, repo: string | undefined, n: string) => { if (repo) hits.push({ at, ref: `${repo}#${Number(n)}` }); };
   const taken: [number, number][] = [];
   const free = (a: number, b: number) => !taken.some(([x, y]) => a < y && b > x);
   const scan = (re: RegExp, f: (m: RegExpExecArray) => void) => { for (const m of text.matchAll(re)) { const a = m.index!, b = a + m[0].length; if (free(a, b)) { taken.push([a, b]); f(m as RegExpExecArray); } } };
-  scan(/https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(?:pull|issues)\/(\d+)\S*/giu, (m) => add(m.index!, m[1], m[2]));
+  scan(/https?:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(?:pull|issues)\/(\d+)[^\s,)\]>]*/giu, (m) => add(m.index!, m[1], m[2]));
   scan(/(?<![\w/.-])([A-Za-z0-9][\w.-]*\/[\w.-]+)#(\d+)\b/gu, (m) => add(m.index!, m[1], m[2]));
   scan(/(?<![\w/.-])([A-Za-z0-9][\w.-]*)#(\d+)\b/gu, (m) => add(m.index!, repos.find((r) => r.split('/')[1].toLowerCase() === m[1].toLowerCase()), m[2]));
-  scan(/(?<![\w/.#-])#(\d+)\b/gu, (m) => add(m.index!, repos[0], m[1]));
-  scan(/\b(?:PR|issue)\s+(\d+)\b/giu, (m) => add(m.index!, repos[0], m[1]));
+  scan(/(?<![\w/.#-])#(\d+)\b/gu, (m) => add(m.index!, lead ?? repos[0], m[1]));
+  scan(/\b(?:PR|issue)\s+(\d+)\b/giu, (m) => add(m.index!, lead ?? repos[0], m[1]));
   if (prefixes.size) scan(/\b([A-Za-z][\w-]*)\s+(\d+)\b/gu, (m) => add(m.index!, prefixes.get(m[1].toLowerCase()), m[2]));
   const out: string[] = [];
   for (const h of hits.sort((a, b) => a.at - b.at)) if (!out.some((r) => r.toLowerCase() === h.ref.toLowerCase())) out.push(h.ref);
@@ -126,11 +128,12 @@ const ownerFor = (fields: RowFields, task: Task, ancestors: Task[]): RowOwner =>
 export function checkRow(project: Pick<Project, 'lines' | 'metadata'>, task: Task, ancestors: Task[] = []): Quality {
   const { fields, notes } = readFields(project, task);
   const title = checkTitle(task.text);
-  const refs = rowRefs([task.text, ...fields.links].join(' \n '), project.metadata);
+  const lead = ancestors.map((a) => rowRefs(readFields(project, a).fields.links.join(' \n '), project.metadata)[0]).find(Boolean)?.replace(/#\d+$/, '');
+  const refs = rowRefs([task.text, ...fields.links].join(' \n '), project.metadata, lead);
   const pass: Record<Check, boolean> = {
     next: fields.next !== undefined || (task.children.length === 0 && isVerb(firstWord(title))),
     doneWhen: fields.doneWhen !== undefined || refs.length === 1,
-    context: fields.context.length > 0 || fields.links.length > 0 || rowRefs(task.text, project.metadata).length > 0 || notes.length > 0,
+    context: fields.context.length > 0 || fields.links.length > 0 || rowRefs(task.text, project.metadata, lead).length > 0 || notes.length > 0,
     single: ownerFor(fields, task, ancestors) !== 'mixed' && !joinsVerbs(title),
   };
   const missing = CHECKS.filter((c) => !pass[c]);

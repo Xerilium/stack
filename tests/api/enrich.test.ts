@@ -65,6 +65,14 @@ describe('POST /tasks/{ref}/enrich', () => {
     expect(await listInbox(ctx, { project: 'flantastic-4' })).toHaveLength(1);
   });
 
+  // @req FR:product-reset/quality.enrich
+  it('concurrent requests for one row share one message', async () => {
+    const { ctx, call } = await mk();
+    const [a, b] = await Promise.all([call('owner', '/tasks/flantastic-4:6/enrich'), call('owner', '/tasks/flantastic-4:6/enrich')]);
+    expect(a.json.id).toBe(b.json.id);
+    expect(await listInbox(ctx, { project: 'flantastic-4' })).toHaveLength(1);
+  });
+
   // @req FR:product-reset/quality.enrich @req FR:agent-inbox/inbox.kinds
   it('keeps one open message per row; a handled one lets a new request through; POST /inbox cannot send enrich', async () => {
     const { ctx, storage, call } = await mk();
