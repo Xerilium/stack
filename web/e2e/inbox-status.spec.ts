@@ -124,13 +124,16 @@ test('a failed read never claims Inbox zero', async ({ page }) => {
 });
 
 test('unread rows are calm: bold subject and a dot, no colored border, no accent button', async ({ page }) => {
-  await open(page, fresh(), [mail]);
+  await open(page, fresh(), [mail, { ...mail, id: 'mail-dddddddddddd', unread: false, subject: 'Read one' }]);
   const row = page.locator('.in-row').first();
   await expect(row.locator('.in-dot')).toBeAttached();
   const s = await row.evaluate((el) => { const c = getComputedStyle(el); return { left: c.borderLeftWidth, top: c.borderTopWidth }; });
   expect(s.left).toBe(s.top);
   expect(await row.locator('.in-subject').evaluate((el) => Number(getComputedStyle(el).fontWeight))).toBeGreaterThanOrEqual(600);
   await expect(row.locator('.in-actions .btn.primary')).toHaveCount(0);
+  const read = page.locator('.in-row').nth(1);
+  await expect(read.locator('.in-dot')).toHaveCount(0);
+  expect(await read.locator('.in-subject').evaluate((el) => Number(getComputedStyle(el).fontWeight))).toBeLessThan(600);
 });
 
 test('the dot shows on the Inbox rail item (desktop) or the More tab (phone) from any view', async ({ page }, info) => {
