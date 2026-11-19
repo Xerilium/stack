@@ -1,4 +1,4 @@
-/** @req FR:agent-sessions/driver.interface @req FR:agent-sessions/driver.sdk @req FR:agent-sessions/driver.active @req FR:agent-sessions/sessions.messages.text */
+/** @req FR:agent-sessions/driver.interface @req FR:agent-sessions/driver.sdk @req FR:agent-sessions/driver.active @req FR:agent-sessions/sessions.messages.text @req FR:agent-sessions/sessions.messages.text.ctrl @req FR:agent-sessions/sessions.messages.text.reminders @req FR:agent-sessions/sessions.messages.text.wrappers @req FR:agent-sessions/sessions.messages.text.empty */
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -95,7 +95,7 @@ describe('createSdkDriver', () => {
       ['user', 'Fix the parser'], ['assistant', 'Looking.'], ['assistant', '⚙ Bash: git status --short'], ['assistant', 'Done. [redacted] leaked.'],
     ]);
   });
-  // @req FR:agent-sessions/sessions.messages.text
+  // @req FR:agent-sessions/sessions.messages.text @req FR:agent-sessions/sessions.messages.text.ctrl @req FR:agent-sessions/sessions.messages.text.reminders @req FR:agent-sessions/sessions.messages.text.wrappers @req FR:agent-sessions/sessions.messages.text.empty
   it('getMessages keeps line breaks and markdown, strips harness wrappers from user turns, and drops a wrapper-only turn', async () => {
     const msg = (type: string, content: unknown) => ({ type, uuid: 'x', session_id: 's', parent_tool_use_id: null, parent_agent_id: null, message: { role: type, content } });
     const d = createSdkDriver({

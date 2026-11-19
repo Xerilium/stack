@@ -77,7 +77,7 @@ function Chart({ nodes, sel, chatsOf, onPick }: { nodes: ChartNode[]; sel: strin
   );
 }
 
-/** A text turn as markdown; long ones (a session's opening brief) clamp to six lines with Show more. @req FR:agent-sessions/web.drawer.md */
+/** A text turn as markdown; long ones (a session's opening brief) clamp to six lines with Show more. @req FR:agent-sessions/web.drawer.md @req FR:agent-sessions/web.drawer.md.clamp */
 function Bubble({ role, text, project }: { role: 'user' | 'assistant'; text: string; project?: string }) {
   const [more, setMore] = useState(false);
   const long = text.length > 480 || text.split('\n').length > 6;

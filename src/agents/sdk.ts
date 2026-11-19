@@ -34,11 +34,11 @@ const CTRL_BUT_NL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029]/g;
 const INVISIBLE = /[\uFE0E\uFE0F\u200B-\u200F\u2060\uFEFF\u00AD]/g;
 /** Context the harness injects into any turn. */
 const REMINDERS = /<(system-reminder|ide_opened_file)>[\s\S]*?<\/\1>/g;
-/** Harness wrappers the CLI writes as user turns: never the owner's words. An agent may quote them, so its turns keep them. @req FR:agent-sessions/sessions.messages.text */
+/** Harness wrappers the CLI writes as user turns: never the owner's words. An agent may quote them, so its turns keep them. @req FR:agent-sessions/sessions.messages.text.wrappers */
 const WRAPPERS = /<(side-sessions-event|task-notification|tool-use-id|local-command-[a-z-]+|command-[a-z-]+)(?:\s[^>]*)?>[\s\S]*?<\/\1>/g;
 /**
  * Turn text for the transcript: harness wrappers gone, redacted, line breaks and tabs kept so markdown and code survive; other control characters become spaces.
- * @req FR:agent-sessions/sessions.messages @req FR:agent-sessions/sessions.messages.text
+ * @req FR:agent-sessions/sessions.messages @req FR:agent-sessions/sessions.messages.text @req FR:agent-sessions/sessions.messages.text.ctrl @req FR:agent-sessions/sessions.messages.text.reminders @req FR:agent-sessions/sessions.messages.text.wrappers @req FR:agent-sessions/sessions.messages.text.empty
  */
 export function turnText(s: string, user = true, n = MAX_TEXT): string {
   const t = redact((user ? s.replace(WRAPPERS, '') : s).replace(REMINDERS, '').replace(INVISIBLE, '')).replace(/\r\n?/g, '\n').replace(CTRL_BUT_NL, ' ');
