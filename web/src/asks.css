@@ -192,7 +192,6 @@ a.btn.primary { color: #fff; }
 .ask-who { flex: none; font-weight: 600; }
 .ask-ctx-why { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ask-ctx-why.none { color: var(--muted); }
-.ask-task-link { border: 0; background: none; padding: 0; cursor: pointer; font-family: inherit; }
 /* Touch: 44 px targets, the same rule as the UI kit. */
 @media (pointer: coarse), (max-width: 719px) { .ask-li-row > .ask-row { min-height: 44px; } }
 @media (max-width: 719px) {

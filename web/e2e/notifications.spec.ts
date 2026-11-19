@@ -5,7 +5,7 @@
  * @req FR:notifications/bell.item @req FR:notifications/bell.count @req FR:notifications/pris.route
  * @req FR:notifications/sessions.route @req FR:notifications/sessions.more @req FR:notifications/nav.rail @req FR:notifications/nav.tabbar
  * @req FR:notifications/list.context @req FR:notifications/list.context.why @req FR:notifications/list.context.pick @req FR:notifications/list.context.read
- * @req FR:notifications/list.context.card @req FR:notifications/list.source @req FR:notifications/list.source.task @req FR:notifications/list.rowactions @req FR:notifications/list.rowactions.items @req FR:notifications/list.rowactions.context
+ * @req FR:notifications/list.context.card @req FR:notifications/list.source @req FR:notifications/list.source.task @req FR:notifications/list.source.session @req FR:notifications/list.context.session @req FR:notifications/list.rowactions @req FR:notifications/list.rowactions.items @req FR:notifications/list.rowactions.context
  * @req FR:notifications/list.rowactions.select @req FR:notifications/list.rowactions.keep @req FR:notifications/list.context.phone @req FR:notifications/list.rowactions.focus @req FR:notifications/list.rowactions.card @req FR:notifications/list.drop @req FR:notifications/list.drop.count
  * @req NFR:notifications/a11y.axe @req NFR:notifications/calm
  */
@@ -239,5 +239,25 @@ test.describe('Priorities and Sessions', () => {
     await expect(page.locator('.rail .tab-label')).toContainText(['Now', 'My day', /Notifications/]);
     await expect(page.locator('.rail').getByRole('button', { name: /^Priorities/ })).toHaveCount(0);
     await expect(page.locator('.rail').getByRole('button', { name: /^Sessions/ })).toHaveCount(0);
+  });
+
+  test('a permission ask names its session and links to it', async ({ page }) => {
+    const perm: MockAsk = { ...ask('perm-s1abcdef-r1', 'Allow Bash: ls', 40), kind: 'decide', from: 'session:🧰 CoS', why: '{"command":"ls"}', options: ['Allow once', 'Deny'], recommend: 'Allow once' };
+    const m = await setup(page, [ask('k1', 'Register the npm trusted publisher', 60), perm]);
+    m.sessions = [{ id: 's1abcdef-0000-4000-8000-000000000001', title: '🧰 CoS', project: 'stack', cwd: '/x', lastActive: iso(5), state: 'needs-you', cost: { usd: 0, tokens: 0 }, prs: [] }];
+    await page.goto('/#/notifications');
+    const row = page.locator('.ask-li-row[data-key="perm-s1abcdef-r1"]');
+    await expect(row.locator('.ask-who')).toHaveText('🧰 CoS');
+    const link = row.getByRole('button', { name: 'Session', exact: true });
+    await expect(link).toBeVisible();
+    const box = (await link.boundingBox())!;
+    if (test.info().project.name === 'mobile') expect(box.height).toBeGreaterThanOrEqual(44);
+    expect((await axe(page)).violations).toEqual([]);
+    await link.click();
+    // The link opens the session, and does not select the row.
+    await expect(page.getByRole('dialog').getByRole('heading', { level: 2 })).toHaveText('🧰 CoS');
+    await expect(page.locator('.ask-card')).toContainText('Register the npm trusted publisher');
+    // An ask that is not from a session has no session link.
+    await expect(page.locator('.ask-li').getByRole('button', { name: 'Session', exact: true })).toHaveCount(1);
   });
 });

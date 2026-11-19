@@ -120,6 +120,10 @@ export function actionsFor(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | '
  * Why a notification is here, for its row: the ask's reason; with none, what the sender recommends (a Chief of Staff escalation and a 🙋 row say why there); else null.
  * @req FR:notifications/list.context.why
  */
+/** Who sent the ask, in plain words: a session shows its title, with no `session:` prefix. @req FR:notifications/list.context.session */
+export const whoOf = (a: Pick<AskItem, 'from'>): string => /^session:(.+)$/s.exec(a.from)?.[1].trim() || a.from;
+/** The start of the session id (at most 8 characters) of a permission ask from a session (`perm-<session8>-<request>`), else null. @req FR:notifications/list.source.session */
+export const sessionOf = (a: Pick<AskItem, 'key' | 'from' | 'source'>): string | null => (a.source !== 'task' && a.from.startsWith('session:') ? /^perm-([a-z0-9._]{1,8})-/.exec(a.key)?.[1] ?? null : null);
 export const reasonOf = (a: Pick<AskItem, 'why' | 'recommend'>): string | null => a.why?.trim() || (a.recommend?.trim() ? `Recommends: ${a.recommend.trim()}` : null);
 
 /** A notification the owner can act on: an `answer` ask, or a kind that gives an action. @req FR:notifications/list.drop */

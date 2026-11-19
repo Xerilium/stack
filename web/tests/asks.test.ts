@@ -1,6 +1,6 @@
 /** @req FR:ask-queue/web.home @req FR:ask-queue/web.card @req FR:ask-queue/web.actions @req FR:ask-queue/web.optimistic @req FR:ask-queue/web.empty @req FR:ask-queue/live.quiet */
 import { describe, expect, it } from 'vitest';
-import { actionable, reasonOf, actionsFor, approveLabel, CONTEXT_ASK, rowActions, deadline, loudRow, deferChoices, freshness, ifSilent, keepCursor, newKeys, pageTitle, replyKind, splitTop, type AskItem } from '../src/asks';
+import { actionable, reasonOf, sessionOf, whoOf, actionsFor, approveLabel, CONTEXT_ASK, rowActions, deadline, loudRow, deferChoices, freshness, ifSilent, keepCursor, newKeys, pageTitle, replyKind, splitTop, type AskItem } from '../src/asks';
 
 const at = (h: number, m = 0, d = 28) => new Date(2026, 9, d, h, m);
 const ask = (o: Partial<AskItem> = {}): AskItem => ({
@@ -205,5 +205,20 @@ describe('row actions', () => {
     expect(actionable(ask({ kind: 'decide' }))).toBe(false);
     expect(actionable(ask({ kind: 'decide', options: [] }))).toBe(false);
     expect(actionable(ask({ kind: 'fyi' as never }))).toBe(false);
+  });
+});
+
+// @req FR:notifications/list.context.session @req FR:notifications/list.source.session
+describe('an ask from a session', () => {
+  it('names the session with no `session:` prefix; other senders keep their name', () => {
+    expect(whoOf(ask({ from: 'session:🧰 CoS' }))).toBe('🧰 CoS');
+    expect(whoOf(ask({ from: 'allyte-cos' }))).toBe('allyte-cos');
+    expect(whoOf(ask({ from: 'session:' }))).toBe('session:');
+  });
+  it('a permission ask gives the start of its session id; no other ask does', () => {
+    expect(sessionOf(ask({ key: 'perm-2caab091-5f4a68e9-1112', from: 'session:🧰 CoS' }))).toBe('2caab091');
+    expect(sessionOf(ask({ key: 'perm-dl-ab12-1', from: 'allyte-cos' }))).toBeNull();
+    expect(sessionOf(ask({ key: 'rp.cos.stack.a1', from: 'session:🧰 CoS' }))).toBeNull();
+    expect(sessionOf(ask({ key: 'perm-2caab091-5f4a', from: 'session:x', source: 'task' }))).toBeNull();
   });
 });

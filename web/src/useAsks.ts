@@ -26,6 +26,8 @@ export interface AskExtras {
   /** Answers a task ask through the agent inbox; rejects to put the ask back. */
   onTask?: (a: AskItem, s: Send) => Promise<void>;
   onOpenTask?: (ref: string) => void;
+  /** Opens the session whose id starts with this text; unset when the host runs no sessions. @req FR:notifications/list.source.session */
+  onOpenSession?: (idStart: string) => void;
   /** The server's pending (uncommitted) count changed: re-read it. @req FR:live-deploy/web.unsaved.refresh */
   onSync?: () => void;
 }
@@ -239,6 +241,8 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     items: main, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, countReady, stale, staleOpen, setStaleOpen, latest, phase, error, errorCode, status, syncedAt, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
     reload: load, retry, answer, reply, defer, retract, edit, takeDraft, undo: () => undoRef.current?.(), deferChoices: () => deferChoices(new Date()),
     openTask: (ref: string) => extrasRef.current.onOpenTask?.(ref),
+    /** Null when the host runs no sessions: the row then shows no session link. */
+    openSession: extras.onOpenSession ? (idStart: string) => extrasRef.current.onOpenSession?.(idStart) : null,
   };
 }
 export type Asks = ReturnType<typeof useAsks>;

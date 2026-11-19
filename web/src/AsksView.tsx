@@ -6,9 +6,9 @@
 import { Avatar } from './AgentAvatar';
 import { nameBeside } from './avatar';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { actionsFor, CONTEXT_ASK, needsContext, reasonOf, deadline, freshness, ifSilent, loudRow, rowActions, splitTop, type Action, type AskItem, type RowAction } from './asks';
+import { actionsFor, CONTEXT_ASK, needsContext, reasonOf, sessionOf, whoOf, deadline, freshness, ifSilent, loudRow, rowActions, splitTop, type Action, type AskItem, type RowAction } from './asks';
 import { ActionMenu } from './ui/ActionMenu';
-import { SourceLink } from './ui/SourceLink';
+import { SourceButton, SourceLink } from './ui/SourceLink';
 import { blockedHelp } from './notify';
 import { Md } from './parts';
 import { parseRow } from './row';
@@ -78,9 +78,10 @@ function verbOf(a: AskItem): string | undefined {
  * @req FR:notifications/list.context @req FR:notifications/list.context.why @req FR:notifications/list.context.pick @req FR:notifications/list.context.read
  * @req FR:notifications/list.source @req FR:notifications/list.source.task @req FR:notifications/list.source.row @req FR:notifications/list.rowactions
  */
-function Row({ a, n, now, fresh, leaving, loud, onPick, onAct, onOpenTask }: { a: AskItem; n: number; now: Date; fresh: boolean; leaving?: boolean; loud?: boolean; onPick: () => void; onAct?: (x: RowAction) => void; onOpenTask?: (ref: string) => void }) {
+function Row({ a, n, now, fresh, leaving, loud, onPick, onAct, onOpenTask, onOpenSession }: { a: AskItem; n: number; now: Date; fresh: boolean; leaving?: boolean; loud?: boolean; onPick: () => void; onAct?: (x: RowAction) => void; onOpenTask?: (ref: string) => void; /** Unset when the host runs no sessions. */ onOpenSession?: ((idStart: string) => void) | null }) {
   const verb = verbOf(a);
   const taskRef = a.source === 'task' ? a.ref : a.row;
+  const session = sessionOf(a); // @req FR:notifications/list.source.session
   const reason = reasonOf(a);
   const ctx = `ask-ctx-${a.key}`;
   return (
@@ -91,10 +92,11 @@ function Row({ a, n, now, fresh, leaving, loud, onPick, onAct, onOpenTask }: { a
         <span class="row-meta"><span class="verb">{verb ?? ''}</span>{a.by ? <DeadlineChip by={a.by} now={now} quiet={!loud} /> : <span class="dl empty" aria-hidden="true" />}<span class="proj">{a.project ?? ''}</span></span>
       </button>
       <p class="ask-ctx" onClick={(e) => { if (!(e.target as HTMLElement).closest('a, button')) onPick(); }}>
-        <span class="ask-who" id={`${ctx}-who`}>{a.from}</span>
+        <span class="ask-who" id={`${ctx}-who`}>{whoOf(a)}</span>
         <span class={`ask-ctx-why${reason ? '' : ' none'}`} id={`${ctx}-why`}>{reason ? <Md text={reason} project={a.project} links={false} /> : 'No reason given'}</span>
         {a.source !== 'task' && <SourceLink href={a.link} />}
-        {taskRef && onOpenTask && <button type="button" class="ui-source ask-task-link" onClick={() => onOpenTask(taskRef)}>Task</button>}
+        {taskRef && onOpenTask && <SourceButton label="Task" onOpen={() => onOpenTask(taskRef)} />}
+        {session && onOpenSession && <SourceButton label="Session" onOpen={() => onOpenSession(session)} />}
       </p>
       {onAct && <ActionMenu name={`Actions for ${a.ask}`} items={rowActions(a).map((x) => ({ id: x.id, label: x.label, ...(x.action?.open && a.source !== 'task' && a.link ? { href: a.link } : { onSelect: () => onAct(x) }) }))} />}
     </li>
@@ -359,7 +361,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
       )}
       {(items.length > 0 || ghosts.length > 0) && (
         <ol class="asks" aria-label="Asks, highest score first">
-          {shown.map((a) => (a.key === cursor ? <Card key={a.key} a={a} n={a.rank ?? 0} total={asks.total} asks={asks} run={run} talk={talk} /> : <Row key={a.key} a={a} n={a.rank ?? 0} now={asks.now} fresh={asks.fresh.has(a.key)} loud={a.key === loud} onPick={() => { asks.setCursor(a.key); asks.setPanel('none'); asks.setDetail(false); }} onAct={(x) => act(a, x)} onOpenTask={asks.openTask} />))}
+          {shown.map((a) => (a.key === cursor ? <Card key={a.key} a={a} n={a.rank ?? 0} total={asks.total} asks={asks} run={run} talk={talk} /> : <Row key={a.key} a={a} n={a.rank ?? 0} now={asks.now} fresh={asks.fresh.has(a.key)} loud={a.key === loud} onPick={() => { asks.setCursor(a.key); asks.setPanel('none'); asks.setDetail(false); }} onAct={(x) => act(a, x)} onOpenTask={asks.openTask} onOpenSession={asks.openSession} />))}
           {ghosts.map((g) => <Row key={`gone-${g.key}`} a={g} n={g.rank ?? 0} now={asks.now} fresh={false} leaving onPick={() => undefined} />)}
         </ol>
       )}
@@ -367,7 +369,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
       {items.length > 0 && <p class="keys-hint" aria-hidden="true">j k move · z defer · r reply · a agent · u undo</p>}
       {asks.stale.length > 0 && (
         <StaleGroup n={asks.stale.length} open={asks.staleOpen} onToggle={() => asks.setStaleOpen(!asks.staleOpen)}>
-          {asks.stale.map((a) => (a.key === cursor ? <Card key={a.key} a={a} n={a.rank ?? 0} total={asks.stale.length} asks={asks} run={run} talk={talk} /> : <Row key={a.key} a={a} n={a.rank ?? 0} now={asks.now} fresh={false} onPick={() => { asks.setCursor(a.key); asks.setPanel('none'); asks.setDetail(false); }} onAct={(x) => act(a, x)} onOpenTask={asks.openTask} />))}
+          {asks.stale.map((a) => (a.key === cursor ? <Card key={a.key} a={a} n={a.rank ?? 0} total={asks.stale.length} asks={asks} run={run} talk={talk} /> : <Row key={a.key} a={a} n={a.rank ?? 0} now={asks.now} fresh={false} onPick={() => { asks.setCursor(a.key); asks.setPanel('none'); asks.setDetail(false); }} onAct={(x) => act(a, x)} onOpenTask={asks.openTask} onOpenSession={asks.openSession} />))}
         </StaleGroup>
       )}
       {(asks.sent.length > 0 || asks.snoozed.length > 0) && (
