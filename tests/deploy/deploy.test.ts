@@ -150,9 +150,13 @@ describe('docs', () => {
   });
 
   // @req FR:deploy-docs/docs.cli
-  it('documents every flag that `stack --help` lists', async () => {
+  it('documents every flag that `stack --help` and each `stack help <command>` list', async () => {
     let out = '';
-    await run(['--help'], { out: (s: string) => { out += s; }, err: () => {} });
+    const sink = { out: (s: string) => { out += s; }, err: () => {} };
+    await run(['--help'], sink);
+    const names = [...out.matchAll(/^ {2}([a-z-]+) /gm)].map((m) => m[1]);
+    expect(names.length).toBeGreaterThan(20);
+    for (const n of names) await run(['help', n], sink);
     const doc = read('docs/cli.md');
     const flags = [...new Set(out.match(/--[a-z][a-z-]*/g) ?? [])];
     expect(flags.length).toBeGreaterThan(20);

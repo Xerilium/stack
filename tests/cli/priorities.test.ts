@@ -69,8 +69,11 @@ describe('stack priorities', () => {
   // @req FR:priorities-tables/cli.@cli
   it('is a registered command', async () => {
     const out: string[] = [];
-    const code = await run(['--help'], { out: (s) => { out.push(s); }, err: () => {} });
+    const code = await run(['priorities', '--help'], { out: (s) => { out.push(s); }, err: () => {} });
     expect(code).toBe(0);
     expect(out.join('')).toContain('priorities [--json]');
+    const top: string[] = [];
+    await run(['--help'], { out: (s) => { top.push(s); }, err: () => {} });
+    expect(top.join('')).toMatch(/^ {2}priorities /m);
   });
 });

@@ -35,7 +35,12 @@ Owner needs one `stack` binary that finds the task repo and commits what it chan
 - **FR:run.remote** (P2): `--remote <name>` (and optional `--branch <name>`) MUST make writes sync before and push after
   > - @req FR:storage-git/git.remote
 - **FR:run.now** (P3): `--now <ISO instant>` MUST override the clock (tests, parity)
-- **FR:run.help** (P2): `--help`/no command MUST print the command list and exit 0
+- **FR:run.help** (P2): `--help`, `stack help`, `stack help help`, or no command MUST print the command list and exit 0
+  - **FR:run.help.short** (P2): The command list MUST show one line per command: the name and a summary of 60 characters or less
+  - **FR:run.help.width** (P2): Every command-list line MUST be 100 characters or less
+  - **FR:run.help.cmd** (P2): `stack <command> --help` and `stack help <command>` MUST print only that command: `Usage: stack <usage>`, its full help text, and `See https://github.com/Xerilium/stack/blob/main/docs/cli.md#<command>`; exit 0
+  - **FR:run.help.unknown** (P2): An unknown command MUST be a usage error that says `Unknown command: <name>. Run stack --help to see commands.`
+  - **FR:run.help.near** (P2): The unknown-command error MUST add `Did you mean: <command>?` for the nearest command (or `help`) within edit distance 2 and at most half the typed length
   - **FR:run.help.version** (P2): `--version` MUST print the package version
 
 ### FR:web: Local web app

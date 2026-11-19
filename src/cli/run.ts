@@ -79,12 +79,13 @@ export async function readStdin(stdin: NodeJS.ReadableStream & { isTTY?: boolean
 export const EXIT = { ok: 0, failure: 1, usage: 2, conflict: 3, none: 4 } as const;
 
 const GLOBAL = ['dir', 'json', 'no-commit', 'remote', 'branch', 'now', 'help', 'version'];
-const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }> = {
+/** `summary` (60 characters or less) is the command-list line when `help` is longer. @req FR:cli/run.help.short */
+const COMMANDS: Record<string, { flags: string[]; usage: string; help: string; summary?: string }> = {
   init: { flags: [], usage: 'init', help: 'create repo, tasks/, and config' },
   'add-project': { flags: ['description', 'repo', 'alias', 'priority', 'capacity', 'weekly-capacity', 'file', 'force', 'queries', 'no-update'], usage: 'add-project <name> [--description t] [--repo url] [--alias a,b] [--priority n] [--capacity Block=h,..] [--weekly-capacity n] [--file name] [--force] [--queries] [--no-update]', help: 'create a project file' },
   add: { flags: ['section', 'parent'], usage: 'add <project> <text...> [--section name] [--parent ref]', help: 'add a task' },
-  capture: { flags: ['project', 'section', 'dry-run'], usage: 'capture <text...> [--project name] [--section name] [--dry-run]', help: 'add a task from a phrase (e.g. "call dentist tomorrow 30m #alpha")' },
-  next: { flags: ['top', 'daily'], usage: 'next [--top n | --daily]', help: 'print the top task, or the first n ranked tasks (1-50); priority actions come first; --daily lists each project with its pick and done today; the web Home and /next use the same order' },
+  capture: { flags: ['project', 'section', 'dry-run'], usage: 'capture <text...> [--project name] [--section name] [--dry-run]', help: 'add a task from a phrase (e.g. "call dentist tomorrow 30m #alpha")', summary: 'add a task from a phrase' },
+  next: { flags: ['top', 'daily'], usage: 'next [--top n | --daily]', help: 'print the top task, or the first n ranked tasks (1-50); priority actions come first; --daily lists each project with its pick and done today; the web Home and /next use the same order', summary: 'print the top ranked task, or the first n' },
   start: { flags: ['expect', 'queries', 'no-update'], usage: 'start [ref] [--expect t] [--queries] [--no-update]', help: 'mark in progress' },
   complete: { flags: ['summary', 'remove', 'expect', 'queries', 'no-update'], usage: 'complete [ref] [--summary t] [--remove] [--expect t] [--queries] [--no-update]', help: 'check off (rolls recurring rows)' },
   skip: { flags: ['expect', 'queries', 'no-update'], usage: 'skip [ref] [--expect t] [--queries] [--no-update]', help: 'park a task (alias: park)' },
@@ -92,32 +93,32 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   resume: { flags: ['expect', 'queries', 'no-update'], usage: 'resume [ref] [--expect t] [--queries] [--no-update]', help: 'unpark the first parked task' },
   suspend: { flags: ['days', 'hours', 'expect', 'queries', 'no-update'], usage: 'suspend [ref] [--days n | --hours n] [--expect t] [--queries] [--no-update]', help: 'hide until later' },
   set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis', 'expect'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]', help: 'set emojis and checkbox' },
-  retitle: { flags: ['text', 'expect', 'no-update'], usage: 'retitle <ref> --text t [--expect t] [--no-update]', help: 'edit a task row text in place (checkbox, indent, children, notes, and marks stay)' },
-  check: { flags: [], usage: 'check <ref> [--json]', help: 'the task quality gate: score 0-4 and the missing checks (next, doneWhen, context, single); exit 0 at 4, else 1; read-only (docs/task-rubric.md)' },
+  retitle: { flags: ['text', 'expect', 'no-update'], usage: 'retitle <ref> --text t [--expect t] [--no-update]', help: 'edit a task row text in place (checkbox, indent, children, notes, and marks stay)', summary: 'edit a task row text in place' },
+  check: { flags: [], usage: 'check <ref> [--json]', help: 'the task quality gate: score 0-4 and the missing checks (next, doneWhen, context, single); exit 0 at 4, else 1; read-only (docs/task-rubric.md)', summary: 'score one task on the quality gate (read-only)' },
   note: { flags: ['text', 'expect'], usage: 'note add <ref> --text t [--expect t]', help: 'append a nested note bullet under a task (children stay)' },
-  tag: { flags: ['unblocker', 'due', 'expect'], usage: 'tag <ref> [--unblocker yes|no] [--due "MMM d"|none] [--expect t]', help: 'set the 🔓 unblocker and 📅 due tags the autopri engine reads' },
-  rank: { flags: ['engine', 'explain', 'truth', 'top', 'daily'], usage: 'rank [--engine autopri|pris|stack] [--top n] [--explain [--truth file]] [--daily]', help: 'ranked tasks the owner must do (agent rows are left out); pris boosts tasks linked to ~/.stack/pris.json by priority order; --explain shows why each task has its place (stack: due tier, stale; autopri, pris: score parts and the priority served); --truth lists ground-truth items to tag or add; --daily lists each project with its pick and done today' },
+  tag: { flags: ['unblocker', 'due', 'expect'], usage: 'tag <ref> [--unblocker yes|no] [--due "MMM d"|none] [--expect t]', help: 'set the 🔓 unblocker and 📅 due tags the autopri engine reads', summary: 'set the 🔓 unblocker and 📅 due tags' },
+  rank: { flags: ['engine', 'explain', 'truth', 'top', 'daily'], usage: 'rank [--engine autopri|pris|stack] [--top n] [--explain [--truth file]] [--daily]', help: 'ranked tasks the owner must do (agent rows are left out); pris boosts tasks linked to ~/.stack/pris.json by priority order; --explain shows why each task has its place (stack: due tier, stale; autopri, pris: score parts and the priority served); --truth lists ground-truth items to tag or add; --daily lists each project with its pick and done today', summary: 'ranked tasks the owner must do, and why' },
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project', 'queries', 'no-update'], usage: 'remove-completed [--project name] [--queries] [--no-update]', help: 'delete checked rows' },
-  web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset', 'bind'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset] [--bind loopback|tailnet]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches; --bind tailnet also serves paired devices on your Tailscale addresses)' },
-  devices: { flags: [], usage: 'devices add <name> | list | revoke <id>', help: 'pair a phone with the tailnet host (docs/phone-access.md); add prints a one-time pairing code' },
-  asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days', 'flow', 'seq', 'ref', 'apply', 'applies'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen --flow slug --seq n --ref project:line|tasks/<file>.md:<line> --apply "<action>" --applies "a|b"] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside' },
-  email: { flags: ['account', 'mode', 'max', 'dry-run', 'offline', 'fixture', 'extra', 'project', 'all'], usage: 'email run [--all] [--mode observe|drafts] [--max n] [--dry-run [--offline] [--fixture f.json]] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]', help: 'one triage pass on the signed-in mailbox (asks, drafts only, inbox-zero batches), learn your writing voice, or show status; never sends mail' },
-  graph: { flags: ['client-id', 'tenant', 'with', 'cache', 'account'], usage: 'graph login --client-id <id> [--tenant t] [--account addr] [--with calendar,mail,drafts] [--cache path] | status | logout', help: 'sign in to Microsoft Graph (device code) for the live calendar and mail; read-only scopes' },
-  inbox: { flags: ['from', 'text', 'expect', 'project', 'state', 'note', 'all', 'once', 'watch', 'agent'], usage: 'inbox reply tasks/<file>.md:<line> --from <agent> --text t [--expect t] | list [--project p] [--agent slug] [--state open|handled|all] [--all] [--json] | handle <id> [--note t] [--from <agent>] | run [--project p] [--once|--watch] [--json] | sources [--json]', help: 'reply on a task as an agent (tasks/inbox, from: agent), list the owner\'s open instructions, mark one handled (docs/agent-instructions.md), deliver open messages to their agents (claude -p), or show each inbox source and how to connect it' },
-  agent: { flags: ['prompt', 'cwd', 'timeout'], usage: 'agent run <command> [args...] --prompt t [--cwd dir] [--timeout s]', help: 'run one prompt on an ACP agent (e.g. gemini -- --acp); permission requests become asks; never auto-allows' },
-  agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'reports-to', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'the team: tasks/agents/<slug>.md, .claude/agents/<slug>.md, and project Agents lines' },
-  report: { flags: ['agent', 'project', 'file'], usage: 'report --agent <name> --project <p> [--file report.json] [--json]', help: 'send an agent status report (JSON on stdin or --file; docs/report.md) to the running host, or write ~/.stack/reports.json directly; never git' },
-  prs: { flags: ['group', 'project', 'sort'], usage: 'prs [--group g] [--project p] [--sort spec-lines] [--json]', help: 'open PRs you review or move (--sort spec-lines: no Autopilot rows, fewest spec lines first, 🔬 = needs live validation), by group (blocked, waiting, processing, pending, paused) with who must act; uses GITHUB_TOKEN or the gh sign-in' },
-  qm: { flags: ['file'], usage: 'qm [--json] | qm put --file plan.json [--json]', help: 'the weekly QM (quota-maxxing) plan (~/.stack/qm-plan.json, never git; schema in .xe/features/qm-plan/spec.md); agents write it with put' },
-  feedback: { flags: ['route', 'since'], usage: 'feedback add "<text>" [--route r] | list [--since id] | done <id>', help: 'owner feedback on the app (~/.stack/feedback.jsonl, one JSON line each; docs/feedback.md); done writes feedback.done.jsonl' },
-  sessions: { flags: [], usage: 'sessions [--json]', help: 'Claude app sessions: counts, ranked Needs you (waiting, stuck) with claude:// links, archive candidates; read-only, cached in ~/.stack/sessions.json' },
-  priorities: { flags: [], usage: 'priorities [--json]', help: 'the owner priorities report as markdown: QM (per project), Now (top 3), PRs (live, quickest first), Today, Next 3 days; project rows show project, agent, agent status and the owner next action from tiered tasks (1️⃣ 2️⃣ 3️⃣ with (agent: ...)) in tasks/*.md; a priority with no tiered task shows a gap; each section is stamped as of its last live check (stale after 30 min); read live from ~/.stack/pris.json, the task files, the session store and GitHub' },
-  pris: { flags: ['file', 'projects', 'keywords', 'refs'], usage: 'pris [--json] | pris seed --file <md> | pris put --file <json> | pris link <id> [--projects a,b] [--keywords a,b] [--refs a,b] | pris note <id> <text> | pris gaps', help: 'the owner priorities in order (~/.stack/pris.json); seed runs once; put replaces the list (slot and days set the order of each weekday); link sets the terms that link tasks; note records status; gaps lists priorities with no status, stale status (>7 days) or no linked tasks' },
-  'pr-pri': { flags: ['rank', 'to', 'to-rank', 'note', 'rev', 'agent', 'reason', 'thread', 'on', 'remove', 'file', 'refresh'], usage: PR_PRI_USAGE, help: 'the PR priority queue the Sweep Manager works top down (~/.stack/pr-priority.json, never git): owner edits, agent recommendations, owner decisions, merge-order edges, thread acks, the escalation set; see docs/pr-priority.md' },
-  app: { flags: ['check', 'install', 'no-build', 'source'], usage: 'app install [--no-build] | update [--check | --install] [--no-build] | status [--source dir]', help: 'build Stack.app from the source checkout (STACK_SOURCE or ~/.local/share/stack) and install or update it in /Applications; update never quits a running app unless --install (docs/desktop-install.md)' },
-  live: { flags: ['agent', 'worktree', 'url', 'port', 'pid', 'file', 'text', 'reason', 'by', 'offline'], usage: 'live [next [ref] [--agent a --worktree p --offline] | ready <ref> --url u --pid n [--port n --worktree p] | state <ref> preparing|working | checklist <ref> --file items.json [--agent a] | item add|check|uncheck|fail|needs-fix|fixed|block|comment|edit <ref> [id] [--text t --reason r --by b] | resolve <ref> [--reason merged|closed|done]]', help: 'the live validation lane: one PR at a time, a checklist, the shared server lock; docs/live-validation-agent.md; never touches GitHub threads' },
-  update: { flags: ['sweep', 'queries', 'engine'], usage: 'update [--sweep] [--queries] [--engine legacy|stack]', help: 'regenerate README, stack, projects, my-day (default stack: scores and order like `stack next`, with .stack/priorities.json; --engine legacy: the PowerShell output)' },
+  web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset', 'bind'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset] [--bind loopback|tailnet]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches; --bind tailnet also serves paired devices on your Tailscale addresses)', summary: 'serve the web app on localhost' },
+  devices: { flags: [], usage: 'devices add <name> | list | revoke <id>', help: 'pair a phone with the tailnet host (docs/phone-access.md); add prints a one-time pairing code', summary: 'pair a phone with the tailnet host' },
+  asks: { flags: ['ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'detail-file', 'reopen', 'state', 'outcome', 'note', 'reply', 'limit', 'days', 'flow', 'seq', 'ref', 'apply', 'applies'], usage: 'asks put <key> --ask t --kind k --from agent [--project --why --recommend --options "A|B" --default --by --reversible yes|no --link --priority --effort --blocks --detail-file p --reopen --flow slug --seq n --ref project:line|tasks/<file>.md:<line> --apply "<action>" --applies "a|b"] | list [--state s] | handle <key> --outcome o [--note --reply] | archive [--days n]', help: 'ask queue for the owner: agents put and handle asks; archive moves old done asks aside', summary: 'the ask queue for the owner' },
+  email: { flags: ['account', 'mode', 'max', 'dry-run', 'offline', 'fixture', 'extra', 'project', 'all'], usage: 'email run [--all] [--mode observe|drafts] [--max n] [--dry-run [--offline] [--fixture f.json]] [--project p] | voice [--extra file.json] | status [--account a] | schedule [--remote origin]', help: 'one triage pass on the signed-in mailbox (asks, drafts only, inbox-zero batches), learn your writing voice, or show status; never sends mail', summary: 'one triage pass on the mailbox; never sends mail' },
+  graph: { flags: ['client-id', 'tenant', 'with', 'cache', 'account'], usage: 'graph login --client-id <id> [--tenant t] [--account addr] [--with calendar,mail,drafts] [--cache path] | status | logout', help: 'sign in to Microsoft Graph (device code) for the live calendar and mail; read-only scopes', summary: 'sign in to Microsoft Graph for calendar and mail' },
+  inbox: { flags: ['from', 'text', 'expect', 'project', 'state', 'note', 'all', 'once', 'watch', 'agent'], usage: 'inbox reply tasks/<file>.md:<line> --from <agent> --text t [--expect t] | list [--project p] [--agent slug] [--state open|handled|all] [--all] [--json] | handle <id> [--note t] [--from <agent>] | run [--project p] [--once|--watch] [--json] | sources [--json]', help: 'reply on a task as an agent (tasks/inbox, from: agent), list the owner\'s open instructions, mark one handled (docs/agent-instructions.md), deliver open messages to their agents (claude -p), or show each inbox source and how to connect it', summary: 'agent replies, owner instructions, and inbox sources' },
+  agent: { flags: ['prompt', 'cwd', 'timeout'], usage: 'agent run <command> [args...] --prompt t [--cwd dir] [--timeout s]', help: 'run one prompt on an ACP agent (e.g. gemini -- --acp); permission requests become asks; never auto-allows', summary: 'run one prompt on an ACP agent' },
+  agents: { flags: ['project', 'section', 'name', 'role', 'scope', 'reports-to', 'model', 'mode', 'tools', 'prompt-file'], usage: 'agents list [--project p --section s] | add <slug> --name n --scope a,b [--role r --reports-to a --model m --mode long-running|ad-hoc --tools a,b --prompt-file p]', help: 'the team: tasks/agents/<slug>.md, .claude/agents/<slug>.md, and project Agents lines', summary: 'list or add team agents' },
+  report: { flags: ['agent', 'project', 'file'], usage: 'report --agent <name> --project <p> [--file report.json] [--json]', help: 'send an agent status report (JSON on stdin or --file; docs/report.md) to the running host, or write ~/.stack/reports.json directly; never git', summary: 'send an agent status report to the host' },
+  prs: { flags: ['group', 'project', 'sort'], usage: 'prs [--group g] [--project p] [--sort spec-lines] [--json]', help: 'open PRs you review or move (--sort spec-lines: no Autopilot rows, fewest spec lines first, 🔬 = needs live validation), by group (blocked, waiting, processing, pending, paused) with who must act; uses GITHUB_TOKEN or the gh sign-in', summary: 'open PRs you review or move, by group' },
+  qm: { flags: ['file'], usage: 'qm [--json] | qm put --file plan.json [--json]', help: 'the weekly QM (quota-maxxing) plan (~/.stack/qm-plan.json, never git; schema in .xe/features/qm-plan/spec.md); agents write it with put', summary: 'the weekly QM (quota-maxxing) plan' },
+  feedback: { flags: ['route', 'since'], usage: 'feedback add "<text>" [--route r] | list [--since id] | done <id>', help: 'owner feedback on the app (~/.stack/feedback.jsonl, one JSON line each; docs/feedback.md); done writes feedback.done.jsonl', summary: 'owner feedback on the app' },
+  sessions: { flags: [], usage: 'sessions [--json]', help: 'Claude app sessions: counts, ranked Needs you (waiting, stuck) with claude:// links, archive candidates; read-only, cached in ~/.stack/sessions.json', summary: 'Claude app sessions and what needs you' },
+  priorities: { flags: [], usage: 'priorities [--json]', help: 'the owner priorities report as markdown: QM (per project), Now (top 3), PRs (live, quickest first), Today, Next 3 days; project rows show project, agent, agent status and the owner next action from tiered tasks (1️⃣ 2️⃣ 3️⃣ with (agent: ...)) in tasks/*.md; a priority with no tiered task shows a gap; each section is stamped as of its last live check (stale after 30 min); read live from ~/.stack/pris.json, the task files, the session store and GitHub', summary: 'the owner priorities report as markdown' },
+  pris: { flags: ['file', 'projects', 'keywords', 'refs'], usage: 'pris [--json] | pris seed --file <md> | pris put --file <json> | pris link <id> [--projects a,b] [--keywords a,b] [--refs a,b] | pris note <id> <text> | pris gaps', help: 'the owner priorities in order (~/.stack/pris.json); seed runs once; put replaces the list (slot and days set the order of each weekday); link sets the terms that link tasks; note records status; gaps lists priorities with no status, stale status (>7 days) or no linked tasks', summary: 'the owner priorities in order' },
+  'pr-pri': { flags: ['rank', 'to', 'to-rank', 'note', 'rev', 'agent', 'reason', 'thread', 'on', 'remove', 'file', 'refresh'], usage: PR_PRI_USAGE, help: 'the PR priority queue the Sweep Manager works top down (~/.stack/pr-priority.json, never git): owner edits, agent recommendations, owner decisions, merge-order edges, thread acks, the escalation set; see docs/pr-priority.md', summary: 'the PR priority queue for the Sweep Manager' },
+  app: { flags: ['check', 'install', 'no-build', 'source'], usage: 'app install [--no-build] | update [--check | --install] [--no-build] | status [--source dir]', help: 'build Stack.app from the source checkout (STACK_SOURCE or ~/.local/share/stack) and install or update it in /Applications; update never quits a running app unless --install (docs/desktop-install.md)', summary: 'build and install or update Stack.app' },
+  live: { flags: ['agent', 'worktree', 'url', 'port', 'pid', 'file', 'text', 'reason', 'by', 'offline'], usage: 'live [next [ref] [--agent a --worktree p --offline] | ready <ref> --url u --pid n [--port n --worktree p] | state <ref> preparing|working | checklist <ref> --file items.json [--agent a] | item add|check|uncheck|fail|needs-fix|fixed|block|comment|edit <ref> [id] [--text t --reason r --by b] | resolve <ref> [--reason merged|closed|done]]', help: 'the live validation lane: one PR at a time, a checklist, the shared server lock; docs/live-validation-agent.md; never touches GitHub threads', summary: 'the live validation lane: one PR at a time' },
+  update: { flags: ['sweep', 'queries', 'engine'], usage: 'update [--sweep] [--queries] [--engine legacy|stack]', help: 'regenerate README, stack, projects, my-day (default stack: scores and order like `stack next`, with .stack/priorities.json; --engine legacy: the PowerShell output)', summary: 'regenerate README, stack, projects, and my-day' },
 };
 
 interface Outcome { json: Record<string, unknown>; text: string; code?: number }
@@ -156,12 +157,40 @@ function pkgVersion(): string {
   }
 }
 
+const CLI_DOCS = 'https://github.com/Xerilium/stack/blob/main/docs/cli.md';
+
+/** The command list: one short line per command. @req FR:cli/run.help @req FR:cli/run.help.short @req FR:cli/run.help.width */
 function helpText(): string {
-  const lines = ['stack <command> [options]', ''];
-  for (const [n, c] of Object.entries(COMMANDS)) if (n !== 'park') lines.push(`  ${c.usage}`.padEnd(30) + `  ${c.help}`);
-  lines.push('', 'global: --dir <path> --json --no-commit --remote <name> --branch <name> --now <ISO>');
+  const lines = ['Usage: stack <command> [options]', '', 'Commands:'];
+  for (const [n, c] of Object.entries(COMMANDS)) if (n !== 'park') lines.push(`  ${n.padEnd(17)} ${c.summary ?? c.help}`);
+  lines.push('', 'Run stack <command> --help or stack help <command> for its flags.', `Docs: ${CLI_DOCS}`);
+  lines.push('global: --dir <path> --json --no-commit --remote <name> --branch <name> --now <ISO>');
   lines.push('refs: tasks/<file>.md:<line> (1-based). exit: 0 ok, 1 failure, 2 usage, 3 conflict, 4 nothing to do');
   return lines.join('\n');
+}
+
+/** One command: usage, full help, and its docs anchor. @req FR:cli/run.help.cmd */
+function commandHelp(name: string): string {
+  const c = COMMANDS[name];
+  return `Usage: stack ${c.usage}\n\n${c.help}\n\nSee ${CLI_DOCS}#${name}`;
+}
+
+/** Edit distance, for the "Did you mean" hint. */
+function distance(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = row;
+  }
+  return prev[b.length];
+}
+
+/** A short typo has few letters to go on, so the hint allows at most half the typed length. @req FR:cli/run.help.unknown @req FR:cli/run.help.near */
+function unknownCommand(name: string): UsageError {
+  const max = Math.min(2, Math.floor(name.length / 2));
+  const near = [...Object.keys(COMMANDS), 'help'].map((c) => ({ c, d: distance(name, c) })).filter((x) => x.d <= max).sort((a, b) => a.d - b.d)[0];
+  return new UsageError(`Unknown command: ${name}. Run stack --help to see commands.${near ? ` Did you mean: ${near.c}?` : ''}`);
 }
 
 const git = (dir: string, ...args: string[]): string =>
@@ -921,10 +950,18 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     json = p.flags['json'] === true;
     // @req FR:cli/run.help.version
     if (p.flags['version']) { io.out(`${pkgVersion()}\n`); return EXIT.ok; }
-    if (p.flags['help'] || !p.command) { io.out(`${helpText()}\n`); return EXIT.ok; }
+    // @req FR:cli/run.help @req FR:cli/run.help.cmd
+    if (p.command === 'help' || !p.command) {
+      const name = p.positionals[0];
+      const one = name && name !== 'help' ? name : undefined;
+      if (one && !COMMANDS[one]) throw unknownCommand(one);
+      io.out(`${one ? commandHelp(one) : helpText()}\n`);
+      return EXIT.ok;
+    }
     const spec = COMMANDS[p.command];
-    if (spec) command = canon(p.command);
-    if (!spec) throw new UsageError(`Unknown command: ${p.command}`);
+    if (!spec) throw unknownCommand(p.command);
+    command = canon(p.command);
+    if (p.flags['help']) { io.out(`${commandHelp(p.command)}\n`); return EXIT.ok; }
     for (const k of Object.keys(p.flags)) if (!GLOBAL.includes(k) && !spec.flags.includes(k)) throw new UsageError(`Unknown option for ${p.command}: --${k}`);
     const home = homedir();
     const explicit = flag(p.flags, 'dir');

@@ -103,7 +103,8 @@ describe('retitle', () => {
     expect((await stack(d, 'retitle', 'tasks/alpha.md:2', '--text', 'X')).code).toBe(2);
   });
   it('is listed in --help', async () => {
-    expect((await stack(mk(), '--help')).out).toContain('retitle <ref>');
+    expect((await stack(mk(), '--help')).out).toMatch(/^ {2}retitle /m);
+    expect((await stack(mk(), 'retitle', '--help')).out).toContain('retitle <ref>');
   });
 });
 
