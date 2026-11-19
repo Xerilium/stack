@@ -1,4 +1,5 @@
 import type { Cadence, IsoDate, Recurrence, Weekday } from './model';
+import { OVERDUE_WINDOW_DAYS } from './scoring';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const WEEKDAYS: Weekday[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -68,6 +69,17 @@ function eomOrigin(shown: Date): Date | null {
   return null;
 }
 
+/**
+ * The year of a year-less date, read the way ranking reads it: the next occurrence, counting up to
+ * `OVERDUE_WINDOW_DAYS` past as overdue (so Dec 15 done on Jan 5 is last December, Jan 4 done on Dec 30 is next January).
+ * @req FR:recurring-rows/roll.yearless
+ */
+function nearestYear(mon: number, day: number, today: Date): number {
+  const t = mk(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()).getTime();
+  const y = today.getUTCFullYear();
+  return [y - 1, y, y + 1].find((c) => (mk(c, mon, day).getTime() - t) / DAY_MS >= -OVERDUE_WINDOW_DAYS)!;
+}
+
 function parseLine(line: string, today: Date): Parsed | null {
   const text = line.replace(/\r$/, '');
   let form: 'canonical' | 'legacy' = 'canonical';
@@ -109,8 +121,8 @@ function parseLine(line: string, today: Date): Parsed | null {
   const mon = MONTHS.findIndex(x => x.toLowerCase() === g.mon.toLowerCase());
   if (mon < 0) return null;
   const day = Number(g.day);
-  // @req FR:recurring-rows/roll.yearless (year-less rows take today/marker year)
-  const year = p.hasYear ? Number(g.year) : markerDate ? markerDate.getUTCFullYear() : today.getUTCFullYear();
+  // @req FR:recurring-rows/roll.yearless (year-less rows take the marker year, else the nearest occurrence)
+  const year = p.hasYear ? Number(g.year) : markerDate ? markerDate.getUTCFullYear() : nearestYear(mon, day, today);
   const shown = mk(year, mon, day);
   if (shown.getUTCMonth() !== mon || shown.getUTCDate() !== day) return null;
   p.dateText = `${g.mon} ${g.day}${p.hasYear ? ', ' + g.year : ''}`;
