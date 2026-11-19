@@ -116,6 +116,38 @@ export function actionsFor(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | '
   }
 }
 
+/**
+ * Why a notification is here, for its row: the ask's reason; with none, what the sender recommends (a Chief of Staff escalation and a 🙋 row say why there); else null.
+ * @req FR:notifications/list.context.why
+ */
+export const reasonOf = (a: Pick<AskItem, 'why' | 'recommend'>): string | null => a.why?.trim() || (a.recommend?.trim() ? `Recommends: ${a.recommend.trim()}` : null);
+
+/** A notification the owner can act on: an `answer` ask, or a kind that gives an action. @req FR:notifications/list.drop */
+export const actionable = (a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source'>): boolean => a.kind === 'answer' || actionsFor(a).length > 0;
+
+/** What `Ask for context` sends to the sender. It ends in `?`, so it goes as a question. @req FR:notifications/list.rowactions.context */
+export const CONTEXT_ASK = 'What is the context: why is this needed, where is the source, and what do you need from me?';
+/**
+ * True when an ask gives no reason, no link and no detail, so the owner can only ask the sender for context.
+ * Never for a 🙋 row (the task is its context) or an `answer` ask (its reply is written under the task, not sent as a question).
+ * @req FR:notifications/list.rowactions.context @req FR:notifications/list.rowactions.nocontext
+ */
+export const needsContext = (a: Pick<AskItem, 'kind' | 'link' | 'source' | 'why' | 'detail'>): boolean => !a.why && !a.link && !a.detail && a.source !== 'task' && a.kind !== 'answer';
+/** One item of a row's actions menu: an action of the kind, a panel to open, or the context question. */
+export interface RowAction { id: string; label: string; action?: Action; panel?: 'reply' | 'defer'; context?: boolean }
+
+/**
+ * The actions for a notification's state, for its row menu: the actions of its kind, then Reply (`Answer` for an `answer` ask) and Defer.
+ * An ask with no reason, no link and no detail can ask the sender for context.
+ * @req FR:notifications/list.rowactions.items
+ */
+export function rowActions(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source' | 'why' | 'detail'>): RowAction[] {
+  const out: RowAction[] = actionsFor(a).map((x) => (x.reply ? { id: x.id, label: x.label, panel: 'reply' as const } : { id: x.id, label: x.label, action: x }));
+  out.push({ id: 'reply', label: a.kind === 'answer' ? 'Answer' : 'Reply', panel: 'reply' }, { id: 'defer', label: 'Defer', panel: 'defer' });
+  if (needsContext(a)) out.push({ id: 'context', label: 'Ask for context', context: true });
+  return out;
+}
+
 /** A question goes to the agent as `ask` (it answers back); anything else is an instruction (`reply`). */
 export const replyKind = (text: string): 'ask' | 'reply' => (text.trim().endsWith('?') ? 'ask' : 'reply');
 

@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type Client } from './api';
-import { deferChoices, keepCursor, newKeys, pageTitle, replyKind, type AskItem, type Send } from './asks';
+import { actionable, deferChoices, keepCursor, newKeys, pageTitle, replyKind, type AskItem, type Send } from './asks';
 import { errText } from './errtext';
 import { connectLive, type LiveHandle, type LiveStatus } from './live';
 import { mergeNeeds } from './needs';
@@ -72,7 +72,8 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     try {
       const [o, a, s] = await Promise.all([api.asks('open'), api.asks('answered'), api.asks('snoozed')]);
       if (mine !== seq.current) return;
-      const next = o.items.filter((i) => !held(i.key));
+      // A notification with no possible action is not shown and not counted. @req FR:notifications/list.drop @req FR:notifications/list.drop.count
+      const next = o.items.filter((i) => !held(i.key) && actionable(i));
       const prev = serverRef.current;
       const gone = prev.filter((p) => !next.some((i) => i.key === p.key) && !held(p.key));
       const added = newKeys(prevKeys.current, next, new Set([...hold.current.keys()].filter(held)));
@@ -153,7 +154,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     const at = list.findIndex((i) => i.key === a.key);
     hold.current.set(a.key, Infinity); // released in `finally`: the send, refresh and inbox reload run in series
     bump((n) => n + 1);
-    setPanel('none'); setDetail(false);
+    if (cursorRef.current === a.key) { setPanel('none'); setDetail(false); } // an answer from another row keeps the open card as it is
     const after = list.filter((i) => i.key !== a.key);
     if (cursorRef.current === a.key) setCursor(after[Math.min(Math.max(at, 0), after.length - 1)]?.key ?? null);
     try {
@@ -171,7 +172,8 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     const at = itemsRef.current.findIndex((i) => i.key === a.key);
     hold.current.set(a.key, Date.now() + HOLD_MS);
     const after = itemsRef.current.filter((i) => i.key !== a.key);
-    setItems((x) => x.filter((i) => i.key !== a.key)); setTotal((n) => Math.max(0, n - 1)); setPanel('none'); setDetail(false);
+    setItems((x) => x.filter((i) => i.key !== a.key)); setTotal((n) => Math.max(0, n - 1));
+    if (cursorRef.current === a.key) { setPanel('none'); setDetail(false); }
     setLeaving((l) => [...l, a]); setTimeout(() => setLeaving((l) => l.filter((x) => x !== a)), LEAVE_MS);
     if (s.answer !== 'defer') setSent((x) => [...x, { ...a, state: 'answered', answer: s.answer, text: s.text }]); // oldest first, like the server; the group shows newest first
     if (cursorRef.current === a.key) setCursor(after[Math.min(Math.max(at, 0), after.length - 1)]?.key ?? null);

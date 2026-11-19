@@ -8,6 +8,7 @@ import { Flag } from '../src/ui/Flag';
 import { MessageBox } from '../src/ui/MessageBox';
 import { LinkList } from '../src/ui/LinkList';
 import { SelectCard } from '../src/ui/SelectCard';
+import { SourceLink, sourceOf } from '../src/ui/SourceLink';
 import { SplitView } from '../src/ui/SplitView';
 import { StatusChip } from '../src/ui/StatusChip';
 import { Tabs } from '../src/ui/Tabs';
@@ -28,6 +29,34 @@ describe('Flag', () => {
     expect((f as HTMLElement).tabIndex).toBe(-1);
     expect(f.getAttribute('aria-hidden')).toBeNull();
     expect(mount(<Flag text="x" hidden />).querySelector('.ui-flag')!.getAttribute('aria-hidden')).toBe('true');
+  });
+});
+
+// @req FR:ui-kit/source @req FR:ui-kit/source.name @req FR:ui-kit/source.tab @req FR:ui-kit/source.click @req FR:ui-kit/source.empty
+describe('SourceLink', () => {
+  it('sourceOf names a link by its kind', () => {
+    expect(sourceOf('https://github.com/Xerilium/stack/pull/158')).toEqual({ kind: 'pr', label: 'PR stack#158' });
+    expect(sourceOf('https://github.com/Xerilium/stack/issues/152#issuecomment-1')).toEqual({ kind: 'issue', label: 'Issue stack#152' });
+    expect(sourceOf('claude://claude.ai/epitaxy/abc')).toEqual({ kind: 'session', label: 'Session' });
+    expect(sourceOf('https://claude.ai/code/session_1')).toEqual({ kind: 'session', label: 'Session' });
+    expect(sourceOf('https://outlook.office.com/mail/id/1')).toEqual({ kind: 'email', label: 'Email' });
+    expect(sourceOf('mailto:a@example.test')).toEqual({ kind: 'email', label: 'Email' });
+    expect(sourceOf('https://mail.google.com/mail/u/0/#inbox/1')).toEqual({ kind: 'email', label: 'Email' });
+    for (const [href, site] of [['https://www.office.com/launch', 'office.com'], ['https://onedrive.live.com/x', 'onedrive.live.com'], ['https://drive.proton.me/u/0', 'drive.proton.me']]) expect(sourceOf(href)).toEqual({ kind: 'site', label: site });
+    expect(sourceOf('https://www.npmjs.com/settings')).toEqual({ kind: 'site', label: 'npmjs.com' });
+    expect(sourceOf('https://github.com/Xerilium/stack')).toEqual({ kind: 'site', label: 'github.com' });
+    for (const bad of [undefined, '', 'not a link', 'javascript:alert(1)']) expect(sourceOf(bad)).toBeNull();
+  });
+  it('is a new-tab link that ends in an arrow; a click does not reach the row; no link draws nothing', () => {
+    let rowClicks = 0;
+    const r = mount(<div onClick={() => { rowClicks++; }}><SourceLink href="https://github.com/o/r/pull/7" /></div>);
+    const a = r.querySelector<HTMLAnchorElement>('a.ui-source')!;
+    expect(a.textContent).toBe('PR r#7 ↗');
+    expect([a.getAttribute('href'), a.target, a.rel, a.dataset.kind]).toEqual(['https://github.com/o/r/pull/7', '_blank', 'noopener noreferrer', 'pr']);
+    a.addEventListener('click', (e) => e.preventDefault());
+    act(() => { a.click(); });
+    expect(rowClicks).toBe(0);
+    expect(mount(<SourceLink href="nope" />).innerHTML).toBe('');
   });
 });
 

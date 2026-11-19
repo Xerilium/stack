@@ -4,6 +4,9 @@
  * @req FR:notifications/list.route @req FR:notifications/list.what @req FR:notifications/list.not @req FR:notifications/list.empty @req FR:notifications/list.words
  * @req FR:notifications/bell.item @req FR:notifications/bell.count @req FR:notifications/pris.route
  * @req FR:notifications/sessions.route @req FR:notifications/sessions.more @req FR:notifications/nav.rail @req FR:notifications/nav.tabbar
+ * @req FR:notifications/list.context @req FR:notifications/list.context.why @req FR:notifications/list.context.pick @req FR:notifications/list.context.read
+ * @req FR:notifications/list.context.card @req FR:notifications/list.source @req FR:notifications/list.source.task @req FR:notifications/list.rowactions @req FR:notifications/list.rowactions.items @req FR:notifications/list.rowactions.context
+ * @req FR:notifications/list.rowactions.select @req FR:notifications/list.rowactions.keep @req FR:notifications/list.context.phone @req FR:notifications/list.rowactions.focus @req FR:notifications/list.rowactions.card @req FR:notifications/list.drop @req FR:notifications/list.drop.count
  * @req NFR:notifications/a11y.axe @req NFR:notifications/calm
  */
 import AxeBuilder from '@axe-core/playwright';
@@ -74,6 +77,111 @@ test.describe('Notifications', () => {
     await page.goto('/#/now');
     await expect(item(page)).toContainText('Notifications');
     await expect(page.getByText('Needs you')).toHaveCount(0);
+  });
+});
+
+test.describe('Notifications: context and actions on every row', () => {
+  const rich = (): MockAsk[] => [
+    { ...ask('top', 'Pick the launch date', 90), kind: 'answer', from: 'allyte-cos', why: 'Marketing needs a date' },
+    { ...ask('pr', 'Approve merging PR 158 into main', 80), kind: 'approve', from: 'stack-architect', project: 'stack', why: 'CI is green; one review is in', link: 'https://github.com/Xerilium/stack/pull/158' },
+    { ...ask('mail', 'Review draft reply to Dana', 70), kind: 'review', from: 'email-triage', why: 'Dana asked for the contract terms', link: 'https://outlook.office.com/mail/id/1' },
+    { ...ask('sess', 'Unblock the deploy session', 60), from: 'cos', why: 'It waits on a permission', link: 'https://claude.ai/code/session_1', row: 'stack:3' },
+    { ...ask('rec', 'Merge the release branch', 55), kind: 'approve', from: 'Chief of Staff', recommend: 'Merge it today', link: 'https://github.com/Xerilium/stack/issues/152' },
+    { ...ask('bare', 'Rename the repo', 50) },
+    { ...ask('dead', 'Pick one', 40), kind: 'decide' }, // no options: nothing to do
+  ];
+  const row = (page: Page, key: string) => page.locator(`.ask-li[data-key="${key}"]`);
+
+  test('each row shows who, why and a source link; a row with no action is dropped and not counted', async ({ page }, info) => {
+    await setup(page, rich());
+    await page.goto('/#/notifications');
+    await page.getByRole('button', { name: /Show 1 more/ }).click();
+    await expect(page.locator('.ask-li')).toHaveCount(6);
+    await expect(row(page, 'dead')).toHaveCount(0);
+    await expect(page.getByRole('heading', { level: 1 }).locator('.count')).toHaveText('6');
+    await expect(item(page).locator('.badge')).toHaveText('6');
+    // with no reason, the row says what the sender recommends
+    await expect(row(page, 'rec').locator('.ask-ctx-why')).toHaveText('Recommends: Merge it today');
+    await expect(row(page, 'rec').getByRole('link', { name: /Issue stack#152/ })).toBeVisible();
+    const pr = row(page, 'pr');
+    await expect(pr.locator('.ask-who')).toHaveText('stack-architect');
+    await expect(pr.locator('.ask-ctx-why')).toHaveText('CI is green; one review is in');
+    // a screen reader reads who and why with the row
+    await expect(pr.locator('.ask-row')).toHaveAccessibleDescription(/stack-architect.*CI is green; one review is in/);
+    await expect(pr.getByRole('link', { name: /PR stack#158/ })).toHaveAttribute('href', 'https://github.com/Xerilium/stack/pull/158');
+    await expect(row(page, 'mail').getByRole('link', { name: /Email/ })).toHaveAttribute('target', '_blank');
+    await expect(row(page, 'sess').getByRole('link', { name: /Session/ })).toBeVisible();
+    await expect(row(page, 'sess').getByRole('button', { name: 'Task' })).toBeVisible(); // an ask with a task row opens it in the app
+    await expect(row(page, 'bare').locator('.ask-ctx-why')).toHaveText('No reason given');
+    await expect(row(page, 'bare').locator('.ui-source')).toHaveCount(0);
+    // the selected notification (the details) has Ask for context too, when it has none; an answer ask never has it
+    await expect(page.locator('.ask-card').getByRole('button', { name: 'Ask for context' })).toHaveCount(0);
+    await row(page, 'pr').locator('.ask-ctx-why').click(); // a click on who and why selects the row
+    await expect(row(page, 'pr').locator('.ask-card .ask-why')).toHaveText('CI is green; one review is in');
+    await row(page, 'bare').locator('.ask-ctx-why').click();
+    await expect(row(page, 'bare').locator('.ask-card').getByRole('button', { name: 'Ask for context' })).toBeVisible();
+    await row(page, 'top').locator('.ask-row').click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect((await axe(page)).violations).toEqual([]);
+    for (const scheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.screenshot({ path: `e2e/screenshots/notifications-rows-${scheme}-${info.project.name}.png`, fullPage: true });
+    }
+  });
+
+  test('the row menu holds the actions for its state; Approve answers from the row', async ({ page }) => {
+    const m = await setup(page, rich());
+    await page.goto('/#/notifications');
+    await page.getByRole('button', { name: /Show 1 more/ }).click();
+    const names = async (key: string) => { await row(page, key).getByRole('button', { name: /^Actions for/ }).click(); const t = await page.getByRole('menuitem').allTextContents(); await page.keyboard.press('Escape'); return t; };
+    expect(await names('pr')).toEqual(['Approve', 'Reject', 'Open', 'Reply', 'Defer']);
+    expect(await names('mail')).toEqual(['Looks good', 'Needs changes', 'Open', 'Reply', 'Defer']);
+    expect(await names('bare')).toEqual(['Done', 'Reply', 'Defer', 'Ask for context']);
+    await row(page, 'pr').getByRole('button', { name: 'Actions for Approve merging PR 158 into main' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Open' })).toHaveAttribute('href', 'https://github.com/Xerilium/stack/pull/158');
+    await page.evaluate(() => window.scrollTo(0, 120));
+    const y = await page.evaluate(() => window.scrollY);
+    await page.getByRole('menuitem', { name: 'Approve' }).click();
+    await expect.poll(() => m.calls.find((c) => c.path === '/asks/pr/answer')?.body).toEqual({ answer: 'go' });
+    await expect(row(page, 'pr')).toHaveCount(0);
+    // an answer from the row keeps the open notification, its focus, and the scroll position
+    await expect(row(page, 'top').locator('.ask-card')).toBeFocused();
+    expect(await page.evaluate(() => window.scrollY)).toBe(y);
+    await row(page, 'bare').getByRole('button', { name: /^Actions for/ }).click();
+    await page.getByRole('menuitem', { name: 'Defer' }).click();
+    await expect(row(page, 'bare').locator('.ask-card')).toBeFocused();
+    await expect(row(page, 'bare').getByRole('group', { name: 'Defer until' })).toBeVisible();
+  });
+
+  test('on a phone, who and the source link share a line; the why sits under them', async ({ page }, info) => {
+    test.skip(info.project.name !== 'mobile', 'phone layout');
+    await setup(page, rich());
+    await page.goto('/#/notifications');
+    const pr = row(page, 'pr');
+    const who = (await pr.locator('.ask-who').boundingBox())!;
+    const link = (await pr.getByRole('link', { name: /PR stack#158/ }).boundingBox())!;
+    const why = (await pr.locator('.ask-ctx-why').boundingBox())!;
+    expect(Math.abs((who.y + who.height / 2) - (link.y + link.height / 2))).toBeLessThan(2); // one line
+    expect(link.x).toBeGreaterThan(who.x + who.width);
+    expect(why.y).toBeGreaterThanOrEqual(link.y + link.height - 1); // the why is under them
+    expect(link.height).toBeGreaterThanOrEqual(44);
+    const ctx = (await pr.locator('.ask-ctx').boundingBox())!;
+    expect(ctx.height).toBeLessThanOrEqual(44 + 2 * 18 + 6); // one tap line, at most two why lines, the padding
+  });
+
+  test('Reply from the row opens that notification with the reply box; Ask for context asks the sender', async ({ page }) => {
+    const m = await setup(page, rich());
+    await page.goto('/#/notifications');
+    await page.getByRole('button', { name: /Show 1 more/ }).click();
+    await row(page, 'mail').getByRole('button', { name: /^Actions for/ }).click();
+    await page.getByRole('menuitem', { name: 'Reply' }).click();
+    await expect(row(page, 'mail').locator('.ask-card')).toBeVisible();
+    await expect(row(page, 'mail').getByRole('textbox', { name: 'Reply to email-triage' })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await row(page, 'bare').getByRole('button', { name: /^Actions for/ }).click();
+    await page.getByRole('menuitem', { name: 'Ask for context' }).click();
+    await expect.poll(() => m.calls.find((c) => c.path === '/asks/bare/answer')?.body).toMatchObject({ answer: 'ask', text: expect.stringMatching(/context/) });
+    await expect(row(page, 'mail').locator('.ask-card')).toBeVisible(); // the open notification stays
   });
 });
 

@@ -25,6 +25,25 @@ This feature ships the nav and page split of `FR:product-reset/ia.nav` and `FR:p
 - **FR:list.what** (P1): The page shows only things that need the owner to act, as one ranked list: agent asks, Chief of Staff escalations, and 🙋 decision rows (`FR:web-shell/state.needs`). An expired sign-in (`FR:web-shell/state.live`, state `signin`) shows first as the notification `Sign-in expired` with `Sign in`
 - **FR:list.not** (P1): The page has no Priorities block and no Sessions or Archive candidates lists
 - **FR:list.actions** (P1): Each notification keeps its direct actions, keys, defer, reply, and Undo (`FR:ask-queue/web.actions`)
+- **FR:list.context** (P1): Every notification, selected or not, shows who sent it and what it asks
+  - **FR:list.context.why** (P1): A row that is not selected shows why it is here: the ask's reason; with none, what the sender recommends (`Recommends: {recommendation}`); with neither, `No reason given`
+  - **FR:list.context.card** (P1): The selected notification shows its reason when it has one
+  - **FR:list.context.pick** (P1): A click on a row's who and why line selects the row
+  - **FR:list.context.read** (P1): A screen reader reads a row's who and why line with the row
+  - **FR:list.context.phone** (P1): At phone width, a row shows who and its source link on one line, and the why under them. The source link keeps a 44 px touch target
+- **FR:list.source** (P1): A notification with a link shows it as a source link (`FR:ui-kit/source`)
+  - **FR:list.source.task** (P1): A notification about a task (a 🙋 row, or an ask with a task row) shows `Task`, which opens the task in the app
+  - **FR:list.source.row** (P1): A 🙋 row shows no source link
+- **FR:list.rowactions** (P1): Every row that is not selected has an actions menu (`FR:ui-kit/menu`) named `Actions for {ask}`
+  - **FR:list.rowactions.items** (P1): The menu lists the actions of the notification's kind (`FR:ask-queue/web.actions`: for example Approve, Reject, Open), then Reply (`Answer` for an `answer` ask), then Defer
+  - **FR:list.rowactions.context** (P1): An ask with no reason, no link and no detail also has `Ask for context`, which sends the sender a question
+  - **FR:list.rowactions.nocontext** (P1): A 🙋 row and an `answer` ask never have `Ask for context`
+  - **FR:list.rowactions.select** (P1): Reply and Defer select their row, then open the reply box or the defer choices
+  - **FR:list.rowactions.keep** (P1): An action that answers the notification (for example Approve, Reject, Done, or `Ask for context`) keeps the selected notification and does not scroll the page. The row leaves the list
+  - **FR:list.rowactions.focus** (P1): After a menu action, keyboard focus moves to the selected notification
+  - **FR:list.rowactions.card** (P1): The selected notification shows the same actions as buttons: the kind's actions with their keys, Defer, Reply, and `Ask for context` when the ask has it
+- **FR:list.drop** (P1): A notification with no possible action is not shown: an open ask that is not an `answer` ask and whose kind gives no action (for example a `decide` ask with no options)
+  - **FR:list.drop.count** (P1): The page count and the Notifications count badge leave out a notification with no possible action
 - **FR:list.empty** (P1): With nothing open: `You're all caught up.` and one muted line that says what was checked. No red
 - **FR:list.words** (P1): Owner-facing text that named Needs you names Notifications (`{n} more in Notifications`, `Open in Notifications`)
 
