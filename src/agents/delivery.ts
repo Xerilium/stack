@@ -264,7 +264,8 @@ export async function runDeliveryPass(d: DeliveryDeps, o: { project?: string } =
   const entries = pending.filter((e) => done0[e.id]?.state !== 'failed' && done0[e.id]?.state !== 'delivered');
   const out: DeliveryResult[] = [];
   const perms = d.store.read().perms ?? {};
-  if (!entries.length && !Object.keys(perms).length) return { login: d.store.read().login.state, items: out };
+  // Open permission asks wait for the owner: they alone never start a process (the login check included). @req FR:agent-delivery/run.approved @req FR:agent-delivery/login.check
+  if (!entries.length && await allOpen(d, perms)) return { login: d.store.read().login.state, items: out };
   let login = await checkLogin(d);
   d.store.setLogin(login);
   await syncLoginAsk(d.ctx, login);
@@ -308,6 +309,12 @@ export async function runDeliveryPass(d: DeliveryDeps, o: { project?: string } =
   }
   if (login !== 'expired') await runApprovals(d, perms, team, now, capHit, (e, r) => record(e, r));
   return { login, items: out };
+}
+
+/** Every pending permission ask is still open (none answered, none gone). */
+async function allOpen(d: DeliveryDeps, perms: Record<string, PendingPerm>): Promise<boolean> {
+  for (const key of Object.keys(perms)) if ((await readAsk(d.ctx, key).catch(() => null))?.ask.state !== 'open') return false;
+  return true;
 }
 
 /**
