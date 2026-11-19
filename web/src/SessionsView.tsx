@@ -15,7 +15,7 @@ import { agentStatus, chartOrder, chatsFor, orgChart, otherSessions, type ChartN
 import { composeDefault, folderFor, orderAgents, repoRoot } from './org';
 import { groupByProject, orderWithPins, type Pins } from './pins';
 import { barWidths, dayLabel, fmtTokens, groupTurns, localDay, orderSessions, priceLine, rowOf, scopeSessions, splitSessions, usageStrip, type Line, type SessionItem } from './sessions';
-import { matchAgent, nameKey, rollupOf, runnable, type TeamAgent } from './team';
+import { matchAgent, nameKey, rollupOf, type TeamAgent } from './team';
 import type { Sessions } from './useSessions';
 import { feedbackActive } from './FeedbackPanel';
 import './sessions.css';
@@ -165,7 +165,8 @@ export function Drawer({ s, item, cursorItem, team = [], onClose, defaultAgent, 
   const r = item ? rowOf(item, s.now) : null;
   const facts = item && r && !isNew ? [r.label, r.when, item.project, item.branch, `${r.usage} tokens`].filter(Boolean).join(' · ') : '';
   const cwds = [...new Set(s.items.map((x) => x.cwd))];
-  const runsIn = cwd.trim() ? cwd.trim().replace(/^.*\//, '') : 'the served folder';
+  // A scanned agent with no folder runs in its own repo (the server knows it). @req FR:agent-team/compose.folder
+  const runsIn = cwd.trim() ? cwd.trim().replace(/^.*\//, '') : chosen?.home && chosen.home !== 'user' ? chosen.home : 'the served folder';
   const canStart = !!text.trim() && (!!chosen || !!cwd.trim()) && !(running && !s.transcript.done);
   return (
     <aside ref={ref} class={`sess-drawer${isNew ? ' new' : ''}${inline ? ' inline' : ''}`} role={inline ? 'region' : 'dialog'} aria-modal={inline ? undefined : 'true'} aria-label={title} onKeyDown={inline ? undefined : trap}>
@@ -281,8 +282,8 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
   };
   /** Closes the overlay and puts focus back on the row or card it came from. */
   const close = () => { const was = s.open ?? cursor; s.closeDrawer(); setTimeout(() => document.querySelector<HTMLElement>(`[data-id="${CSS.escape(was ?? '')}"] button, [data-agent="${CSS.escape(sel)}"]`)?.focus(), 0); };
-  // A view-only agent never starts a chat: the composer opens on the roll-up instead. @req FR:agent-team/agent.team.scan.view
-  const runTeam = useMemo(() => agentsOrdered.filter(runnable), [agentsOrdered]);
+  // Every agent starts a chat, scanned agents included. @req FR:agent-team/agent.team.scan.run
+  const runTeam = agentsOrdered;
   const compose = (slug?: string) => { const want = slug ?? (chartMode ? sel : composeDefault(cursor, runTeam, s.items)); s.setComposing(true, runTeam.some((a) => a.slug === want) ? want : undefined); };
   const pick = (slug: string) => { setSel(slug); };
 
@@ -377,9 +378,7 @@ export function SessionsView({ s, enabled, pinsCtl, team = [], projectRank = new
               <div class="chat-empty" data-testid="chat-empty">
                 <p class="big">{selAgent.name} has no chat yet.</p>
                 <p class="sub">{selAgent.role ?? 'Start one to brief this agent.'}</p>
-                {runnable(selAgent)
-                  ? <button type="button" class="btn primary" onClick={() => compose(selAgent.slug)}>Start chat</button>
-                  : <p class="sub" data-testid="view-only">View only: this agent lives in {selAgent.home === 'user' ? 'your user folder' : selAgent.home}. Start its chats there.</p>}
+                <button type="button" class="btn primary" onClick={() => compose(selAgent.slug)}>Start chat</button>
               </div>
             )}
           </section>

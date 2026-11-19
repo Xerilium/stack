@@ -38,8 +38,18 @@ export interface TeamAgent extends Omit<AgentDef, 'extra'> {
   /** Where a scanned agent lives: the Stack project that owns its repo, else the folder name; `user` for `~/.claude/agents`. @req FR:agent-team/agent.team.scan */
   home?: string;
 }
-/** An agent found outside the content repo (`scanAgents`). @req FR:agent-team/agent.team.scan */
-export interface ScannedAgent { def: AgentDef; home: string }
+/**
+ * An agent found outside the content repo (`scanAgents`). `file` and `dir` stay on the server: `GET /team` never returns them.
+ * @req FR:agent-team/agent.team.scan @req FR:agent-team/agent.team.scan.run
+ */
+export interface ScannedAgent {
+  def: AgentDef;
+  home: string;
+  /** The agent file, read whole at run start. */
+  file: string;
+  /** The repo folder the agent runs in; absent at user level (the served folder). */
+  dir?: string;
+}
 
 const SLUG = /^[a-z0-9][a-z0-9._-]{0,39}$/;
 const HEADER = '<!-- stack-agent v1. Scope is a list of project or project/section prefixes; `*` is everything. -->';

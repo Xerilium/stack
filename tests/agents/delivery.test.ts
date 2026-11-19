@@ -3,7 +3,7 @@
  * @req FR:agent-delivery/pick.entries @req FR:agent-delivery/pick.agent @req FR:agent-delivery/pick.serial @req FR:agent-delivery/pick.once
  * @req NFR:agent-delivery/delivery.seam
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -199,6 +199,22 @@ describe('runDeliveryPass', () => {
     const b = await sendToInbox(ctx, ref(8), 'For whoever', 'instruction', undefined, undefined, 'ghost');
     const r = await runDeliveryPass(d);
     expect(r.items).toEqual([{ id: a.id, state: 'delivered', agent: 'cos' }, { id: b.id, state: 'delivered', agent: 'cid' }]);
+  });
+  /** @req FR:agent-delivery/pick.agent @req FR:agent-delivery/run.cwd @req FR:agent-team/agent.team.scan.run.cwd @req FR:agent-team/agent.team.scan.run.prompt */
+  it('delivers to a scanned agent only when Now names it: its whole file, its own repo', async () => {
+    const repo = mkdtempSync(join(tmpdir(), 'stack-dl-scan-'));
+    mkdirSync(join(repo, '.claude/agents'), { recursive: true });
+    const file = join(repo, '.claude/agents/mixer.md');
+    writeFileSync(file, '---\nname: mixer\ndescription: Mixes.\n---\n\nMIXER_BODY\n');
+    const def = { slug: 'mixer', name: 'Mixer', scope: ['flantastic-4/Active'], mode: 'ad-hoc' as const, prompt: '', extra: [] };
+    const { ctx, d, prompts } = await mk({}, { agentScan: async () => [{ def, home: 'flantastic-4', file, dir: repo }] });
+    const a = await sendToInbox(ctx, ref(6), 'Mixer, mix it', 'instruction', undefined, undefined, 'mixer');
+    const b = await sendToInbox(ctx, ref(8), 'For whoever', 'instruction');
+    const r = await runDeliveryPass(d);
+    expect(r.items).toEqual([{ id: a.id, state: 'delivered', agent: 'mixer' }, { id: b.id, state: 'delivered', agent: 'cid' }]); // the section-scoped scanned agent never wins on its own
+    expect(prompts()[0].cwd).toBe(repo);
+    expect(prompts()[0].system).toContain('MIXER_BODY');
+    expect(prompts()[1].cwd).toBe('/dev/todo');
   });
   /** @req FR:agent-delivery/pick.agent */
   it('fails an entry no agent covers and does not retry it', async () => {

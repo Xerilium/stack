@@ -63,3 +63,13 @@
 **Why**: Native emoji differ by OS and the macOS set looks dated; the owner accepts Fluent. Bundling keeps the page offline-safe and private (no third-party fetch). A per-emoji file keeps the bundle small; the browser loads only what shows.
 
 **Rejected**: A CDN (third-party network at runtime); the full Fluent set (tens of MB); the `Flat` style (the owner picked `Color`); an emoji web font (one large file, no per-glyph fallback).
+
+## Scanned agents run in their own repo with their full file
+
+**Decision**: A scanned agent (another repo or user level) runs from every path a content-repo agent runs from. Stack reads its whole file only at run start and runs the session in its repo folder; a user-level agent runs in the served folder. Delivery's automatic pick still uses only the content repo's agents; a scanned agent gets a delivery only when Now names it.
+
+**Date**: 2026-11-18
+
+**Why**: The owner's agents live in many repos (issue 164). The scan stays cheap (frontmatter, cached); the body is read once per run. The agent's prompt assumes its own repo (its CLAUDE.md, its paths). Unattended delivery runs cost money and act alone, so a new agent must not silently take over a project's messages just because a repo defines it.
+
+**Rejected**: Reading full files in the scan (cost on every `/team` read, bodies in memory); running in the task repo (the agent's prompt and tools point at its own repo); returning file paths in `GET /team` (local paths to any `tasks:read` token); scanned agents in delivery's automatic pick (unattended behavior change).

@@ -53,6 +53,8 @@ import { LiveError } from '../core/live-lane';
 import { BriefInvalid } from '../core/pr-review';
 import { QmInvalid, QmStore, type QmPlan } from '../core/qm-plan';
 import { homedir } from 'os';
+import { scanAgents } from '../core/agent-scan';
+import { projectRepos } from '../core/repos';
 
 /** `in` reads all of stdin; `null` means no piped input (a terminal). */
 export interface IO { out(s: string): void; err(s: string): void; in?: () => Promise<string | null> }
@@ -803,7 +805,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       // @req FR:inbox-page/cli.sources
       if (p.positionals[0] === 'sources') { extra(1); return inboxSourcesCmd(ctx); }
       // @req FR:agent-delivery/cli.run
-      if (p.positionals[0] === 'run') { extra(1); return inboxRunCmd(ctx, f, { repo: dir, config: loadConfig(dir), out: (l) => process.stdout.write(`${l}\n`) }); }
+      if (p.positionals[0] === 'run') { extra(1); const config = loadConfig(dir); return inboxRunCmd(ctx, f, { repo: dir, config, agentScan: () => projectRepos(ctx).then((repos) => scanAgents({ home: homedir(), roots: config?.agents?.scanRoots, skip: [dir], repos })), out: (l) => process.stdout.write(`${l}\n`) }); }
       // @req FR:agent-inbox/cli.handle
       if (p.positionals[0] === 'handle') {
         if (!p.positionals[1]) throw new UsageError('inbox handle needs an id');

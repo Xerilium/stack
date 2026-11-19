@@ -8,11 +8,14 @@ import type { StackConfig } from '../core/config';
 import type { LifecycleContext } from '../core/lifecycle';
 import { stackHome } from '../core/reports';
 import type { Runner } from '../email/llm';
+import type { AgentScan } from '../agents/team';
 import { UsageError } from './args';
 
 export interface InboxRunDeps {
   repo: string; config?: StackConfig;
   run?: Runner; home?: string; isRepo?: (dir: string) => boolean;
+  /** Agents outside the content repo, so a Now pick of one is delivered. @req FR:agent-team/agent.team.scan.run */
+  agentScan?: AgentScan;
   /** `--watch` stops when this aborts; default `SIGINT`. */
   signal?: AbortSignal; intervalMs?: number;
   /** Lines while watching; none with `--json`. */
@@ -25,7 +28,7 @@ export async function inboxRunCmd(ctx: LifecycleContext, f: Record<string, strin
   if (f.once === true && f.watch === true) throw new UsageError('Use --once or --watch, not both');
   const project = typeof f.project === 'string' ? f.project : undefined;
   if (f.project === true) throw new UsageError('--project needs a value');
-  const deps = { ctx, settings: deliverySettings(d.config, d.repo), store: new DeliveryStore(d.home ?? stackHome(), ctx.now), repoDir: d.repo, ...(d.run ? { run: d.run } : {}), ...(d.isRepo ? { isRepo: d.isRepo } : {}) };
+  const deps = { ctx, settings: deliverySettings(d.config, d.repo), store: new DeliveryStore(d.home ?? stackHome(), ctx.now), repoDir: d.repo, ...(d.run ? { run: d.run } : {}), ...(d.isRepo ? { isRepo: d.isRepo } : {}), ...(d.agentScan ? { agentScan: d.agentScan } : {}) };
   if (f.watch !== true) {
     const r = await runDeliveryPass(deps, project ? { project } : {});
     return { json: { ok: r.login !== 'expired', login: r.login, items: r.items }, text: [...r.items.map(line), ...(r.login === 'expired' ? ['Claude login expired: run claude auth login'] : [])].join('\n'), code: r.login === 'expired' ? 1 : 0 };

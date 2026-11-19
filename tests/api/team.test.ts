@@ -152,3 +152,33 @@ describe('team shape', () => {
     expect(prompts[0]).toMatchObject({ cwd: process.cwd() });
   });
 });
+
+// @req FR:agent-team/agent.team.scan.run @req FR:agent-team/agent.team.scan.run.cwd @req FR:agent-team/agent.team.scan.run.prompt
+describe('scanned agents through the API', () => {
+  it('Start chat, review and an inbox pick resolve a scanned agent; it runs in its repo; GET /team never shows its file', async () => {
+    const { mkdirSync, mkdtempSync, writeFileSync } = await import('fs');
+    const { tmpdir } = await import('os');
+    const repo = mkdtempSync(join(tmpdir(), 'stack-api-scan-'));
+    mkdirSync(join(repo, '.claude/agents'), { recursive: true });
+    const file = join(repo, '.claude/agents/mixer.md');
+    writeFileSync(file, '---\nname: mixer\ndescription: Mixes.\n---\n\nFULL_BODY\n');
+    const storage = new MemoryStorage();
+    await storage.write('tasks/flantastic-4.md', F4);
+    const ctx = { storage, now: () => NOW };
+    await putAgent(ctx, 'cos', { name: 'CoS', scope: ['*'] });
+    const { driver, prompts } = fakeDriver();
+    const agents = createRunManager({ driver, ctx, cwd: '/served' });
+    const agentScan = async () => [{ def: { slug: 'mixer', name: 'Mixer', scope: [], mode: 'ad-hoc' as const, prompt: '', extra: [] }, home: 'flantastic-4', file, dir: repo }];
+    const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, agents, agentScan });
+    const post = async (path: string, body: unknown) => h(new Request(`https://x.test/api${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-ms-client-principal': Buffer.from(JSON.stringify({ userDetails: 'me', identityProvider: 'github', userRoles: ['authenticated'] })).toString('base64') }, body: JSON.stringify(body) }));
+    const team = await (await h(new Request('https://x.test/api/team'))).text();
+    expect(team).toContain('"mixer"');
+    expect(team).not.toContain(repo);
+    expect((await post('/sessions', { agent: 'mixer', project: 'flantastic-4', text: 'Mix' })).status).toBe(202);
+    expect(prompts[0].cwd).toBe(repo);
+    expect(prompts[0].options?.systemPrompt).toContain('FULL_BODY');
+    expect((await post('/tasks/review', { ref: 'flantastic-4:7', agent: 'mixer' })).status).toBe(202);
+    expect(prompts[1].cwd).toBe(repo);
+    expect((await post('/inbox', { ref: 'flantastic-4:7', text: 'Mix it', kind: 'instruction', agent: 'mixer' })).status).toBe(201);
+  });
+});

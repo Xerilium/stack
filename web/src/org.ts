@@ -98,6 +98,8 @@ export function repoRoot(cwd: string): string {
 export function folderFor(agent: TeamAgent, items: SessionItem[], team: TeamAgent[] = [agent]): string {
   const mine = items.filter((s) => matchAgent(s, team) === agent).sort((a, b) => b.lastActive.localeCompare(a.lastActive))[0];
   if (mine) return repoRoot(mine.cwd);
+  // A scanned agent with no session of its own runs in its repo: the server knows the folder, so none is sent. @req FR:agent-team/agent.team.scan.run.cwd
+  if (agent.home) return '';
   for (const p of agent.projects) {
     const s = items.filter((x) => x.owner === p).sort((a, b) => b.lastActive.localeCompare(a.lastActive))[0];
     if (s) return repoRoot(s.cwd);

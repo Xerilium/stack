@@ -103,4 +103,10 @@ describe('compose defaults', () => {
     const mine = [...items, sess({ id: 'c0', title: '👔 CoS · brief', owner: null, cwd: '/x/todo', lastActive: at(0) })];
     expect(folderFor(team[0], mine, team)).toBe('/x/todo');
   });
+  // @req FR:agent-team/agent.team.scan.run.cwd
+  it('a scanned agent with no session of its own sends no folder: the server runs it in its repo', () => {
+    const away = { ...team[3], slug: 'mixer', name: 'Mixer', home: 'f4' };
+    expect(folderFor(away, items, [...team, away])).toBe('');
+    expect(folderFor(away, [...items, sess({ id: 'm', title: 'Mixer · mix', owner: 'f4', cwd: '/x/f4-mixes', lastActive: at(0) })], [...team, away])).toBe('/x/f4-mixes');
+  });
 });

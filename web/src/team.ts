@@ -44,7 +44,7 @@ export function ownerNote(notes: string[] = []): string | undefined {
  * 1. `Owner:` on the task, else on the nearest ancestor that names `me` or an agent (`ancestors`: nearest first). `me` stops the walk.
  * 2. Else the most specific agent whose scope covers the project and section: section before project, an agent file before a metadata line,
  *    a narrower agent before a broad worker (fewer projects), then team order. An agent may also hold `*`.
- * 3. Else the roll-up. View-only agents are never the owner.
+ * 3. Else the roll-up. A scanned agent is the owner only when `Owner:` names it (FR:agent-team/agent.team.scan.run.pick).
  * With no task: the first agent past the roll-up with a non-`*` scope, else the first agent.
  * @req FR:product-reset/schema.agent @req FR:product-reset/schema.owner @req FR:task-detail-design/compose.to
  */
@@ -55,17 +55,17 @@ export function ownerOf(team: TeamAgent[], task?: OwnerTask, ancestors: OwnerTas
       if (!v) continue;
       if (/^me$/i.test(v)) break;
       const key = nameKey(v);
-      const hit = team.find((a) => runnable(a) && (a.slug === v || a.name === v || a.slug === key || nameKey(a.name) === key));
+      const hit = team.find((a) => (a.slug === v || a.name === v || a.slug === key || nameKey(a.name) === key));
       if (hit) return hit;
     }
   }
-  const rollup = rollupOf(team.filter(runnable)); // a view-only `*` agent can never take a message
+  const rollup = rollupOf(team.filter(local)); // a scanned `*` agent is never the roll-up
   const fit = (a: TeamAgent) => Math.max(0, ...a.scope.filter((x) => x !== '*').map((x) => (task ? specificity(x, task.project, task.section) : 2)));
   const best = team
-    .map((a, i) => ({ a, i, s: a === rollup || !runnable(a) ? 0 : fit(a) }))
+    .map((a, i) => ({ a, i, s: a === rollup || !local(a) ? 0 : fit(a) }))
     .filter((x) => x.s > 1)
     .sort((x, y) => y.s - x.s || Number(y.a.defined) - Number(x.a.defined) || (x.a.projects.length || 1) - (y.a.projects.length || 1) || x.i - y.i)[0]?.a;
-  return best ?? rollup ?? (task ? undefined : team.find(runnable));
+  return best ?? rollup ?? (task ? undefined : team.find(local));
 }
 
 /** The task's ancestors, nearest first: earlier rows of the same project and section with a smaller depth (the list is in file order). `index`: ref → position, to skip the scan. */
@@ -82,18 +82,18 @@ export function ancestorsOf<T extends { ref: string; project: string; depth: num
   return out;
 }
 
-/** Stack can run the agent: a scanned agent (another repo or user level, `home` set) is view only for now. @req FR:agent-team/agent.team.scan.view */
-export const runnable = (a: Pick<TeamAgent, 'home'>): boolean => !a.home;
+/** The agent is in the content repo: a scanned agent (another repo or user level, `home` set) runs when named, never by default. @req FR:agent-team/agent.team.scan.run.pick */
+export const local = (a: Pick<TeamAgent, 'home'>): boolean => !a.home;
 
 /**
- * Agents covering a task (view-only agents left out): the roll-up first, then most specific first; the first is the active agent. With `live`, a metadata-only agent
+ * Agents covering a task, scanned agents included (@req FR:agent-team/agent.team.scan.run): the roll-up first, then most specific first; the first is the active agent. With `live`, a metadata-only agent
  * (no file) stays only while a session has matched it recently. @req FR:agent-team/web.chip @req FR:agent-team/web.chip.live
  */
 export function agentsFor(team: TeamAgent[], project: string, section?: string, live?: Set<string>): TeamAgent[] {
-  const rollup = rollupOf(team);
+  const rollup = rollupOf(team.filter(local));
   return team
     .map((a, i) => ({ a, i, s: a === rollup ? 4 : Math.max(0, ...a.scope.map((x) => specificity(x, project, section))) }))
-    .filter((x) => x.s > 0 && runnable(x.a) && (!live || x.a.defined || live.has(x.a.slug)))
+    .filter((x) => x.s > 0 && (!live || x.a.defined || live.has(x.a.slug)))
     .sort((x, y) => y.s - x.s || x.i - y.i)
     .map((x) => x.a);
 }
@@ -151,7 +151,7 @@ export function chipFor(o: { agent?: TeamAgent; review?: ReviewItem; session?: S
   return { text: o.agent.name, tone: 'plain', title: `${chain}. Talk to it (a)`, agent: o.agent };
 }
 
-/** The ask's agent when it is a runnable team member, else the project's active agent. @req FR:agent-team/web.anything @req FR:agent-team/agent.team.scan.view */
+/** The ask's agent when it is a team member, else the project's active agent. @req FR:agent-team/web.anything @req FR:agent-team/agent.team.scan.run */
 export function agentForAsk(team: TeamAgent[], ask: { from: string; project?: string }): TeamAgent | undefined {
-  return team.find((a) => runnable(a) && (a.slug === ask.from || a.name === ask.from)) ?? (ask.project ? agentsFor(team, ask.project)[0] : undefined);
+  return team.find((a) => a.slug === ask.from || a.name === ask.from) ?? (ask.project ? agentsFor(team, ask.project)[0] : undefined);
 }

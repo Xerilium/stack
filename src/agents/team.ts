@@ -1,9 +1,10 @@
 /**
  * Sessions that belong to tasks: start a run for the task's agent (persona, context, title) and review a task (read-only run with a JSON verdict,
  * recorded in the result log, needs written as asks).
- * @req FR:agent-team/talk.start @req FR:agent-team/talk.start.cwd @req FR:agent-team/review.run @req FR:agent-team/review.record @req FR:agent-team/review.needs @req FR:agent-team/review.read
+ * @req FR:agent-team/talk.start @req FR:agent-team/talk.start.cwd @req FR:agent-team/agent.team.scan.run @req FR:agent-team/agent.team.scan.run.cwd @req FR:agent-team/agent.team.scan.run.pick @req FR:agent-team/review.run @req FR:agent-team/review.record @req FR:agent-team/review.needs @req FR:agent-team/review.read
  */
-import { agentFor, listTeam, reviewPrefix, reviewsIn, type Review, type TeamAgent } from '../core/agents';
+import { agentFor, listTeam, reviewPrefix, reviewsIn, type Review, type ScannedAgent, type TeamAgent } from '../core/agents';
+import { readScannedAgent } from '../core/agent-scan';
 import { handleAsk, listAsks, putAsk, type AskKind, type ListedAsk } from '../core/asks';
 import { currentRows, listInbox, sendToInbox, type ListedEntry } from '../core/inbox';
 import { checkClaim, claimTask } from '../core/triage';
@@ -76,43 +77,61 @@ export function personaOf(agent: TeamAgent, context?: string): string {
   return [head, agent.prompt, context ? `## Context\n\n${context}` : ''].filter(Boolean).join('\n\n');
 }
 
-export interface AgentRunInput { agent?: string; ref?: string; project?: string; /** Where the session runs; default the served folder. @req FR:agent-team/talk.start.cwd */ cwd?: string; text: string }
-async function resolve(ctx: LifecycleContext, i: { agent?: string; ref?: string; project?: string }) {
+/** The agents outside the content repo (`scanAgents`, cached by the host); absent: the content repo team only. @req FR:agent-team/agent.team.scan.run */
+export type AgentScan = () => Promise<ScannedAgent[]>;
+export interface AgentRunInput { agent?: string; ref?: string; project?: string; /** Where the session runs; default a scanned agent's repo, else the served folder. @req FR:agent-team/talk.start.cwd */ cwd?: string; text: string; scan?: AgentScan }
+
+/**
+ * A scanned agent as it runs: its whole file as the prompt, and its repo folder (none at user level). A content repo agent is returned as is.
+ * @req FR:agent-team/agent.team.scan.run.prompt @req FR:agent-team/agent.team.scan.run.cwd
+ */
+export async function runnableAgent(agent: TeamAgent, scanned: ScannedAgent[]): Promise<{ agent: TeamAgent; cwd?: string }> {
+  const x = agent.home !== undefined ? scanned.find((s) => s.def.slug === agent.slug) : undefined;
+  if (!x) return { agent };
+  const def = await readScannedAgent(x);
+  return { agent: { ...agent, prompt: def.prompt }, ...(x.dir ? { cwd: x.dir } : {}) };
+}
+
+async function resolve(ctx: LifecycleContext, i: { agent?: string; ref?: string; project?: string; scan?: AgentScan }) {
   const ref = i.ref ? parseRef(i.ref) : null;
   if (i.ref && !ref) throw new LifecycleError('Bad ref');
   const c = ref ? await taskContext(ctx, ref) : null;
   const project = c?.project ?? i.project;
   if (!c && project) { try { await ctx.storage.read(`tasks/${project}.md`); } catch (e) { if (e instanceof NotFoundError) throw new NotFoundError(`No project ${project}`); throw e; } }
-  const team = await listTeam(ctx);
-  const agent = i.agent ? team.find((a) => a.slug === i.agent) : project ? agentFor(team, project, c?.section)[0] : undefined;
-  if (!agent) throw new NotFoundError(i.agent ? `No agent ${i.agent}` : `No agent for ${project ?? 'this'}`);
-  return { ref, c, project, agent };
+  const scanned = i.scan ? await i.scan() : [];
+  const team = await listTeam(ctx, scanned);
+  // A scanned agent runs only when named: the default is a content repo agent. @req FR:agent-team/agent.team.scan.run.pick
+  const found = i.agent ? team.find((a) => a.slug === i.agent) : project ? agentFor(team.filter((a) => a.home === undefined), project, c?.section)[0] : undefined;
+  if (!found) throw new NotFoundError(i.agent ? `No agent ${i.agent}` : `No agent for ${project ?? 'this'}`);
+  const { agent, cwd } = await runnableAgent(found, scanned);
+  return { ref, c, project, agent, cwd };
 }
 
 /** The persona options for a follow-up in an existing session: the same system prompt and model as a new task session, no title. @req FR:agent-thread/thread.ask */
-export async function agentPromptOptions(ctx: LifecycleContext, i: { agent?: string; ref?: string; project?: string }): Promise<{ options: PromptOptions }> {
+export async function agentPromptOptions(ctx: LifecycleContext, i: { agent?: string; ref?: string; project?: string; scan?: AgentScan }): Promise<{ options: PromptOptions }> {
   const { c, agent } = await resolve(ctx, i);
   return { options: { systemPrompt: personaOf(agent, c?.text), ...(agent.model ? { model: agent.model } : {}) } };
 }
 
 /** Starts a new session for an agent on a task (or a project). @req FR:agent-team/talk.start */
 export async function startAgentRun(runs: AgentRuns, ctx: LifecycleContext, i: AgentRunInput): Promise<{ runId: string; sessionId: string | null; agent: string; title: string }> {
-  const { c, project, agent } = await resolve(ctx, i);
+  const { c, project, agent, cwd } = await resolve(ctx, i);
   // The title is what the page maps back to the task (` · <ref>`); without a task it names the project, or just the agent.
   const title = c ? sessionTitle(`${agent.name} · ${c.title}`, i.ref!) : sessionTitle(project ? `${agent.name} · ${project}` : agent.name, '');
   const options: PromptOptions = { systemPrompt: personaOf(agent, c?.text), title, ...(agent.model ? { model: agent.model } : {}) };
-  const r = await runs.prompt({ text: i.text, options, ...(i.cwd ? { cwd: i.cwd } : {}) });
+  const where = i.cwd ?? cwd;
+  const r = await runs.prompt({ text: i.text, options, ...(where ? { cwd: where } : {}) });
   return { ...r, agent: agent.slug, title };
 }
 
 /** Starts a read-only review; the verdict and its needs land when the run ends. @req FR:agent-team/review.run */
-export async function reviewTask(runs: AgentRuns, ctx: LifecycleContext, refText: string, agentSlug?: string, onError: (e: unknown) => void = (e) => console.error('review:', e)): Promise<{ runId: string; sessionId: string | null; agent: string }> {
-  const { ref, c, agent } = await resolve(ctx, { ref: refText, agent: agentSlug });
+export async function reviewTask(runs: AgentRuns, ctx: LifecycleContext, refText: string, agentSlug?: string, onError: (e: unknown) => void = (e) => console.error('review:', e), scan?: AgentScan): Promise<{ runId: string; sessionId: string | null; agent: string }> {
+  const { ref, c, agent, cwd } = await resolve(ctx, { ref: refText, agent: agentSlug, scan });
   if (!ref || !c) throw new LifecycleError('Bad ref');
   if (c.human) throw new TriageDenied('Needs a human');
   const title = sessionTitle(`${agent.name} · review · ${c.title}`, refText);
   const options: PromptOptions = { systemPrompt: personaOf(agent, c.text), title, schema: REVIEW_SCHEMA, allowedTools: READ_ONLY_TOOLS, disallowedTools: WRITE_TOOLS, ...(agent.model ? { model: agent.model } : {}) };
-  const r = await runs.prompt({ text: REVIEW_PROMPT, options });
+  const r = await runs.prompt({ text: REVIEW_PROMPT, options, ...(cwd ? { cwd } : {}) });
   const now = () => (ctx.now ?? (() => new Date()))();
   const onDone = async (d: Extract<Update, { type: 'done' }>) => {
     const a = parseVerdict(d.structured ?? d.text);
@@ -136,14 +155,14 @@ export async function reviewTask(runs: AgentRuns, ctx: LifecycleContext, refText
 }
 
 /** Assign: the row is claimed for the agent (log + in progress) and a session starts with the assign prompt, plus the owner's note (the composer's Do it). @req FR:agent-thread/thread.assign @req FR:task-detail-design/compose.doit */
-export async function assignTask(runs: AgentRuns, ctx: LifecycleContext, refText: string, agentSlug?: string, note?: string): Promise<{ runId: string; sessionId: string | null; agent: string; title: string; claimed: boolean }> {
-  const { ref, c, agent } = await resolve(ctx, { ref: refText, agent: agentSlug });
+export async function assignTask(runs: AgentRuns, ctx: LifecycleContext, refText: string, agentSlug?: string, note?: string, scan?: AgentScan): Promise<{ runId: string; sessionId: string | null; agent: string; title: string; claimed: boolean }> {
+  const { ref, c, agent } = await resolve(ctx, { ref: refText, agent: agentSlug, scan });
   if (!ref || !c) throw new LifecycleError('Bad ref');
   const caller = { actor: `agent:${agent.slug}`, owner: true };
   await checkClaim(ctx, ref, caller); // refused (🙋, held, done, autonomy) before any run starts
   const said = note?.trim().slice(0, 1000);
   const text = said ? `${QUICK_PROMPTS.assign}\n\nThe owner's note: ${said}` : QUICK_PROMPTS.assign;
-  const r = await startAgentRun(runs, ctx, { agent: agent.slug, ref: refText, text }); // then the start: one that fails leaves no 🚧 behind
+  const r = await startAgentRun(runs, ctx, { agent: agent.slug, ref: refText, text, ...(scan ? { scan } : {}) }); // then the start: one that fails leaves no 🚧 behind
   // The start is async: rows may have moved meanwhile, and the bare line would then claim a different task than the agent was told about.
   const now = await taskContext(ctx, ref).catch(() => null);
   if (!now || now.title !== c.title) {

@@ -1,11 +1,11 @@
 /** @req FR:agent-team/talk.start @req FR:agent-team/review.run @req FR:agent-team/review.record @req FR:agent-team/review.needs @req FR:agent-team/review.read @req FR:agent-team/driver.options @req FR:agent-team/driver.cwd */
-import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createRunManager, createSdkDriver, READ_ONLY_TOOLS, WRITE_TOOLS, type AgentDriver, type Run, type SdkLike, type Update } from '../../src/agents';
-import { listReviews, parseVerdict, personaOf, reviewTask, sessionTitle, startAgentRun, taskContext } from '../../src/agents/team';
+import { agentPromptOptions, assignTask, listReviews, parseVerdict, personaOf, reviewTask, sessionTitle, startAgentRun, taskContext } from '../../src/agents/team';
 import { listAsks } from '../../src/core/asks';
-import { putAgent, reviewOf } from '../../src/core/agents';
+import { putAgent, reviewOf, type ScannedAgent } from '../../src/core/agents';
 import { MemoryStorage } from '../../src/core/storage';
 
 const NOW = new Date('2026-10-29T10:00:00Z');
@@ -195,5 +195,58 @@ describe('startAgentRun cwd', () => {
     expect(prompts[0]).toMatchObject({ cwd: '/x/f4-music', text: 'Plan' });
     await startAgentRun(runs, ctx, { agent: 'cos', text: 'Hi' });
     expect(prompts[1]).toMatchObject({ cwd: '/repo' });
+  });
+});
+
+// @req FR:agent-team/agent.team.scan.run @req FR:agent-team/agent.team.scan.run.prompt @req FR:agent-team/agent.team.scan.run.cwd
+describe('scanned agents run', () => {
+  function scanned() {
+    const root = mkdtempSync(join(tmpdir(), 'stack-run-scan-'));
+    const repo = join(root, 'f4-music');
+    mkdirSync(join(repo, '.claude/agents'), { recursive: true });
+    const file = join(repo, '.claude/agents/mixer.md');
+    writeFileSync(file, '---\nname: mixer\ndescription: Mixes tracks.\nmodel: opus\n---\n\nFULL_BODY: mix in Logic.\n');
+    mkdirSync(join(root, 'user'), { recursive: true });
+    const ufile = join(root, 'user/helper.md');
+    writeFileSync(ufile, '---\nname: helper\ndescription: Helps.\n---\n\nUSER_BODY\n');
+    const list: ScannedAgent[] = [
+      { def: { slug: 'mixer', name: 'Mixer', role: 'Mixes tracks', scope: [], model: 'opus', mode: 'ad-hoc', prompt: '', extra: [] }, home: 'flantastic-4', file, dir: repo },
+      { def: { slug: 'helper', name: 'Helper', scope: [], mode: 'ad-hoc', prompt: '', extra: [] }, home: 'user', file: ufile },
+    ];
+    return { root, repo, file, ufile, scan: async () => list };
+  }
+  it('Start chat reads the whole file and runs in the agent repo; an explicit folder wins; user level runs in the served folder', async () => {
+    const { ctx, runs, prompts } = await mk();
+    const s = scanned();
+    const r = await startAgentRun(runs, ctx, { agent: 'mixer', project: 'flantastic-4', text: 'Mix', scan: s.scan });
+    expect(r.agent).toBe('mixer');
+    expect(prompts[0]).toMatchObject({ cwd: s.repo, options: { model: 'opus' } });
+    expect(prompts[0].options?.systemPrompt).toContain('FULL_BODY: mix in Logic.');
+    await startAgentRun(runs, ctx, { agent: 'mixer', ref: 'flantastic-4:7', cwd: '/x/other', text: 'Mix', scan: s.scan });
+    expect(prompts[1].cwd).toBe('/x/other');
+    await startAgentRun(runs, ctx, { agent: 'helper', text: 'Hi', scan: s.scan });
+    expect(prompts[2].cwd).toBe('/repo');
+    expect(prompts[2].options?.systemPrompt).toContain('USER_BODY');
+    await expect(startAgentRun(runs, ctx, { agent: 'mixer', text: 'x' })).rejects.toThrow(/No agent mixer/); // no scan: not on the team
+  });
+  it('a file gone since the scan starts nothing', async () => {
+    const { ctx, runs, prompts } = await mk();
+    const s = scanned();
+    rmSync(s.file);
+    await expect(startAgentRun(runs, ctx, { agent: 'mixer', text: 'x', scan: s.scan })).rejects.toThrow(/Agent file for mixer is gone/);
+    expect(prompts).toHaveLength(0);
+  });
+  it('review and assign run in the agent repo with the whole file; follow-ups carry the full persona', async () => {
+    const { ctx, runs, prompts } = await mk();
+    const s = scanned();
+    await reviewTask(runs, ctx, 'flantastic-4:7', 'mixer', undefined, s.scan);
+    expect(prompts[0]).toMatchObject({ cwd: s.repo });
+    expect(prompts[0].options?.systemPrompt).toContain('FULL_BODY');
+    await assignTask(runs, ctx, 'flantastic-4:7', 'mixer', undefined, s.scan);
+    expect(prompts[1]).toMatchObject({ cwd: s.repo });
+    expect(prompts[1].options?.systemPrompt).toContain('FULL_BODY');
+    const f = await agentPromptOptions(ctx, { agent: 'mixer', ref: 'flantastic-4:7', scan: s.scan });
+    expect(f.options).toMatchObject({ model: 'opus' });
+    expect(f.options.systemPrompt).toContain('FULL_BODY');
   });
 });
