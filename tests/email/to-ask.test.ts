@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { asksPath, parseAsk } from '../../src/core/asks';
 import { NotFoundError } from '../../src/core/storage';
-import { QUIET_CLASSES, mailKey, newSummary, recordResult, resolveAsk, tally, toAsk } from '../../src/email/to-ask';
+import { QUIET_CLASSES, groupKey, mailKey, newSummary, recordResult, resolveAsk, tally, toAsk } from '../../src/email/to-ask';
 import type { TriageResult } from '../../src/email/types';
 import { NOW, mkCtx, msg } from './fixtures';
 
@@ -85,7 +85,7 @@ describe('ask from a needs_decision or sensitive result', () => {
   it('becomes a decide ask with the model options and recommendation', async () => {
     const { storage, ctx } = mkCtx();
     await recordResult(ctx, decide(), { project: 'work' });
-    expect(await read(storage, KEY)).toMatchObject({ kind: 'decide', options: ['Accept the offer', 'Decline', 'Counter at +10%'], recommend: 'Decline', project: 'work', from: 'email-triage' });
+    expect(await read(storage, groupKey(msg()))).toMatchObject({ kind: 'decide', options: ['Accept the offer', 'Decline', 'Counter at +10%'], recommend: 'Decline', project: 'work', from: 'email-triage' });
   });
 
   it('keeps 2-4 options; pipes and blanks cleaned; fewer than two degrades to an answer ask', () => {
@@ -102,10 +102,12 @@ describe('ask from a needs_decision or sensitive result', () => {
     const { storage, ctx } = mkCtx();
     const m = msg({ from: { name: 'Counsel', address: 'counsel@example.test' }, subject: 'Settlement terms', bodyPreview: 'SECRET-BODY-TEXT $1,000,000' });
     await recordResult(ctx, { message: m, class: 'sensitive', confidence: 1, reason: 'denylist', draft });
-    const a = await read(storage, KEY);
+    const key = groupKey(m);
+    const a = await read(storage, key);
     expect(a).toMatchObject({ kind: 'go-do', ask: 'Sensitive mail from Counsel: Settlement terms', from: 'email-triage', link: m.webLink });
-    expect(a.detail).toBe('');
-    const raw = (await storage.read(asksPath(KEY))).content;
+    // only the group count line (FR:email-triage/ask.group), never the body
+    expect(a.detail).toMatch(/^Mails: 1 \([0-9a-f]{8}\)$/);
+    const raw = (await storage.read(asksPath(key))).content;
     expect(raw).not.toContain('SECRET-BODY-TEXT');
     expect(raw).not.toContain('Thanks, that works');
     expect(a.why).toBeUndefined();

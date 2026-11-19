@@ -41,8 +41,19 @@ Mail is the biggest source of interruptions. This module reads a mailbox on a sc
 
 - **FR:ask.reply** (P1): A `needs_reply` result with a draft becomes an ask of kind `review` keyed `mail-<conversation hash>`: `ask` = `Review draft reply to <sender name>: <subject>`, `recommend` = `Send as drafted` or `Edit then send` by model confidence, `link` = the draft's Outlook web link, `default` = `Draft stays in Drafts (nothing is sent)`, `reversible: yes`, `project` from the mailbox, `from: email-triage`, `## Detail` = the first 600 characters of the draft
 - **FR:ask.decide** (P1): A `needs_decision` result becomes kind `decide` with 2-4 options from the model and a recommendation; `sensitive` becomes kind `go-do` with sender and subject only, no body
+- **FR:ask.group** (P1): `needs_decision` and `sensitive` asks are keyed `mail-<hash>` of the sender address (lowercase) and the subject (lowercase, trimmed, every leading `Re:`, `Fw:` or `Fwd:` dropped)
+  - **FR:ask.group.reply** (P1): `needs_reply` asks, and asks for a mail with no sender address or an empty subject, stay keyed by conversation
+  - **FR:ask.group.count** (P1): A mail from a thread the open grouped ask does not list adds the thread and ends the ask line with `(<n> mails)`
+  - **FR:ask.group.refresh** (P1): Each mail for an open grouped ask sets the fields it has (link, options, summary and the rest) on the ask
+  - **FR:ask.group.priority** (P2): An update never lowers the priority of an open grouped ask
+  - **FR:ask.group.dedupe** (P1): The last detail line `Mails: <n> (<ids>)` lists short ids of the threads the group has seen
+  - **FR:ask.group.done** (P1): A mail from a listed thread leaves a handled grouped ask handled
+  - **FR:ask.group.reopen** (P1): A mail from a new thread opens a handled grouped ask again at one mail
+  - **FR:ask.group.resolve** (P2): An owner reply in a thread resolves each open grouped ask that lists the thread
+  - **FR:ask.group.inbox** (P2): An Inbox item for a grouped mail acts on the grouped ask (`askKey`). Its own `id` stays per conversation
+  - **FR:ask.group.summary** (P1): The run summary counts one ask per key
 - **FR:ask.once** (P2): A draft is created at most once per conversation while its ask is open: before `createReply` the runner looks up the ask for `mail-<hash>` and, when it is an open `review` ask with a link, reuses that draft (link and detail) and counts no new draft. The ask is written right after the draft; a run that dies between the two can leave one orphan draft for that pass (the next pass drafts again because no ask records it) — that window is accepted and must stay the only way to get two drafts
-- **FR:ask.quiet** (P1): `newsletter`, `receipt`, `calendar`, `skip`, `fyi` and `spam` results create no ask of their own (they feed the batch asks in `email-inbox-zero`); they only increase counters in the run summary. Idempotent: the same conversation twice updates one ask
+- **FR:ask.quiet** (P1): `newsletter`, `receipt`, `calendar`, `skip`, `fyi` and `spam` results create no ask of their own (they feed the batch asks in `email-inbox-zero`); they only increase counters in the run summary. Idempotent: the same conversation twice updates one ask (for a grouped ask: the same sender and subject)
 - **FR:ask.resolve** (P2): When the owner replies in the thread (seen on the next delta), the module handles the ask as `resolved`
 
 ## Dependencies

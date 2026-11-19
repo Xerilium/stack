@@ -4,7 +4,7 @@ import { createGraphGuard, GRAPH_BASE, GraphDenied } from '../../src/email/guard
 import { applyApproved, approvedChoice, approvedMoves, memoryState, observe, safeHttps, subKey, unsubscribeTarget, writeHygieneAsks, type BatchKind, type HygieneState, type Http, type MailActions } from '../../src/email/hygiene';
 import { DEFAULT_RULES, prefilter } from '../../src/email/rules';
 import { runTriage } from '../../src/email/run';
-import { toAsk } from '../../src/email/to-ask';
+import { groupKey, toAsk } from '../../src/email/to-ask';
 import type { Classifier, MailProvider, Message, TriageResult } from '../../src/email/types';
 import { mkCtx, msg, NOW } from './fixtures';
 
@@ -324,8 +324,8 @@ describe('thread summaries', () => {
     const classifier: Classifier = { classify: jest.fn(async () => ({ class: 'needs_decision' as const, urgency: 1, confidence: 0.9, reason: 'r', options: ['A', 'B'], summary: 'Short summary.' })) };
     await runTriage({ ctx, provider, classifier, rules: DEFAULT_RULES });
     expect(classifier.classify).toHaveBeenCalledTimes(1);
-    const key = `mail-${createHash('sha1').update('conv-1').digest('hex').slice(0, 12)}`;
-    expect((await read(storage, key)).detail).toBe('Thread: Short summary.');
+    // a decide ask is grouped by sender and subject; its last detail line counts the mails (FR:email-triage/ask.group)
+    expect((await read(storage, groupKey(msg()))).detail).toMatch(/^Thread: Short summary\.\n\nMails: 1 \([0-9a-f]{8}\)$/);
   });
 });
 

@@ -14,7 +14,7 @@ export function parseItems(raw: unknown): InboxItem[] {
     if (!r || typeof r !== 'object' || !SOURCES.includes(r.source as string) || !ACTION_IDS.includes(r.suggested as never) || !/^(mail|chat|gh)-[0-9a-f]{12}$/.test(s(r.id, 40))) continue;
     const link = s(r.link, 2000);
     out.push({
-      id: s(r.id, 40), source: r.source as InboxItem['source'], account: s(r.account, 200), from: s(r.from, 120), subject: s(r.subject, 300), receivedAt: s(r.receivedAt, 40),
+      id: s(r.id, 40), ...(/^mail-[0-9a-f]{12}$/.test(s(r.askKey, 40)) ? { askKey: s(r.askKey, 40) } : {}), source: r.source as InboxItem['source'], account: s(r.account, 200), from: s(r.from, 120), subject: s(r.subject, 300), receivedAt: s(r.receivedAt, 40),
       unread: r.unread !== false, urgency: typeof r.urgency === 'number' ? r.urgency : 0, summary: s(r.summary, 400), suggested: r.suggested as InboxItem['suggested'],
       actions: Array.isArray(r.actions) ? (r.actions.filter((a) => ACTION_IDS.includes(a as never)) as InboxItem['actions']) : [], ...(/^https:\/\/\S+$/.test(link) ? { link } : {}),
       ...(s(r.messageId, 512) ? { messageId: s(r.messageId, 512) } : {}), ...(s(r.kind, 40) ? { kind: s(r.kind, 40) } : {}),

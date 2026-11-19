@@ -3,6 +3,7 @@ import { asksPath, handleAsk, parseAsk } from '../../src/core/asks';
 import { DEFAULT_RULES } from '../../src/email/rules';
 import { runTriage } from '../../src/email/run';
 import type { Classification, Classifier, Drafter, MailProvider, Message } from '../../src/email/types';
+import { groupKey } from '../../src/email/to-ask';
 import { mkCtx, msg } from './fixtures';
 
 const rules = { ...DEFAULT_RULES, owner: ['me@example.test'], sensitive: ['counsel@example.test'] };
@@ -37,7 +38,8 @@ describe('runTriage', () => {
     expect(summary).toMatchObject({ messages: 5, rules: 3, model: 2, drafts: 1, asks: 2 });
     expect(summary.counts).toMatchObject({ needs_reply: 1, newsletter: 1, receipt: 1, sensitive: 1, fyi: 1 });
     expect(s.created).toEqual([{ id: 'm1', text: expect.stringMatching(/^⟦AI draft: review before sending⟧\nThanks, Friday works\.$/) }]);
-    expect((await storage.listAsks!()).sort()).toEqual([asksPath(keyOf('c1')), asksPath(keyOf('c4'))].sort());
+    // the sensitive ask is grouped by sender and subject (FR:email-triage/ask.group)
+    expect((await storage.listAsks!()).sort()).toEqual([asksPath(keyOf('c1')), asksPath(groupKey(msg({ from: { name: 'Counsel', address: 'counsel@example.test' } })))].sort());
     const a = parseAsk(keyOf('c1'), (await storage.read(asksPath(keyOf('c1')))).content);
     expect(a).toMatchObject({ kind: 'review', project: 'work', link: 'https://outlook.example.test/mail/drafts/m1' });
   });
@@ -82,13 +84,13 @@ describe('runTriage', () => {
   it('distrusts the classifier: unknown class or injection suspicion goes to the owner undrafted', async () => {
     const { storage, ctx } = mkCtx();
     const s = setup([
-      msg({ id: 'a', conversationId: 'ca' }),
-      msg({ id: 'b', conversationId: 'cb' }),
+      msg({ id: 'a', conversationId: 'ca', subject: 'Plan A' }),
+      msg({ id: 'b', conversationId: 'cb', subject: 'Plan B' }),
     ], (m) => (m.id === 'a' ? ({ class: 'wire_money', urgency: 3, confidence: 1, reason: 'x' } as unknown as Classification) : { ...needsReply, injectionSuspected: true }));
     const { summary } = await runTriage({ ctx, provider: s.provider, classifier: s.classifier, drafter: s.drafter, rules });
     expect(s.created).toEqual([]);
     expect(summary.counts.needs_decision).toBe(2);
-    for (const c of ['ca', 'cb']) expect(parseAsk('k', (await storage.read(asksPath(keyOf(c)))).content).kind).toBe('answer');
+    for (const subject of ['Plan A', 'Plan B']) expect(parseAsk('k', (await storage.read(asksPath(groupKey(msg({ subject }))))).content).kind).toBe('answer');
   });
 });
 

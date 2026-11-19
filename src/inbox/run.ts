@@ -29,14 +29,14 @@ export async function runAction(item: InboxItem, req: { action: ActionId; text?:
       return { ok: true, link: r.webLink };
     }
     case 'mark-done':
-      await quiet(handleAsk(d.ctx, item.id, { outcome: 'resolved', note: 'Marked done in Inbox' }, 'inbox'));
+      await quiet(handleAsk(d.ctx, item.askKey ?? item.id /* @req FR:email-triage/ask.group.inbox */, { outcome: 'resolved', note: 'Marked done in Inbox' }, 'inbox'));
       return { ok: true };
     case 'snooze':
       if (!req.until) throw new Error('until is required to snooze');
-      await quiet(answerAsk(d.ctx, item.id, { answer: 'defer', until: req.until }));
+      await quiet(answerAsk(d.ctx, item.askKey ?? item.id, { answer: 'defer', until: req.until }));
       return { ok: true };
     case 'ask-me-later':
-      await quiet(answerAsk(d.ctx, item.id, { answer: 'defer', until: req.until ?? tomorrow(d.ctx) }));
+      await quiet(answerAsk(d.ctx, item.askKey ?? item.id, { answer: 'defer', until: req.until ?? tomorrow(d.ctx) }));
       return { ok: true };
     case 'create-task':
       if (!d.addTask) throw new Error('No task writer');

@@ -6,6 +6,8 @@ export type Source = 'email' | 'teams' | 'slack' | 'github';
 export interface InboxItem {
   /** The ask key: `mail-<hash>` for email, `chat-<hash>` for chats, `gh-<hash>` for GitHub. */
   id: string;
+  /** The ask this item acts on when it is not `id`: a grouped decide or sensitive mail (`FR:email-triage/ask.group`). */
+  askKey?: string;
   source: Source;
   /** Mailbox address, workspace or tenant. */
   account: string;
