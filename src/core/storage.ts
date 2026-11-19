@@ -39,6 +39,8 @@ export interface Storage {
    * Adapters without history leave it out. @req FR:storage-git/git.activity
    */
   lineActivity?(path: string): Promise<number[]>;
+  /** Subjects of the commits to `path` since `since`, newest first. Adapters without history leave it out. @req FR:pri-first-ranking/daily.done */
+  commitSubjects?(path: string, since: Date): Promise<string[]>;
 }
 
 /**

@@ -48,6 +48,12 @@ paths:
             enum:
               - now
               - any
+        - name: daily
+          in: query
+          schema:
+            type: string
+            enum:
+              - "1"
       responses:
         "200":
           description: Ranked tasks
@@ -77,6 +83,26 @@ paths:
                         stale:
                           type: boolean
                           description: True for a row overdue 3+ days with no commit to it in 3+ days; its score is at most 500
+                  daily:
+                    type: array
+                    description: "With daily=1: per project, its first ranked task and whether a task in it was done today"
+                    items:
+                      type: object
+                      properties:
+                        project:
+                          type: string
+                        name:
+                          type: string
+                          description: Project file base name
+                        done:
+                          type: boolean
+                        pick:
+                          type: object
+                          properties:
+                            ref:
+                              $ref: "#/components/schemas/Ref"
+                            text:
+                              type: string
         default:
           $ref: "#/components/responses/Error"
   /meetings:

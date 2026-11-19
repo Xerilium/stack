@@ -78,6 +78,13 @@ export class GitStorage extends FsStorage {
    * Cached per HEAD revision and file version. A file git does not track gives an empty list.
    * @req FR:storage-git/git.activity
    */
+  /** @req FR:pri-first-ranking/daily.done */
+  async commitSubjects(path: string, since: Date): Promise<string[]> {
+    validatePath(path);
+    const out = await this.tryGit('log', `--since=${since.toISOString()}`, '--format=%s', '--', path);
+    return (out ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
+  }
+
   async lineActivity(path: string): Promise<number[]> {
     validatePath(path);
     const head = (await this.tryGit('rev-parse', '-q', '--verify', 'HEAD'))?.trim();

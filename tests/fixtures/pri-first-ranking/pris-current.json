@@ -1,0 +1,16 @@
+[
+  { "id": "money", "title": "Ad hoc money tasks", "status": "active", "items": [], "backlog": [], "weekly": [], "slot": 0, "projects": ["finance"]},
+  { "id": "premium", "title": "FH Premium (+ AM)", "status": "active", "items": [], "backlog": [], "weekly": [], "slot": 1, "keywords": ["Premium"]},
+  { "id": "fh011", "title": "FH 0.11", "status": "active", "items": [], "backlog": [], "weekly": [], "slot": 2, "keywords": ["FH 0.11", "finops-hubs 0.11"]},
+  { "id": "ftk16", "title": "FTK 16", "status": "active", "items": [], "backlog": [], "weekly": [], "slot": 3, "days": { "tue": 2}, "keywords": ["v16", "FTK 16"]},
+  { "id": "focus", "title": "FOCUS", "status": "active", "items": [], "backlog": [], "weekly": [], "slot": 4, "days": { "mon": 1, "thu": 1}, "projects": ["focus"]},
+  { "id": "prs", "title": "PRs", "status": "active", "items": [], "backlog": [], "weekly": [], "slot": 4, "keywords": ["PR review", "Autopilot"]},
+  { "id": "personal", "title": "Personal", "status": "active", "items": [], "backlog": [], "weekly": [], "slot": 5, "projects": ["personal", "family", "house"]},
+  { "id": "qm", "title": "QM", "status": "active", "items": [], "backlog": [], "weekly": [], "slot": 6, "days": { "mon": 5, "tue": 4, "wed": 1, "thu": "off", "fri": "off", "sat": "off", "sun": "off" }, "keywords": ["QM"]},
+  { "id": "f4", "title": "F4", "status": "active", "items": [], "backlog": [], "weekly": [], "slot": 7, "projects": ["f4"]},
+  { "id": "korr", "title": "Korr (F4)", "status": "active", "items": [], "backlog": [], "weekly": [], "slot": 7, "keywords": ["Korr", "Vaurin"]},
+  { "id": "printer", "title": "Printer", "status": "active", "items": [], "backlog": [], "weekly": [], "slot": 8, "keywords": ["Printer"]},
+  { "id": "stack", "title": "Stack", "status": "active", "items": [], "backlog": [], "weekly": [], "slot": 9, "projects": ["stack"]},
+  { "id": "arc", "title": "Arc", "status": "active", "items": [], "backlog": [], "weekly": [], "slot": 10, "keywords": ["Arc"]},
+  { "id": "catalyst", "title": "Catalyst", "status": "active", "items": [], "backlog": [], "weekly": [], "slot": 11, "projects": ["catalyst"]}
+]

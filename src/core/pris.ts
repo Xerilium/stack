@@ -25,7 +25,13 @@ export interface Pri {
   projects?: string[]; keywords?: string[]; refs?: string[];
   /** ISO date-time of the last status note. */
   statusAt?: string;
+  /** Place in the day order, lowest first (0-99); without it, the file position. @req FR:pri-first-ranking/$pri-day */
+  slot?: number;
+  /** Weekday slots (`mon`..`sun`), or `off` to leave the priority out that day. */
+  days?: Partial<Record<PriDay, number | 'off'>>;
 }
+export const PRI_DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+export type PriDay = (typeof PRI_DAYS)[number];
 export interface PrisFile { version: 1; rev: number; updatedAt?: string; seed?: { source: string; at: string; sha256: string }; pris: Pri[] }
 
 /** A priority list that fails the schema; `issues` lists every problem. */
@@ -78,7 +84,7 @@ export function parsePris(body: unknown): Pri[] {
   const out = body.flatMap((raw, i): Pri[] => {
     const f = `[${i}]`;
     if (!isObj(raw)) { bad(f, 'Must be an object'); return []; }
-    unknown(f, raw, ['id', 'title', 'status', 'items', 'backlog', 'weekly', ...PRI_LINKS, 'statusAt']);
+    unknown(f, raw, ['id', 'title', 'status', 'items', 'backlog', 'weekly', ...PRI_LINKS, 'statusAt', 'slot', 'days']);
     let id: string | undefined;
     if (typeof raw.id !== 'string' || !SLUG.test(raw.id)) bad(`${f}.id`, 'Must match [a-z0-9][a-z0-9-]{0,23}');
     else if (ids.has(raw.id)) bad(`${f}.id`, 'Must be unique');
@@ -107,7 +113,23 @@ export function parsePris(body: unknown): Pri[] {
       if (typeof raw.statusAt === 'string' && ISO.test(raw.statusAt) && !Number.isNaN(Date.parse(raw.statusAt))) statusAt = raw.statusAt;
       else bad(`${f}.statusAt`, 'Must be an ISO date-time');
     }
-    return id && title && status ? [{ id, title, status, items: its, backlog, weekly, ...links, ...(statusAt ? { statusAt } : {}) }] : [];
+    // @req FR:pri-first-ranking/day.validate @req FR:pri-first-ranking/day.validate.key
+    const slotOk = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 99;
+    const day: Pick<Pri, 'slot' | 'days'> = {};
+    if (raw.slot !== undefined) { if (slotOk(raw.slot)) day.slot = raw.slot; else bad(`${f}.slot`, 'Must be a whole number from 0 to 99'); }
+    if (raw.days !== undefined) {
+      if (!isObj(raw.days)) bad(`${f}.days`, 'Must be an object of mon..sun to a slot or off');
+      else {
+        const days: NonNullable<Pri['days']> = {};
+        for (const [k, v] of Object.entries(raw.days)) {
+          if (!(PRI_DAYS as readonly string[]).includes(k)) bad(`${f}.days.${k}`, 'Must be mon, tue, wed, thu, fri, sat or sun');
+          else if (v === 'off' || slotOk(v)) days[k as PriDay] = v;
+          else bad(`${f}.days.${k}`, 'Must be a whole number from 0 to 99 or off');
+        }
+        day.days = days;
+      }
+    }
+    return id && title && status ? [{ id, title, status, items: its, backlog, weekly, ...links, ...(statusAt ? { statusAt } : {}), ...day }] : [];
   });
   if (issues.length) throw new PrisInvalid(issues);
   return out;

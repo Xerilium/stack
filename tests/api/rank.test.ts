@@ -1,3 +1,7 @@
+import { mkdtempSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { PriStore } from '../../src/core/pris';
 import { createApiHandler } from '../../src/api/handler';
 import { MemoryStorage } from '../../src/core/storage';
 import { NEEDS_PATH } from '../../src/core/needs-you';
@@ -107,5 +111,70 @@ describe('needs-you routes', () => {
   it('no file means an empty list', async () => {
     const { call } = await mk();
     expect((await call('GET', '/api/needs-you')).json).toEqual({ items: [] });
+  });
+});
+
+describe('GET /api/rank with priorities', () => {
+  // @req FR:pri-first-ranking/api.@api @req FR:pri-first-ranking/api.order @req FR:pri-first-ranking/api.tasks
+  it('ranks tasks linked to a priority first and returns task rows only', async () => {
+    const storage = await seed();
+    const home = mkdtempSync(join(tmpdir(), 'stack-home-'));
+    writeFileSync(join(home, 'pris.json'), JSON.stringify({ version: 1, rev: 1, pris: [{ id: 'p1', title: 'Rewrite', status: 'active', items: [], backlog: [], weekly: [{ week: '2026-W44', text: 'Michael: approve the copy' }], keywords: ['FOCUS issues'] }] }));
+    const h = createApiHandler({ storage, authorize: () => true, now: () => NOW, pris: new PriStore(home) });
+    const get = async (p: string) => (await (await h(new Request(`https://x.test${p}`, { headers: { 'x-ms-client-principal': OWNER } }))).json()) as { items: { ref: string; text: string }[]; task: { text: string } };
+    const { items } = await get('/api/rank');
+    expect(items[0].text).toMatch(/FOCUS issues triage/);
+    expect(items.every((i) => typeof i.ref === 'string' && !/approve the copy/.test(i.text))).toBe(true);
+    expect((await get('/api/next')).task.text).toMatch(/FOCUS issues triage/);
+    // A new priority list re-ranks: the memo never reuses the old order. @req FR:pri-first-ranking/api.order
+    writeFileSync(join(home, 'pris.json'), JSON.stringify({ version: 1, rev: 2, pris: [{ id: 'p1', title: 'Cid', status: 'active', items: [], backlog: [], weekly: [], keywords: ['Cid copy'] }] }));
+    expect((await get('/api/rank')).items[0].text).toMatch(/Rewrite Cid copy/);
+    writeFileSync(join(home, 'pris.json'), JSON.stringify({ version: 1, rev: 3, pris: [{ id: 'p1', title: 'Rewrite', status: 'active', items: [], backlog: [], weekly: [], keywords: ['FOCUS issues'] }] }));
+    expect((await get('/api/rank')).items[0].text).toMatch(/FOCUS issues triage/);
+    // @req FR:pri-first-ranking/order.overrides
+    await storage.writeAux(PRIORITIES_PATH, JSON.stringify({ rules: [{ match: 'FOCUS', effect: 'down' }] }), { expectedVersion: null });
+    expect((await get('/api/rank')).items.at(-1)!.text).toMatch(/FOCUS issues triage/);
+  });
+});
+
+describe('GET /api/rank?daily=1', () => {
+  // @req FR:pri-first-ranking/daily.@api @req FR:pri-first-ranking/daily.pick @req FR:pri-first-ranking/daily.done @req FR:pri-first-ranking/daily.order @req FR:pri-first-ranking/daily.output @req FR:pri-first-ranking/$daily-row
+  it('lists each project pick and whether a task was done today', async () => {
+    const storage = await seed();
+    await storage.write('tasks/focus.md', '# 👓 FOCUS\n\n- **Project value:** 🌟🌟\n\n## 🔄 Active\n\n- [ ] 🚨 📅 Oct 30: FOCUS issues triage 🟡\n- [x] Old FOCUS task\n');
+    await storage.write('tasks/done.md', '# Done\n\n## 🔄 Active\n\n- [x] All done here\n');
+    const today = NOW.getTime() - 3_600_000; const before = NOW.getTime() - 3 * 86_400_000;
+    Object.assign(storage, { lineActivity: async (p: string) => (p === 'tasks/focus.md' ? [before, before, before, before, before, before, before, today] : p === 'tasks/done.md' ? [before, before, before, before, before] : []) });
+    const h = createApiHandler({ storage, authorize: () => true, now: () => NOW });
+    const get = async (q: string) => (await (await h(new Request(`https://x.test/api/rank${q}`, { headers: { 'x-ms-client-principal': OWNER } }))).json()) as { items: { ref: string; project: string }[]; daily?: { project: string; done: boolean; pick?: { ref: string; text: string } }[] };
+    const r = await get('?daily=1');
+    const first = (p: string) => r.items.find((i) => i.project === p)?.ref;
+    expect(r.daily!.map((d) => d.project)).toEqual([...new Set(r.items.map((i) => i.project))].concat('Done'));
+    expect(r.daily!.find((d) => d.project === '👓 FOCUS')).toMatchObject({ done: true, pick: { ref: first('👓 FOCUS') } });
+    expect(r.daily!.find((d) => d.project === '💰 Finance')).toMatchObject({ done: false, pick: { ref: first('💰 Finance') } });
+    expect(r.daily!.find((d) => d.project === 'Done')).toEqual({ project: 'Done', name: 'done', done: false });
+    expect((await get('')).daily).toBeUndefined();
+  });
+  // @req FR:pri-first-ranking/daily.done @req FR:pri-first-ranking/daily.done.edit @req FR:pri-first-ranking/daily.done.day
+  it('counts Stack commits of today; never agent rows', async () => {
+    const storage = await seed();
+    await storage.write('tasks/finance.md', '# 💰 Finance\n\n- **Project value:** 💰💰💰\n\n## 🔄 Active\n\n- [ ] ‼️ 📅 Nov 2: Pay bills 💰💰💰💰 ⬆️\n- [x] 🤖 Agent reconciled the ledger\n');
+    const since: Date[] = [];
+    Object.assign(storage, {
+      lineActivity: async (p: string) => (p === 'tasks/finance.md' ? Array<number>(8).fill(NOW.getTime()) : []),
+      commitSubjects: async (p: string, s: Date) => { since.push(s); return p === 'tasks/other.md' ? ['Roll: Rewrite Cid copy', 'Update notes'] : p === 'tasks/focus.md' ? ['Retitle: FOCUS'] : []; },
+    });
+    const h = createApiHandler({ storage, authorize: () => true, now: () => NOW });
+    const r = (await (await h(new Request('https://x.test/api/rank?daily=1', { headers: { 'x-ms-client-principal': OWNER } }))).json()) as { daily: { project: string; done: boolean }[] };
+    const done = Object.fromEntries(r.daily.map((d) => [d.project, d.done]));
+    expect(done).toEqual({ '💰 Finance': false, '👓 FOCUS': false, Other: true });
+    expect(since[0].toISOString()).toBe('2026-11-01T07:00:00.000Z'); // midnight PT on Nov 1
+  });
+  // @req FR:pri-first-ranking/daily.done.history
+  it('marks no project done when the storage keeps no history', async () => {
+    const h = createApiHandler({ storage: await seed(), authorize: () => true, now: () => NOW });
+    const r = (await (await h(new Request('https://x.test/api/rank?daily=1', { headers: { 'x-ms-client-principal': OWNER } }))).json()) as { daily: { done: boolean }[] };
+    expect(r.daily.length).toBeGreaterThan(0);
+    expect(r.daily.every((d) => !d.done)).toBe(true);
   });
 });

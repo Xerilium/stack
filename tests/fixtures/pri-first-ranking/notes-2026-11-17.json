@@ -1,0 +1,14 @@
+{
+  "p1": "W47: Nov 12 window ended; FH/Xe quality sessions archived. Agents on Stack v2 + Catalyst 0.5. Michael: none, agents progressing.",
+  "p2": "430 approved + ready, awaiting live test. 543 approved, 918 changes requested, 1103 review says wrong approach. Michael: live-validate https://github.com/allytehq/finops-hubs/pull/430",
+  "p3": "allyte-api specs 4-8 + marketplace 24 open, waiting on review; 918 MSA changes requested (last). Michael: review https://github.com/allytehq/allyte-api/pull/4 (then 7, 8)",
+  "p4": "0.11: 1142 settings edit needs live validate, 430 ready, 439 Intel Centers draft approved, Premium UX session running. Michael: answer fh-backend-explore interview (401 vs 319/1079) (session link)",
+  "p5": "v15 shipped Oct 28; merged since Nov 12: 2413, 2412, 2410, 2407, 2426. Reviewer-waiting: 2327/2337/2369/2424, 1090/2420. Michael: none, agents progressing.",
+  "p6": "SKU price: 2826 still draft (review required); 2749 SkuMeter approved; 2828 draft; 2473 merge conflict. Michael: publish https://github.com/FinOps-Open-Cost-and-Usage-Spec/FOCUS_Spec/pull/2826",
+  "p7": "Errand one (Nov 9) still unchecked; errand two open. Michael: do errand two; check off errand one if done.",
+  "p8": "Stack drafts open: 156, 157 (CoS view), 158, 163, 176; todo 113 parity harness (conflict). Michael: none, agents progressing.",
+  "p9": "Catalyst v0.4 (Nov 16) + v0.4.1 (Nov 17) released; v0.4.2 milestone 9/9 closed; 0.5 has 27 open. 0.4.1 rollout held in arc, allyte-core/design/marketplace (issues 298/299). Michael: none, agents progressing.",
+  "p10": "Office hours passed (Nov 12). allyte-web 296 AI model guide still draft; 299-312 blog/SEO PRs waiting, CI failing. Michael: none; retire pri or undraft https://github.com/allytehq/allyte-web/pull/296",
+  "p11": "Done: 11-10 sync ingested (printer-fund 36 merged). printer-app 1, 2 have threads awaiting reply. Michael: none, agents progressing.",
+  "p12": "v15 released Oct 28; changelog fix 2426 merged; social posts done. Michael: none, close pri."
+}

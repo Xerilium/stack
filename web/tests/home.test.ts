@@ -148,3 +148,13 @@ describe('topAsksOf', () => {
     expect(topAsksOf(homeOf({ tasks, projects, ranked: next('alpha:1', 'alpha:2'), now: at, minutesLeft: 600 })).rows).toEqual([]);
   });
 });
+
+describe('homeOf daily goal', () => {
+  // @req FR:pri-first-ranking/daily.web
+  it('marks each project row done today or not', () => {
+    const tasks = [T('alpha:1', 'One'), T('beta:1', 'Two', 'beta')];
+    const h = homeOf({ tasks, projects: [P('alpha'), P('beta')], ranked: [R('alpha:1'), R('beta:1', undefined, 'beta')], now: at, minutesLeft: 600, done: new Map([['alpha', true]]) });
+    expect(h.projects.map((p) => [p.project, p.done])).toEqual([['alpha', true], ['beta', false]]);
+    expect(homeOf({ tasks, projects: [P('alpha')], ranked: [R('alpha:1')], now: at, minutesLeft: 600 }).projects[0].done).toBeUndefined();
+  });
+});

@@ -10,7 +10,7 @@ import { basename, dirname, join, resolve } from 'path';
 import { getDefaults, parseConfig, ConfigError, StackConfig } from '../core/config';
 import {
   addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
-  explainAutopri, explainStack, priLinkCounts, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
+  dailyGoal, dayPris, explainAutopri, explainStack, priLinkCounts, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
 } from '../core/lifecycle';
 import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
@@ -18,7 +18,7 @@ import { runInventory } from '../core/session-inventory';
 import { PRI_LINKS, PrisInvalid, PriStore, type Pri } from '../core/pris';
 import { PrPriConflict, PrPriInvalid, PrPriNotFound, PrPriorityStore } from '../core/pr-priority';
 import { PR_PRI_USAGE, prPriArgv, prPriCmd } from './pr-pri';
-import { formatGaps, priGaps, registerPrisEngine, setPris, withLinks, withNote } from '../core/pris-rank';
+import { formatGaps, priActions, priGaps, registerPrisEngine, setPris, withLinks, withNote, type PriAction } from '../core/pris-rank';
 import { AGENT_MODES, agentFor, listTeam, putAgent, type AgentMode } from '../core/agents';
 import { addNote, retitleTask } from '../api/edit';
 import { currentRows, handleEntry, INBOX_STATES, listInbox, replyFromAgent } from '../core/inbox';
@@ -79,7 +79,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   'add-project': { flags: ['description', 'repo', 'alias', 'priority', 'capacity', 'weekly-capacity', 'file', 'force', 'queries', 'no-update'], usage: 'add-project <name> [--description t] [--repo url] [--alias a,b] [--priority n] [--capacity Block=h,..] [--weekly-capacity n] [--file name] [--force] [--queries] [--no-update]', help: 'create a project file' },
   add: { flags: ['section', 'parent'], usage: 'add <project> <text...> [--section name] [--parent ref]', help: 'add a task' },
   capture: { flags: ['project', 'section', 'dry-run'], usage: 'capture <text...> [--project name] [--section name] [--dry-run]', help: 'add a task from a phrase (e.g. "call dentist tomorrow 30m #alpha")' },
-  next: { flags: ['top'], usage: 'next [--top n]', help: 'print the top task, or the first n ranked tasks (1-50); the web Home and /next use the same order' },
+  next: { flags: ['top', 'daily'], usage: 'next [--top n | --daily]', help: 'print the top task, or the first n ranked tasks (1-50); priority actions come first; --daily lists each project with its pick and done today; the web Home and /next use the same order' },
   start: { flags: ['expect', 'queries', 'no-update'], usage: 'start [ref] [--expect t] [--queries] [--no-update]', help: 'mark in progress' },
   complete: { flags: ['summary', 'remove', 'expect', 'queries', 'no-update'], usage: 'complete [ref] [--summary t] [--remove] [--expect t] [--queries] [--no-update]', help: 'check off (rolls recurring rows)' },
   skip: { flags: ['expect', 'queries', 'no-update'], usage: 'skip [ref] [--expect t] [--queries] [--no-update]', help: 'park a task (alias: park)' },
@@ -90,7 +90,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   retitle: { flags: ['text', 'expect', 'no-update'], usage: 'retitle <ref> --text t [--expect t] [--no-update]', help: 'edit a task row text in place (checkbox, indent, children, notes, and marks stay)' },
   note: { flags: ['text', 'expect'], usage: 'note add <ref> --text t [--expect t]', help: 'append a nested note bullet under a task (children stay)' },
   tag: { flags: ['unblocker', 'due', 'expect'], usage: 'tag <ref> [--unblocker yes|no] [--due "MMM d"|none] [--expect t]', help: 'set the 🔓 unblocker and 📅 due tags the autopri engine reads' },
-  rank: { flags: ['engine', 'explain', 'truth', 'top'], usage: 'rank [--engine autopri|pris|stack] [--top n] [--explain [--truth file]]', help: 'ranked tasks the owner must do (agent rows are left out); pris boosts tasks linked to ~/.stack/pris.json by priority order; --explain shows why each task has its place (stack: due tier, stale; autopri, pris: score parts and the priority served); --truth lists ground-truth items to tag or add' },
+  rank: { flags: ['engine', 'explain', 'truth', 'top', 'daily'], usage: 'rank [--engine autopri|pris|stack] [--top n] [--explain [--truth file]] [--daily]', help: 'ranked tasks the owner must do (agent rows are left out); pris boosts tasks linked to ~/.stack/pris.json by priority order; --explain shows why each task has its place (stack: due tier, stale; autopri, pris: score parts and the priority served); --truth lists ground-truth items to tag or add; --daily lists each project with its pick and done today' },
   triage: { flags: ['autonomy', 'agent', 'human', 'priority', 'effort', 'impact'], usage: 'triage <ref> [--autonomy none|triage|assist|full] [--agent t] [--human t] [--priority e] [--effort e] [--impact e]', help: 'show/set autonomy, add 🪄/🙋 subtasks' },
   'remove-completed': { flags: ['project', 'queries', 'no-update'], usage: 'remove-completed [--project name] [--queries] [--no-update]', help: 'delete checked rows' },
   web: { flags: ['port', 'repo', 'live', 'branch', 'batch', 'reset', 'bind'], usage: 'web [--repo path-or-url] [--live] [--branch name] [--remote name] [--batch minutes] [--port n] [--reset] [--bind loopback|tailnet]', help: 'serve the web app on localhost (demo copy by default; --live edits your checkout, committed in batches; --bind tailnet also serves paired devices on your Tailscale addresses)' },
@@ -106,7 +106,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   qm: { flags: ['file'], usage: 'qm [--json] | qm put --file plan.json [--json]', help: 'the weekly QM (quota-maxxing) plan (~/.stack/qm-plan.json, never git; schema in .xe/features/qm-plan/spec.md); agents write it with put' },
   feedback: { flags: ['route', 'since'], usage: 'feedback add "<text>" [--route r] | list [--since id] | done <id>', help: 'owner feedback on the app (~/.stack/feedback.jsonl, one JSON line each; docs/feedback.md); done writes feedback.done.jsonl' },
   sessions: { flags: [], usage: 'sessions [--json]', help: 'Claude app sessions: counts, ranked Needs you (waiting, stuck) with claude:// links, archive candidates; read-only, cached in ~/.stack/sessions.json' },
-  pris: { flags: ['file', 'projects', 'keywords', 'refs'], usage: 'pris [--json] | pris seed --file <md> | pris link <id> [--projects a,b] [--keywords a,b] [--refs a,b] | pris note <id> <text> | pris gaps', help: 'the owner priorities in order (~/.stack/pris.json); seed runs once; link sets the terms that link tasks; note records status; gaps lists priorities with no status, stale status (>7 days) or no linked tasks' },
+  pris: { flags: ['file', 'projects', 'keywords', 'refs'], usage: 'pris [--json] | pris seed --file <md> | pris put --file <json> | pris link <id> [--projects a,b] [--keywords a,b] [--refs a,b] | pris note <id> <text> | pris gaps', help: 'the owner priorities in order (~/.stack/pris.json); seed runs once; put replaces the list (slot and days set the order of each weekday); link sets the terms that link tasks; note records status; gaps lists priorities with no status, stale status (>7 days) or no linked tasks' },
   'pr-pri': { flags: ['rank', 'to', 'to-rank', 'note', 'rev', 'agent', 'reason', 'thread', 'on', 'remove', 'file', 'refresh'], usage: PR_PRI_USAGE, help: 'the PR priority queue the Sweep Manager works top down (~/.stack/pr-priority.json, never git): owner edits, agent recommendations, owner decisions, merge-order edges, thread acks, the escalation set; see docs/pr-priority.md' },
   app: { flags: ['check', 'install', 'no-build', 'source'], usage: 'app install [--no-build] | update [--check | --install] [--no-build] | status [--source dir]', help: 'build Stack.app from the source checkout (STACK_SOURCE or ~/.local/share/stack) and install or update it in /Applications; update never quits a running app unless --install (docs/desktop-install.md)' },
   live: { flags: ['agent', 'worktree', 'url', 'port', 'pid', 'file', 'text', 'reason', 'by', 'offline'], usage: 'live [next [ref] [--agent a --worktree p --offline] | ready <ref> --url u --pid n [--port n --worktree p] | state <ref> preparing|working | checklist <ref> --file items.json [--agent a] | item add|check|uncheck|fail|needs-fix|fixed|block|comment|edit <ref> [id] [--text t --reason r --by b] | resolve <ref> [--reason merged|closed|done]]', help: 'the live validation lane: one PR at a time, a checklist, the shared server lock; docs/live-validation-agent.md; never touches GitHub threads' },
@@ -451,8 +451,17 @@ async function prisCmd(p: ReturnType<typeof parseArgs>, ctxOf: () => LifecycleCo
   const store = new PriStore(stackHome());
   const [sub, extra] = p.positionals;
   if (sub === 'link' || sub === 'note' || sub === 'gaps') return prisCos(store, sub, p, ctxOf);
-  if (extra !== undefined || (sub !== undefined && sub !== 'seed')) throw new UsageError(`Unexpected argument: ${extra ?? sub}`);
+  if (extra !== undefined || (sub !== undefined && sub !== 'seed' && sub !== 'put')) throw new UsageError(`Unexpected argument: ${extra ?? sub}`);
   for (const k of ['projects', 'keywords', 'refs']) if (p.flags[k] !== undefined) throw new UsageError(`--${k} needs pris link`);
+  // @req FR:pri-first-ranking/day.cli @req FR:pri-first-ranking/day.cli.put
+  if (sub === 'put') {
+    const file = flag(p.flags, 'file');
+    if (!file) throw new UsageError('pris put needs --file <json>');
+    let body: unknown;
+    try { body = JSON.parse(readFileSync(resolve(file), 'utf8')); } catch { throw new UsageError(`Cannot read JSON --file: ${file}`); }
+    const w = await store.put(store.read().rev, body);
+    return { json: { ok: true, ...w }, text: `put ${w.pris.length} priorities` };
+  }
   if (sub === 'seed') {
     const file = flag(p.flags, 'file');
     if (!file) throw new UsageError('pris seed needs --file <md>');
@@ -553,7 +562,46 @@ function buildCtx(f: Record<string, string | true>, dir: string): LifecycleConte
   const nowFlag = flag(f, 'now');
   const at = nowFlag ? new Date(nowFlag) : undefined;
   if (at && Number.isNaN(at.getTime())) throw new UsageError(`--now must be an ISO date: ${nowFlag}`);
-  return { storage, config: loadConfig(dir), now: () => at ?? new Date() };
+  return { storage, config: loadConfig(dir), now: () => at ?? new Date(), pris: ownerPris() };
+}
+
+/**
+ * The owner priorities, read once; a missing or invalid file means none.
+ * @req FR:pri-first-ranking/cli.@cli @req FR:pri-first-ranking/cli.read @req FR:pri-first-ranking/cli.read.bad
+ */
+function ownerPris(): () => Pri[] {
+  let pris: Pri[] | undefined;
+  return () => {
+    if (!pris) { try { pris = new PriStore(stackHome()).read().pris; } catch { pris = []; } }
+    return pris;
+  };
+}
+
+/**
+ * One line per project: `<project> done=yes|no <ref> <text>`, `-` for no pick.
+ * @req FR:pri-first-ranking/daily.@cli @req FR:pri-first-ranking/daily.cli
+ */
+async function dailyOut(ctx: LifecycleContext, at: Date | undefined, f: Record<string, string | true>): Promise<Outcome> {
+  // @req FR:pri-first-ranking/daily.cli.alone
+  for (const k of ['top', 'engine', 'explain', 'truth']) if (f[k] !== undefined) throw new UsageError(`--daily does not take --${k}`);
+  const rows = await dailyGoal(ctx, at);
+  return {
+    json: { ok: true, items: rows.map((d) => ({ project: d.project, ...(d.name ? { name: d.name } : {}), done: d.done, ...(d.pick ? { pick: { ref: formatRef(d.pick.ref), text: d.pick.text } } : {}) })) },
+    text: rows.map((d) => `${d.name ?? d.project.replace(/\s+/g, '-')} done=${d.done ? 'yes' : 'no'} ${d.pick ? `${formatRef(d.pick.ref)} ${d.pick.text}` : '-'}`).join('\n'),
+  };
+}
+
+/**
+ * Ranked rows: the priority actions, then the tasks.
+ * @req FR:pri-first-ranking/action.first @req FR:pri-first-ranking/cli.rows @req FR:pri-first-ranking/cli.json @req FR:pri-first-ranking/cli.rows.score @req FR:pri-first-ranking/proof.top @req FR:pri-first-ranking/proof.backlog
+ */
+async function rankRows(ctx: LifecycleContext, at: Date | undefined, top: number | undefined): Promise<{ json: object[]; text: string[] }> {
+  const acts: PriAction[] = priActions(dayPris(ctx, at));
+  const tasks = await rankStack(ctx, at, top);
+  const a = acts.map((x) => ({ json: { pri: { id: x.id, rank: x.rank, title: x.title }, project: x.title, score: x.score, text: x.text }, text: `pri:${x.rank} ${Number(x.score.toFixed(1))} ${x.title} ${x.text}` }));
+  const t = tasks.map((n) => ({ json: { ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text, ...(n.rule ? { rule: n.rule } : {}), ...(n.stale ? { stale: true } : {}) }, text: `${formatRef(n.ref)} ${Number(n.score.toFixed(1))} ${n.project} ${n.text}` }));
+  const all = [...a, ...t].slice(0, top);
+  return { json: all.map((x) => x.json), text: all.map((x) => x.text) };
 }
 
 /** Commands after which legacy ran `Update-StackSummary`. @req FR:cli/cmd.refresh */
@@ -618,17 +666,18 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
     }
     case 'next': {
       extra(0);
+      if (f['daily'] === true) return dailyOut(ctx, at, f);
       // @req FR:cli/cmd.next
       const top = num(flag(f, 'top'), 'top');
       if (top !== undefined) {
         if (!Number.isInteger(top) || top < 1 || top > 50) throw new UsageError('--top must be a whole number from 1 to 50');
-        const ranked = await rankStack(ctx, at, top);
-        if (!ranked.length) return { json: { ok: true, changed: false, message: 'No active tasks available' }, text: '', code: EXIT.none };
-        return {
-          json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text, ...(n.rule ? { rule: n.rule } : {}), ...(n.stale ? { stale: true } : {}) })) },
-          text: ranked.map((n) => `${formatRef(n.ref)} ${Number(n.score.toFixed(1))} ${n.project} ${n.text}`).join('\n'),
-        };
+        const ranked = await rankRows(ctx, at, top);
+        if (!ranked.json.length) return { json: { ok: true, changed: false, message: 'No active tasks available' }, text: '', code: EXIT.none };
+        return { json: { ok: true, items: ranked.json }, text: ranked.text.join('\n') };
       }
+      // A priority action comes before any task. @req FR:pri-first-ranking/action.first
+      const act = priActions(dayPris(ctx, at))[0];
+      if (act) return { json: { ok: true, pri: { id: act.id, rank: act.rank, title: act.title }, project: act.title, score: act.score, text: act.text }, text: `pri:${act.rank} ${Number(act.score.toFixed(1))} ${act.title} ${act.text}` };
       const n = await nextTask(ctx, at);
       if (!n) return { json: { ok: true, changed: false, message: 'No active tasks available' }, text: '', code: EXIT.none };
       const score = Number(n.score.toFixed(1));
@@ -679,6 +728,7 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
     // @req FR:auto-priority/explain.cli @req FR:auto-priority/truth.report
     case 'rank': {
       extra(0);
+      if (f['daily'] === true) return dailyOut(ctx, at, f);
       const engine = flag(f, 'engine') ?? 'stack';
       if (engine !== 'autopri' && engine !== 'pris' && engine !== 'stack') throw new UsageError('--engine must be autopri, pris or stack');
       const explain = f['explain'] === true;
@@ -695,7 +745,8 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
       // @req FR:pris-aware-ranking/explain.cli @req FR:pris-aware-ranking/explain.json
       const pris = engine === 'pris' ? new PriStore(stackHome()).read().pris : undefined;
       if (pris) { registerPrisEngine(); setPris(pris); }
-      const rctx = { ...ctx, engine };
+      // An explicit engine keeps its own order (bake-offs). @req FR:pri-first-ranking/order.none
+      const rctx = { ...ctx, engine, pris: undefined };
       if (explain) {
         const tf = flag(f, 'truth');
         let truth: string | undefined;
@@ -703,11 +754,8 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
         const r = await explainAutopri(rctx, at, { top, truth, ...(pris ? { pris } : {}) });
         return { json: { ok: true, items: r.items, ...(r.truth ? { truth: r.truth } : {}) }, text: r.text, code: r.items.length ? EXIT.ok : EXIT.none };
       }
-      const ranked = await rankStack(rctx, at, top);
-      return {
-        json: { ok: true, items: ranked.map((n) => ({ ref: { path: n.ref.path, line: n.ref.line + 1 }, score: n.score, project: n.project, text: n.text, ...(n.stale ? { stale: true } : {}) })) },
-        text: ranked.map((n) => `${formatRef(n.ref)} ${Number(n.score.toFixed(1))} ${n.project} ${n.text}`).join('\n'), code: ranked.length ? EXIT.ok : EXIT.none,
-      };
+      const ranked = await rankRows(engine === 'stack' ? ctx : rctx, at, top);
+      return { json: { ok: true, items: ranked.json }, text: ranked.text.join('\n'), code: ranked.json.length ? EXIT.ok : EXIT.none };
     }
     case 'triage': {
       if (p.positionals.length !== 1) throw new UsageError('triage needs exactly one <ref>');

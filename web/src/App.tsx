@@ -122,6 +122,7 @@ export function App() {
   const [next, setNext] = useState<NextTask | null>(null);
   /** The server's ranking: Home draws this and nothing else. @req FR:web-app/now.active */
   const [ranked, setRanked] = useState<RankItem[]>([]);
+  const [doneToday, setDoneToday] = useState<Map<string, boolean> | undefined>(undefined);
   /** The same ranking across the whole day's time blocks, for My day and the week. @req FR:web-app/today.plan */
   const [dayOrder, setDayOrder] = useState<string[] | null>(null);
   const [needs, setNeeds] = useState<NeedItem[]>([]);
@@ -256,7 +257,7 @@ export function App() {
   const needAsks = useMemo(() => fromNeeds(needs, clockNow), [needs, clockNow]);
   const needRows = useMemo(() => [...needAsks, ...taskAsks], [needAsks, taskAsks]); // one stable list: a new array every render would reset the Asks cursor
   const inNeeds = useMemo(() => new Set([...taskAsks, ...needAsks].map((a) => a.ref).filter((r): r is string => !!r)), [taskAsks, needAsks]);
-  const home = useMemo(() => homeOf({ tasks, projects, ranked, exclude: inNeeds, now: clockNow, minutesLeft, ...(allow ? { allow } : {}) }), [tasks, projects, ranked, inNeeds, clockNow, minutesLeft, allow]);
+  const home = useMemo(() => homeOf({ tasks, projects, ranked, exclude: inNeeds, now: clockNow, minutesLeft, ...(allow ? { allow } : {}), ...(doneToday ? { done: doneToday } : {}) }), [tasks, projects, ranked, inNeeds, clockNow, minutesLeft, allow, doneToday]);
   /** The one task on the Now screen: Home's own pick. @req FR:now-screen/now.one */
   const liveNow = useMemo(() => nowOf(home, minutesLeft, (t) => parseRow(t.text).who === 'agent'), [home, minutesLeft]);
   /** A done card stays until its Done finishes: a live reload in the meantime never swaps it out early. @req FR:product-reset/ui.done */
@@ -312,6 +313,7 @@ export function App() {
     try {
       // @req FR:perf/client.paint — the first screen waits for the ranking, tasks, and projects; the all-day order fills in when it arrives.
       void api.rank(1000, 'any').then((a) => setDayOrder(a.map((x) => x.ref)), () => setDayOrder(null));
+      void api.daily().then(setDoneToday, () => setDoneToday(undefined)); // @req FR:pri-first-ranking/daily.web
       const [rk, t, p] = await Promise.all([api.rank(100), api.tasks(), api.projects()]);
       setRanked(rk); setNext(rk[0] ? { ref: rk[0].ref, text: rk[0].text, project: rk[0].project, score: rk[0].score } : null); setTasks(t); setRefProjects(p); setProjects(p); setPhase('ready');
       api.needs().then(setNeeds, () => setNeeds([])); // the CoS file is optional; never blocks the page

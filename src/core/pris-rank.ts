@@ -5,7 +5,7 @@
  */
 import { autopriRank, autopriParts, type AutopriParts } from './autopri';
 import type { StackConfig } from './config';
-import { PRI_LINKS, type Pri } from './pris';
+import { PRI_DAYS, PRI_LINKS, type Pri } from './pris';
 import { escapeRe, wordsRe } from './regex';
 import { isMessage, legacyEngine, listEngines, registerEngine, type ScoredTask, type ScoringEngine, type ScoringProject } from './scoring';
 
@@ -84,7 +84,7 @@ export const linkTask = (pris: Pri[], row: LinkRow): PriLink | undefined => link
 const projectNames = (projects: ScoringProject[]): string[] => projects.flatMap((p) => [p.name, ...(p.aliases ?? [])]);
 
 /** Link rows for scored tasks: own text, parent texts as context, project aliases. */
-function rowsOf(all: ScoredTask[], projects: ScoringProject[]): Map<string, LinkRow> {
+function rowsOf(all: Pick<ScoredTask, 'task'>[], projects: ScoringProject[]): Map<string, LinkRow> {
   const byId = new Map(all.map((s) => [s.task.id, s.task]));
   const aliases = new Map(projects.map((p) => [p.name, p.aliases ?? []]));
   const out = new Map<string, LinkRow>();
@@ -98,7 +98,7 @@ function rowsOf(all: ScoredTask[], projects: ScoringProject[]): Map<string, Link
 }
 
 /** Link per task id. */
-export function linkAll(all: ScoredTask[], projects: ScoringProject[], pris: Pri[]): Map<string, PriLink> {
+export function linkAll(all: Pick<ScoredTask, 'task'>[], projects: ScoringProject[], pris: Pri[]): Map<string, PriLink> {
   const link = linker(pris, projectNames(projects));
   const out = new Map<string, PriLink>();
   for (const [id, row] of rowsOf(all, projects)) { const l = link(row); if (l) out.set(id, l); }
@@ -144,6 +144,67 @@ export const prisEngine: ScoringEngine = {
 /** Registers `pris` once. Never changes the default engine. */
 export function registerPrisEngine(): void {
   if (!listEngines().includes(prisEngine.id)) registerEngine(prisEngine);
+}
+
+// ---------------------------------------------------------------- priority first
+
+/** The weekday of `at` in `timeZone` (the system zone when unset). */
+function weekday(at: Date, timeZone?: string): (typeof PRI_DAYS)[number] {
+  const d = new Intl.DateTimeFormat('en-US', { weekday: 'short', ...(timeZone ? { timeZone } : {}) }).format(at).toLowerCase().slice(0, 3);
+  return d as (typeof PRI_DAYS)[number];
+}
+
+/**
+ * The priorities in the order of the day: the weekday slot, else `slot`, else the file position; a weekday entry wins a tie; `off` is left out.
+ * @req FR:pri-first-ranking/day.input @req FR:pri-first-ranking/day.slot @req FR:pri-first-ranking/day.slot.day @req FR:pri-first-ranking/day.slot.base @req FR:pri-first-ranking/day.slot.none @req FR:pri-first-ranking/day.tie @req FR:pri-first-ranking/day.tie.file @req FR:pri-first-ranking/day.off
+ */
+export function priOrder(pris: Pri[], at: Date, timeZone?: string): Pri[] {
+  const day = weekday(at, timeZone);
+  return pris
+    .map((p, i) => ({ p, i, d: p.days?.[day] }))
+    .filter((x) => x.d !== 'off')
+    .map((x) => ({ ...x, k: typeof x.d === 'number' ? x.d : x.p.slot ?? x.i, o: typeof x.d === 'number' ? 0 : 1 }))
+    .sort((a, b) => a.k - b.k || a.o - b.o || a.i - b.i)
+    .map((x) => x.p);
+}
+
+// @req FR:pri-first-ranking/$pri-action @req FR:pri-first-ranking/action.output
+export interface PriAction { id: string; rank: number; title: string; text: string; score: number }
+
+/**
+ * The owner's own next step: the text after the last `Michael:` in the newest note. `none` is no action; `none; x` is `x`.
+ * @req FR:pri-first-ranking/action.input @req FR:pri-first-ranking/proof.fixture @req FR:pri-first-ranking/action.parse @req FR:pri-first-ranking/action.parse.none @req FR:pri-first-ranking/action.parse.rest
+ */
+export function priAction(p: Pri): string | undefined {
+  const note = p.weekly[0]?.text ?? '';
+  const at = note.lastIndexOf('Michael:');
+  if (at < 0) return undefined;
+  let text = note.slice(at + 'Michael:'.length).trim();
+  const none = /^none\b\s*(;)?/i.exec(text);
+  if (none && !none[1]) return undefined;
+  if (none) text = text.slice(none[0].length).trim();
+  return text.replace(/\.$/, '') || undefined;
+}
+
+/**
+ * One row per linking priority that has an action, in rank order, scored by the priority boost.
+ * @req FR:pri-first-ranking/action.first @req FR:pri-first-ranking/action.one @req FR:pri-first-ranking/cli.rows.score
+ */
+export function priActions(pris: Pri[]): PriAction[] {
+  const list = linkingPris(pris);
+  return list.flatMap(({ pri, rank }) => {
+    const text = priAction(pri);
+    return text ? [{ id: pri.id, rank, title: pri.title, text, score: (PRI_SCORE * (list.length + 1 - rank)) / list.length }] : [];
+  });
+}
+
+/**
+ * Linked rows first by priority rank, then unlinked rows; engine order kept inside each.
+ * @req FR:pri-first-ranking/order.linked @req FR:pri-first-ranking/order.linked.rank @req FR:pri-first-ranking/order.linked.score @req FR:pri-first-ranking/order.unlinked @req FR:pri-first-ranking/order.none
+ */
+export function priFirst<T>(rows: T[], link: (row: T) => PriLink | undefined): T[] {
+  const rank = (r: T) => link(r)?.rank ?? Infinity;
+  return rows.map((r, i) => ({ r, k: rank(r), i })).sort((a, b) => a.k - b.k || a.i - b.i).map((x) => x.r);
 }
 
 // ---------------------------------------------------------------- gaps
