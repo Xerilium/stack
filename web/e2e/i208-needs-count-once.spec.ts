@@ -1,6 +1,6 @@
 /**
  * The Needs you count shows one value on a cold load: it waits for the server asks and the task asks.
- * @req FR:ask-queue/web.home.count
+ * @req FR:ask-queue/web.home.count @req FR:ask-queue/web.home.count.once @req FR:ask-queue/web.home.count.live
  */
 import { expect, test } from '@playwright/test';
 import { mockApi, type MockAsk } from './mock';
@@ -30,9 +30,11 @@ test('cold load: the badge and title show one value, never an intermediate one',
     };
     new MutationObserver(note).observe(document, { subtree: true, childList: true, characterData: true });
   });
+  const asksIn = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/asks');
   await page.goto('/#/now');
+  await asksIn;
   await expect(page.locator('[data-testid="nav-notifications"]:visible')).toBeVisible();
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(200); // let the page render what it has
   // Server asks are loaded, the CoS items are not: no count yet.
   await expect(page.locator('[data-testid="nav-notifications"]:visible .badge')).toHaveCount(0);
   release();

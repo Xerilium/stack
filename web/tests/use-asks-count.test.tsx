@@ -35,7 +35,7 @@ describe('useAsks count', () => {
     expect(document.title).toBe('Stack');
   });
 
-  // @req FR:ask-queue/web.home.count
+  // @req FR:ask-queue/web.home.count.once
   it('both loaded: one value in the count and the title', async () => {
     const api = fakeApi([ask('a'), ask('b')]);
     await act(() => { render(<Probe api={api} tasks={[]} tasksReady={false} />, root); });
@@ -46,7 +46,7 @@ describe('useAsks count', () => {
     expect(document.title).toBe('(5) Stack');
   });
 
-  // @req FR:ask-queue/web.home.count
+  // @req FR:ask-queue/web.home.count.live
   it('after the first complete count, live changes show at once', async () => {
     const api = fakeApi([ask('a')]);
     await act(() => { render(<Probe api={api} tasks={[]} tasksReady={true} />, root); });

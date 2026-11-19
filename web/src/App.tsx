@@ -286,19 +286,20 @@ export function App() {
   /** Agent activity and the inbox load on their own: a failure there never blocks the day plan. @req FR:web-app/today.agents */
   const loadSide = useCallback(async () => {
     const d = new Date();
+    // The inbox replies hide answered rows from Needs you: read them first, so the count does not wait on the calendar. @req FR:ask-queue/web.home.count
+    const inboxDone = api.inbox().then(setInbox, () => undefined).finally(() => setInboxRead(true));
     // The waking day first: it sets the calendar range. @req FR:home/day.calendar
     const s = await api.schedule(d.toISOString()).catch(() => null);
     setSched(s);
     const range = calendarRange(s, d);
     void api.inboxSources().then((r) => setInboxAttention(r.summary.attention), () => undefined);
-    const [a, i, c, w] = await Promise.allSettled([api.agents(), api.inbox(), api.calendar(range.from, range.to), api.meetings()]);
+    const [a, c, w] = await Promise.allSettled([api.agents(), api.calendar(range.from, range.to), api.meetings()]);
     setRules(w.status === 'fulfilled' ? w.value : []);
     /** @req FR:web-app/today.meetings */
     calReadAt.current = Date.now();
     if (c.status === 'fulfilled') { setEvents(c.value.items); setCalError(c.value.error ?? ''); setCalOn(c.value.configured); setCalSource(sourceOf(c.value, new Date())); } else { setCalError('Calendar unavailable'); setCalSource({ kind: 'calendar', state: 'error' }); }
     if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(a.reason instanceof Error ? a.reason.message : 'Failed to load');
-    if (i.status === 'fulfilled') setInbox(i.value);
-    setInboxRead(true);
+    await inboxDone;
   }, []);
   /** Live mode: what the server has not committed yet. @req FR:web-shell/state.unsaved */
   const unsaved = useUnsaved(api, (m) => toast(m, 'err'), local);
