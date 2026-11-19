@@ -1,7 +1,7 @@
 /** @req FR:web-shell/state.needs */
 import { describe, expect, it } from 'vitest';
 import type { AskItem } from '../src/asks';
-import { fromDecisions, fromNeeds, mergeNeeds, type NeedItem } from '../src/needs';
+import { fromDecisions, fromNeeds, mergeNeeds, STALE_MS, staleNeeds, type NeedItem } from '../src/needs';
 import type { Task } from '../src/types';
 
 const at = new Date(2026, 9, 29, 10, 0);
@@ -70,5 +70,40 @@ describe('fromNeeds', () => {
   // @req FR:pr-review-lane/lane.needs
   it('a blocked live check is not reversible (no Undo)', () => {
     expect(fromNeeds([n('lv.li-0000abcd')], NOW)[0].reversible).toBe(false);
+  });
+});
+
+// @req FR:ask-queue/needs.web.stale
+describe('stale CoS items', () => {
+  const NOW = new Date('2026-11-18T18:00:00Z');
+  const n = (id: string, over: Partial<NeedItem> = {}): NeedItem => ({ id, title: `Title ${id}`, recommendation: 'Do it', link: 'https://example.test/x', ...over });
+  const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3600_000).toISOString();
+  it('the limit is 48 h, in one constant', () => {
+    expect(STALE_MS).toBe(48 * 3600_000);
+  });
+  it('11 items 6 days past by leave the main list and form the stale group', () => {
+    const items = Array.from({ length: 11 }, (_, i) => n(`s${i}`, { by: '2026-11-12T18:00:00Z' }));
+    expect(fromNeeds(items, NOW)).toHaveLength(0);
+    const stale = staleNeeds(items, NOW);
+    expect(stale).toHaveLength(11);
+    expect(stale[0]).toMatchObject({ key: 'need:s0', source: 'need', from: 'Chief of Staff', recommend: 'Do it', overdue: true });
+  });
+  it('an item 24 h past by stays in the main list as overdue', () => {
+    const items = [n('a', { by: hoursAgo(24) })];
+    expect(fromNeeds(items, NOW).map((x) => [x.key, x.overdue])).toEqual([['need:a', true]]);
+    expect(staleNeeds(items, NOW)).toEqual([]);
+  });
+  it('exactly 48 h past by is not stale yet', () => {
+    expect(staleNeeds([n('a', { by: hoursAgo(48) })], NOW)).toEqual([]);
+  });
+  it('an item with no by is never stale', () => {
+    const items = [n('a')];
+    expect(fromNeeds(items, NOW)).toHaveLength(1);
+    expect(staleNeeds(items, NOW)).toEqual([]);
+  });
+  it('an answered stale item is in neither list', () => {
+    const items = [n('a', { by: '2026-11-12T18:00:00Z', answer: { choice: 'go', at: hoursAgo(1) } })];
+    expect(fromNeeds(items, NOW)).toEqual([]);
+    expect(staleNeeds(items, NOW)).toEqual([]);
   });
 });

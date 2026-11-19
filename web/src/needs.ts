@@ -50,15 +50,29 @@ export interface NeedItem {
   answer?: { choice: 'go' | 'defer' | 'reply'; text?: string; until?: string; at: string };
 }
 
+/** A CoS item this far past its `by` is stale: the CoS must re-verify it before it reaches the owner. @req FR:ask-queue/needs.web.stale */
+export const STALE_MS = 48 * 3600_000;
+
+const isOpen = (n: NeedItem, now: Date) => !n.answer || (n.answer.choice === 'defer' && !(Date.parse(n.answer.until ?? '') > now.getTime()));
+/** More than `STALE_MS` past `by`; an item with no `by` never goes stale. @req FR:ask-queue/needs.web.stale */
+const isStale = (n: NeedItem, now: Date) => !!n.by && now.getTime() - Date.parse(n.by) > STALE_MS;
+
+const toAsk = (n: NeedItem, i: number, now: Date): AskItem => ({
+  key: `need:${n.id}`, source: 'need' as const, state: 'open' as const, ask: n.title, kind: 'approve' as const, from: 'Chief of Staff', project: n.project, ref: n.ref,
+  recommend: n.recommendation, default: n.default, by: n.by, link: n.link, reversible: !n.decide && !n.id.startsWith('lv.'), ...(n.decide ? { decide: n.decide } : {}), priority: 'high' as const, blocks: 0,
+  created: '', updated: '', score: 1000 - i, overdue: !!n.by && new Date(n.by).getTime() < now.getTime(),
+});
+
 /**
  * The open escalations as asks from the Chief of Staff, ahead of everything else, in file order.
- * An answered one is gone until a deferral passes its `until`.
- * @req FR:ask-queue/needs.web @req FR:ask-queue/needs.web.card
+ * An answered one is gone until a deferral passes its `until`. A stale one is left out (see `staleNeeds`).
+ * @req FR:ask-queue/needs.web @req FR:ask-queue/needs.web.card @req FR:ask-queue/needs.web.stale
  */
 export function fromNeeds(items: NeedItem[], now: Date): AskItem[] {
-  return items.filter((n) => !n.answer || (n.answer.choice === 'defer' && !(Date.parse(n.answer.until ?? '') > now.getTime()))).map((n, i) => ({
-    key: `need:${n.id}`, source: 'need' as const, state: 'open' as const, ask: n.title, kind: 'approve' as const, from: 'Chief of Staff', project: n.project, ref: n.ref,
-    recommend: n.recommendation, default: n.default, by: n.by, link: n.link, reversible: !n.decide && !n.id.startsWith('lv.'), ...(n.decide ? { decide: n.decide } : {}), priority: 'high' as const, blocks: 0,
-    created: '', updated: '', score: 1000 - i, overdue: !!n.by && new Date(n.by).getTime() < now.getTime(),
-  }));
+  return items.filter((n) => isOpen(n, now) && !isStale(n, now)).map((n, i) => toAsk(n, i, now));
+}
+
+/** The open escalations more than 48 h past `by`, in file order: the collapsed Stale group. @req FR:ask-queue/needs.web.stale */
+export function staleNeeds(items: NeedItem[], now: Date): AskItem[] {
+  return items.filter((n) => isOpen(n, now) && isStale(n, now)).map((n, i) => toAsk(n, i, now));
 }

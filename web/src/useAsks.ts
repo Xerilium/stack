@@ -21,6 +21,8 @@ export interface AskExtras {
   tasks?: AskItem[];
   /** False while the task asks (or what hides them) still load; the count waits for them. Default true. @req FR:ask-queue/web.home.count */
   tasksReady?: boolean;
+  /** CoS items more than 48 h past `by`: out of the list and the count, in a collapsed group. @req FR:ask-queue/needs.web.stale */
+  stale?: AskItem[];
   /** Answers a task ask through the agent inbox; rejects to put the ask back. */
   onTask?: (a: AskItem, s: Send) => Promise<void>;
   onOpenTask?: (ref: string) => void;
@@ -120,9 +122,15 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   const [liveTick, setLiveTick] = useState(0);
   // task asks join the list; the ones just answered stay out until the inbox knows
   const [holdTick, bump] = useState(0);
-  const ranked = useMemo(() => mergeNeeds(items, (extras.tasks ?? []).filter((t) => !held(t.key))), [items, extras.tasks, holdTick]); // holdTick stands for the hold map
+  const main = useMemo(() => mergeNeeds(items, (extras.tasks ?? []).filter((t) => !held(t.key))), [items, extras.tasks, holdTick]); // holdTick stands for the hold map
+  /** Stale CoS items join the list only while their group is open, after everything else; they never count. @req FR:ask-queue/needs.web.stale.count */
+  const [staleOpen, setStaleOpen] = useState(false);
+  const stale = useMemo(() => (extras.stale ?? []).filter((t) => !held(t.key)).map((a, i) => ({ ...a, rank: i + 1 })), [extras.stale, holdTick]); // ranked within the group
+  // An emptied group closes, so the next stale item arrives collapsed. @req FR:ask-queue/needs.web.stale.group
+  useEffect(() => { if (!stale.length && staleOpen) setStaleOpen(false); }, [stale.length, staleOpen]);
+  const ranked = useMemo(() => (staleOpen ? [...main, ...stale] : main), [main, stale, staleOpen]);
   itemsRef.current = ranked;
-  const total = serverTotal + (ranked.length - items.length);
+  const total = serverTotal + (main.length - items.length);
   /** The count shows only once both halves loaded, so a cold load shows one value; after that it follows each change. @req FR:ask-queue/web.home.count */
   const counted = useRef(false);
   if (phase === 'ready' && (extras.tasksReady ?? true)) counted.current = true;
@@ -227,7 +235,8 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
 
   return {
     liveTick,
-    items: ranked, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, countReady, latest, phase, error, errorCode, status, syncedAt, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
+    /** The main list only; stale CoS items are in `stale` (and in `itemsRef` while their group is open, for the keys). */
+    items: main, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, countReady, stale, staleOpen, setStaleOpen, latest, phase, error, errorCode, status, syncedAt, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
     reload: load, retry, answer, reply, defer, retract, edit, takeDraft, undo: () => undoRef.current?.(), deferChoices: () => deferChoices(new Date()),
     openTask: (ref: string) => extrasRef.current.onOpenTask?.(ref),
   };

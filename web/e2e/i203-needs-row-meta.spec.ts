@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { mockApi, type MockAsk, type MockNeed } from './mock';
 
 const iso = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
-const late = iso(-160);
+const late = iso(-40); // overdue, not yet stale (FR:ask-queue/needs.web.stale moves items 48 h late out of the list)
 const need = (id: string, title: string, recommendation: string, project: string, by = late): MockNeed & { by?: string } => ({ id, title, recommendation, project, by, link: `https://github.com/o/r/pull/${id.length}` });
 const seed = () => [
   need('a1', 'Ack and resolve the keep / workflow thread on the release PR', 'ack and resolve; keep / workflow as drafted for now', 'finops-toolkit'),
