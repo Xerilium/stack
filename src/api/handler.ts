@@ -402,9 +402,9 @@ const fmtEdit = (r: { changed: boolean; ref: Parameters<typeof formatRef>[0]; be
   ({ changed: r.changed, ref: formatRef(r.ref), before: r.before, after: r.after, message: r.message });
 
 const noQuery = (c: Ctx) => { readQuery(c.url, []); };
-/** The agent runs for this host, or 404 (the route does not exist where no agent can run). @req FR:agent-sessions/driver.interface */
 /** The scanned team for an execution path: a failed scan is reported and leaves only the content repo team. @req FR:agent-team/agent.team.scan.run */
 const scanOf = (c: Ctx): (() => Promise<ScannedAgent[]>) | undefined => (c.deps.agentScan ? () => c.deps.agentScan!().catch((e: unknown) => { c.deps.onError?.(e); return []; }) : undefined);
+/** The agent runs for this host, or 404 (the route does not exist where no agent can run). @req FR:agent-sessions/driver.interface */
 const agentsOf = (c: Ctx): AgentRuns => { if (!c.deps.agents) throw new ApiError('not_found', 'Not found'); return c.deps.agents; };
 const sessionId = (c: Ctx): string => { const id = c.params[0]; const bad = validate<{ id: string }>({ id }, { id: UUID }, ['id']); return bad.id; };
 /** @req FR:pr-review-lane/lane.api */
