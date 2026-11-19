@@ -19,7 +19,8 @@ async function open(page: Page): Promise<Mock> {
 
 test('lists email, Teams and Slack with summary and one suggested action', async ({ page }) => {
   await open(page);
-  await expect(page.locator('.in-row')).toHaveCount(4);
+  // The newsletter sits in the closed Junk section (FR:inbox-page/junk.group).
+  await expect(page.locator('.in-row')).toHaveCount(3);
   const first = page.locator('.in-row').first();
   await expect(first).toContainText('Alex Rivera');
   await expect(first).toContainText('Alex wants your review');
@@ -42,16 +43,17 @@ test('draft reply: edit, create draft, no send control anywhere', async ({ page 
 
 test('a missing action offers Request this action and files it', async ({ page }) => {
   const m = await open(page);
-  const row = page.locator('.in-row').nth(1);
-  await row.getByRole('button', { name: 'Request: Unsubscribe' }).click();
+  const row = page.locator('.in-row').first();
+  await row.getByRole('button', { name: 'More' }).click();
+  await row.getByRole('menuitem', { name: 'Archive' }).click();
   await expect(page.getByText('Requested: issue filed')).toBeVisible();
-  expect(m.calls.at(-1)?.body).toEqual({ action: 'unsubscribe', request: true });
+  expect(m.calls.at(-1)?.body).toEqual({ action: 'archive', request: true });
 });
 
 test('mark done removes the row', async ({ page }) => {
   await open(page);
-  await page.locator('.in-row').nth(3).getByRole('button', { name: 'Mark done' }).click();
-  await expect(page.locator('.in-row')).toHaveCount(3);
+  await page.locator('.in-row').nth(2).getByRole('button', { name: 'Mark done' }).click();
+  await expect(page.locator('.in-row')).toHaveCount(2);
 });
 
 test('no sideways scroll; screenshot', async ({ page }, info) => {

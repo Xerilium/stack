@@ -90,19 +90,23 @@ export function htmlToText(html: string, max = 200_000): string {
 interface GraphBody { contentType?: unknown; content?: unknown }
 const bodyText = (b?: GraphBody) => { const c = str(b?.content); return str(b?.contentType).toLowerCase() === 'html' ? htmlToText(c) : c; };
 
+/** Graph header list to a map. Only the first Authentication-Results counts: the receiving server writes it; later ones may come from the sender. */
+export function headerMap(list: unknown): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const h of Array.isArray(list) ? (list as { name?: unknown; value?: unknown }[]).slice(0, 200) : []) {
+    const k = str(h?.name); if (!k) continue;
+    if (k.toLowerCase() === 'authentication-results' && Object.keys(headers).some((x) => x.toLowerCase() === 'authentication-results')) continue;
+    headers[k] = headers[k] ? `${headers[k]}; ${str(h?.value)}` : str(h?.value);
+  }
+  return headers;
+}
+
 /** Headers, the message's own text, and read state, in one guarded GET. @req FR:email-runner/graph.details */
 export async function messageDetails(o: { transport: Transport; guard?: GraphGuard }, id: string): Promise<Pick<Message, 'headers' | 'body' | 'isRead'>> {
   const guard = o.guard ?? createGraphGuard();
   const url = `${GRAPH_BASE}/me/messages/${encodeURIComponent(id)}?${new URLSearchParams({ $select: 'internetMessageHeaders,uniqueBody,isRead' }).toString()}`;
   const d = (await guard.call({ method: 'GET', url }, o.transport)) as { internetMessageHeaders?: { name?: unknown; value?: unknown }[]; uniqueBody?: GraphBody; isRead?: unknown };
-  const headers: Record<string, string> = {};
-  for (const h of Array.isArray(d?.internetMessageHeaders) ? d.internetMessageHeaders.slice(0, 200) : []) {
-    const k = str(h?.name); if (!k) continue;
-    // The receiving server writes the first Authentication-Results; later ones may come from the sender, so they are dropped.
-    if (k.toLowerCase() === 'authentication-results' && Object.keys(headers).some((x) => x.toLowerCase() === 'authentication-results')) continue;
-    headers[k] = headers[k] ? `${headers[k]}; ${str(h?.value)}` : str(h?.value);
-  }
-  return { headers, body: bodyText(d?.uniqueBody).slice(0, BODY_CHARS), ...(typeof d?.isRead === 'boolean' ? { isRead: d.isRead } : {}) };
+  return { headers: headerMap(d?.internetMessageHeaders), body: bodyText(d?.uniqueBody).slice(0, BODY_CHARS), ...(typeof d?.isRead === 'boolean' ? { isRead: d.isRead } : {}) };
 }
 
 /** Sent items for voice learning: guarded pages of 50, at most `pages`. @req FR:email-runner/graph.sent */

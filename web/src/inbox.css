@@ -55,3 +55,6 @@
 @media (max-width: 719px) {
   .in-manage { min-height: var(--tap); }
 }
+/* Junk section. @req FR:inbox-page/junk.group @req FR:inbox-page/junk.group.reason */
+.in-why { flex: none; color: var(--muted); }
+.in-junk-note { margin: 0 0 10px; font-size: 13px; color: var(--muted); }

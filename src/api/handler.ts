@@ -51,7 +51,7 @@ import { editTask, moveTask } from './edit';
 import { readMeetings } from '../core/meetings';
 import { answerNeed, readNeeds } from '../core/needs-you';
 import type { MailProvider } from '../email/types';
-import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, loadSources, readInbox, readInboxChecked, requestAction, runAction, type ActionId, type IssueFiler, type MailReader, type SourceProbe } from '../inbox';
+import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, clearJunk, type JunkMailbox, loadSources, readInbox, readInboxChecked, requestAction, runAction, type ActionId, type IssueFiler, type MailReader, type SourceProbe } from '../inbox';
 import { createBriefCache } from './brief';
 import type { ClaudeJson } from '../email/llm';
 import { IDLE_MINUTES, UPDATE_MODES, UpdateRefused, type AppUpdater, type UpdateMode } from '../core/app-update';
@@ -96,6 +96,8 @@ export interface ApiDeps {
   mail?: Pick<MailProvider, 'createDraft'>;
   /** Reads one mailbox for the item detail; absent (or no reader for the account) means the detail shows the summary only. Read only. @req FR:inbox-page/detail.read */
   mailReader?: (account: string) => Promise<MailReader | undefined>;
+  /** Writes for the Inbox Junk actions (move to Archive, one-click unsubscribe); absent, or no mailbox for the account, means its junk stays. @req FR:inbox-page/junk.archive.readonly */
+  junkMailbox?: (account: string) => Promise<JunkMailbox | undefined>;
   /** This machine's inbox sign-ins (Graph caches, GitHub); absent on the hosted app, which uses sync records only. `fresh` skips any cache. @req FR:inbox-page/api.sources */
   inboxProbe?: (o?: { fresh: true }) => Promise<SourceProbe>;
   /** Agent delivery on this machine: per-message state for a row and the Claude sign-in; absent means /inbox/delivery is 404. @req FR:agent-delivery/state.api */
@@ -334,6 +336,10 @@ const PRS_REC_BODY = {
 };
 const INBOX_ACTION_BODY = {
   schema: { action: { t: 'enum', values: ACTION_IDS }, text: { t: 'str', max: 5000 }, until: { t: 'str', max: 40, line: true }, request: { t: 'bool' } } satisfies Record<string, Spec>,
+  required: ['action'],
+};
+const INBOX_JUNK_BODY = {
+  schema: { action: { t: 'enum', values: ['archive', 'unsubscribe-archive'] } } satisfies Record<string, Spec>,
   required: ['action'],
 };
 const ASK_HANDLE_BODY = {
@@ -1232,6 +1238,16 @@ export const ROUTES: Route[] = [
         ? await c.deps.mailReader(item.account).then((r) => r?.thread(item.messageId!)).catch(() => undefined)
         : undefined;
       return json(200, read ? { item, live: true, message: read.message, thread: read.thread } : { item, live: false });
+    },
+  },
+  {
+    // The owner's click is the approval; junk moves to Archive only and nothing is deleted. @req FR:inbox-page/junk.api @req FR:inbox-page/junk.never
+    method: 'POST', doc: '/inbox-junk', name: 'inboxJunk.clear', body: INBOX_JUNK_BODY,
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can act on the inbox'); // @req FR:inbox-page/junk.api.owner
+      const b = validate<{ action: 'archive' | 'unsubscribe-archive' }>(await readBody(c.req), INBOX_JUNK_BODY.schema, INBOX_JUNK_BODY.required);
+      return json(200, await clearJunk(c.life, { unsubscribe: b.action === 'unsubscribe-archive', mailbox: c.deps.junkMailbox ?? (async () => undefined) }));
     },
   },
   {

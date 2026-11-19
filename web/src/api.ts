@@ -147,6 +147,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     inboxSources: () => call<import('./inbox').SourcesReply>('/inbox-sources'),
     /** @req FR:inbox-page/detail.api */
     inboxDetail: (id: string) => call<import('./inbox').DetailReply>(`/inbox-items/${encodeURIComponent(id)}/detail`),
+    /** Clears the junk rows the owner sees. @req FR:inbox-page/junk.api */
+    inboxJunk: (action: 'archive' | 'unsubscribe-archive', ids: string[]) => call<import('./inbox').JunkResult>('/inbox-junk', { action, ids }),
     /** Runs one action; never sends. @req FR:inbox-page/api.act */
     inboxAct: (id: string, body: { action: string; text?: string; until?: string; request?: boolean }) => call<import('./inbox').ActResult>(`/inbox-items/${encodeURIComponent(id)}/action`, body),
     sessions: () => call<SessionList>('/sessions?limit=200'),

@@ -119,6 +119,14 @@ The owner needs every mail and chat message to look the same so that he reads a 
 - **FR:thread.fold** (P1): `ThreadMessage` MUST fold the text under a summary line (sender and time) when `fold` is set.
 - **FR:thread.meta** (P2): `ThreadMessage` MUST show the optional `meta` line under the sender.
 
+### FR:fold: Fold
+
+The owner needs a group he seldom reads to stay closed so that it does not push other work down.
+
+- **FR:fold.show** (P1): `Fold` MUST show a heading button with the title and the count, closed at first.
+- **FR:fold.toggle** (P1): `Fold` MUST show its content when the owner opens it, and set `aria-expanded` on the button.
+- **FR:fold.aside** (P2): `Fold` MUST show the optional `aside` controls beside the heading only while it is open.
+
 ### FR:tokens: Design tokens
 
 The owner needs one palette and one type ramp on every page so that the app reads as one product.

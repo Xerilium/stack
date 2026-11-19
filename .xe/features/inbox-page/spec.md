@@ -19,19 +19,20 @@ Triage must be part of normal Stack work. One page lists all mail, unread Teams 
 - The module never sends anything. No `Mail.Send`, no Teams post, no Slack post. A reply is a `createReply` draft that the owner sends.
 - Message text is data. It is clipped and redacted before it reaches an ask.
 - Teams and Slack are read only.
+- Stack never deletes mail. Junk moves only to Archive, and only when the owner clicks.
 
 ## Scenarios
 
 ### FR:item: Items
 
-- **FR:item.shape** (P1): An `InboxItem` has `id`, `source` (`email`, `teams`, `slack`), `account`, `from`, `subject`, `receivedAt`, `unread`, `summary`, `suggested` (an action id), `actions` (action ids), and optional `link`, `draft`.
+- **FR:item.shape** (P1): An `InboxItem` has `id`, `source` (`email`, `teams`, `slack`), `account`, `from`, `subject`, `receivedAt`, `unread`, `summary`, `suggested` (an action id), `actions` (action ids), and optional `link`, `draft`, `notJunk`.
 - **FR:item.email** (P1): Each triage result becomes one item, including quiet classes. `summary` falls back to the reason, then the preview. `suggested` follows the class: `needs_reply` is `reply-draft`, `needs_decision` and `sensitive` are `ask-me-later`, `newsletter` is `unsubscribe`, `calendar` is `schedule`, `receipt`, `fyi`, `skip` and `spam` are `mark-done`.
 - **FR:item.order** (P1): Items sort by unread first, then urgency, then newest.
 - **FR:item.ask** (P1): `needs_reply`, `needs_decision` and `sensitive` mail already becomes an ask (`FR:email-triage/ask.*`). An unread Teams or Slack item that is not from the owner becomes a `go-do` ask keyed `chat-<hash>`, with a clipped summary and a link. One ask per conversation.
 
 ### FR:action: Actions
 
-- **FR:action.catalog** (P1): The catalog lists: `reply-draft`, `mark-done`, `snooze`, `ask-me-later`, `create-task` (ready), and `archive`, `unsubscribe`, `delegate`, `schedule`, `forward-draft` (missing). Each entry has `id`, `label`, `ready`.
+- **FR:action.catalog** (P1): The catalog lists: `reply-draft`, `mark-done`, `snooze`, `ask-me-later`, `create-task`, `not-junk` (ready), and `archive`, `unsubscribe`, `delegate`, `schedule`, `forward-draft` (missing). Each entry has `id`, `label`, `ready`.
 - **FR:action.reply** (P1): `reply-draft` calls `MailProvider.createDraft` with the edited text and returns the Outlook link. It works for email only. Nothing is sent.
 - **FR:action.done** (P1): `mark-done` resolves the item's ask. `snooze` and `ask-me-later` defer the ask (`until`, default next morning). `create-task` adds a Stack task from the subject.
 - **FR:action.missing** (P1): A missing action returns `{ ok: false, missing: true }` and runs nothing.
@@ -129,6 +130,34 @@ The owner needs to read a whole message with its thread in Stack so that the Inb
   - **FR:detail.offline.cause** (P1): API MUST answer `live: false` when the host cannot read the mailbox of the item.
 - **FR:detail.safe** (P1): Detail MUST render message text as plain text.
 
+### FR:junk: Junk
+
+The owner needs obvious junk out of the way, with one click to clear it, so that the Inbox shows only mail that needs him.
+
+- **FR:junk.web** (P1): Interface: `#/inbox` shows a `Junk` section under the list.
+- **FR:junk.api** (P1): Interface: `POST /inbox-junk` takes `{ action }` (`archive` or `unsubscribe-archive`) and returns `{ archived, unsubscribed, kept }`.
+  - **FR:junk.api.owner** (P1): API MUST answer 403 to a token.
+- **FR:junk.class** (P1): Inbox MUST treat an email item of kind `spam` or `newsletter` as junk.
+  > - @req FR:email-runner/model.classify
+  - **FR:junk.class.restore** (P1): Inbox MUST NOT treat an item with `notJunk` as junk.
+- **FR:junk.group** (P1): Page MUST show junk items in one `Junk` section with their count, below the other items.
+  - **FR:junk.group.fold** (P1): Page MUST keep the `Junk` section closed until the owner opens it.
+  - **FR:junk.group.count** (P1): Page MUST leave junk items out of the unread count.
+  - **FR:junk.group.reason** (P2): Page MUST show the reason on each junk row: `Newsletter`, or `Spam or cold outreach`.
+- **FR:junk.restore** (P1): Action `not-junk` MUST set `notJunk` on the item.
+  - **FR:junk.restore.keep** (P1): Runner MUST keep `notJunk` when a later pass replaces the item.
+  - **FR:junk.restore.web** (P1): Page MUST show `Not junk` as the first action of a junk row.
+- **FR:junk.archive** (P1): `Archive all` MUST move each junk mail to Archive and remove its item.
+  > - @req FR:email-inbox-zero/gate.guard
+  - **FR:junk.archive.ids** (P1): Mailbox MUST approve a move for the ids of the clicked junk items only.
+  - **FR:junk.archive.readonly** (P1): API MUST keep the junk items of an account that it cannot write to, and count them in `kept`.
+  - **FR:junk.archive.failed** (P1): API MUST keep an item whose move failed.
+- **FR:junk.unsubscribe** (P1): `Unsubscribe and archive all` MUST send the one-click unsubscribe for each junk newsletter before it archives.
+  > - @req FR:email-inbox-zero/sub.unsubscribe
+  - **FR:junk.unsubscribe.other** (P1): Mailbox MUST NOT unsubscribe a newsletter that has no one-click target.
+- **FR:junk.never** (P1): Stack MUST NOT delete mail.
+  - **FR:junk.never.auto** (P1): Stack MUST NOT move junk mail without a click by the owner.
+
 ### FR:api: API
 
 - **FR:api.read** (P1): `GET /inbox-items` returns `{ items, actions, sources, summary }`.
@@ -137,7 +166,7 @@ The owner needs to read a whole message with its thread in Stack so that the Inb
 
 ## Interfaces
 
-`InboxStore { read(): Promise<InboxItem[]>; write(items): Promise<void> }`, `ChatConnector`, `IssueFiler { file(issue): Promise<{ url }> }`, `InboxSource`, `SyncRecord`, `SourcesSummary`, `SourceProbe { emails, github, clientId? }`, `MailReader { thread(messageId): Promise<{ message, thread }> }` (`MailMessage`: `id`, `from`, `to`, `subject`, `receivedAt`, `body`, `mine`).
+`InboxStore { read(): Promise<InboxItem[]>; write(items): Promise<void> }`, `ChatConnector`, `IssueFiler { file(issue): Promise<{ url }> }`, `InboxSource`, `SyncRecord`, `SourcesSummary`, `SourceProbe { emails, github, clientId? }`, `JunkMailbox { archive(ids): Promise<string[]>; unsubscribe(id): Promise<boolean> }`, `MailReader { thread(messageId): Promise<{ message, thread }> }` (`MailMessage`: `id`, `from`, `to`, `subject`, `receivedAt`, `body`, `mine`).
 
 ## Dependencies
 

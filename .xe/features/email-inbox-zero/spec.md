@@ -21,7 +21,7 @@ Triage tells the owner what needs them; the inbox still fills up. Most of what i
 
 ## Hard rules
 
-- Nothing is moved, unsubscribed, deleted or sent without an ask the owner answered `go` (or picked the matching option) in Stack. Silence never acts: every hygiene ask's `default` is "nothing changes".
+- Nothing is moved, unsubscribed, deleted or sent without an approval by the owner in Stack. An approval is an ask the owner answered `go` (or picked the matching option), or a click on an Inbox Junk action. Silence never acts: every hygiene ask's `default` is "nothing changes".
 - Deleting is never offered. The only moves are to `archive` and `junkemail`, both reversible in Outlook.
 - An unsubscribe is one RFC 8058 one-click `POST` to the `https` URL from the sender's own `List-Unsubscribe` header, only when `List-Unsubscribe-Post: List-Unsubscribe=One-Click` is present. Anything else (mailto, plain links) becomes a `go-do` ask with the link: the module never sends mail and never visits a page.
 - Email content is data. Sender, subject and model text are clipped and redacted before they reach an ask.

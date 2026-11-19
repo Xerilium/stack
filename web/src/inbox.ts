@@ -1,9 +1,10 @@
 /** Inbox page types and helpers. @req FR:inbox-page/web.view */
 export interface InboxRow {
   id: string; source: 'email' | 'teams' | 'slack' | 'github'; account: string; from: string; subject: string; receivedAt: string; unread: boolean; urgency?: number;
-  summary: string; suggested: string; actions: string[]; link?: string; kind?: string;
+  summary: string; suggested: string; actions: string[]; link?: string; kind?: string; notJunk?: boolean;
 }
 export interface ActionInfo { id: string; label: string; ready: boolean }
+export interface JunkResult { archived: number; unsubscribed: number; kept: number }
 export type ActResult = { ok: true; link?: string } | { ok: false; missing: true } | { via: 'issue'; url: string } | { via: 'task' };
 
 export const SOURCE: Record<InboxRow['source'], string> = { email: 'Email', teams: 'Teams', slack: 'Slack', github: 'GitHub' };
@@ -23,6 +24,27 @@ export const doneText = (a: ActionInfo): string => DONE_TEXT[a.id] ?? 'Done';
 
 /** Next 9:00 local, as an ISO date for snooze. */
 export const tomorrow = (now = new Date()): string => { const d = new Date(now.getTime() + 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+// ------------------------------------------------------------------ junk
+
+/** Junk: an email item of kind spam or newsletter that the owner did not restore. @req FR:inbox-page/junk.class @req FR:inbox-page/junk.class.restore */
+export const isJunk = (r: InboxRow): boolean => r.source === 'email' && (r.kind === 'spam' || r.kind === 'newsletter') && r.notJunk !== true;
+/** @req FR:inbox-page/junk.group.reason */
+export const junkReason = (r: InboxRow): string => (r.kind === 'newsletter' ? 'Newsletter' : 'Spam or cold outreach');
+/** The list and the junk, each in the order given. @req FR:inbox-page/junk.group */
+export const splitJunk = (items: InboxRow[]): { main: InboxRow[]; junk: InboxRow[] } => ({ main: items.filter((i) => !isJunk(i)), junk: items.filter(isJunk) });
+/** A junk row leads with Not junk; the rest follow. @req FR:inbox-page/junk.restore.web */
+export function junkActions(row: InboxRow, catalog: ActionInfo[]): { primary: ActionInfo | undefined; more: ActionInfo[] } {
+  const a = actionsFor(row, catalog);
+  const not = catalog.find((x) => x.id === 'not-junk');
+  return { primary: not, more: [...(a.primary ? [a.primary] : []), ...a.more].filter((x) => x.id !== 'not-junk') };
+}
+/** What a Junk action did, in plain words. @req FR:inbox-page/junk.archive.readonly */
+export function junkToast(r: JunkResult): string {
+  const parts = [...(r.unsubscribed ? [`Unsubscribed from ${r.unsubscribed}.`] : []), r.archived ? `Archived ${r.archived}.` : 'Nothing was archived.'];
+  if (r.kept) parts.push(`${r.kept} ${r.kept === 1 ? 'stays' : 'stay'}: Stack cannot move that mail.`);
+  return parts.join(' ');
+}
 
 // ------------------------------------------------------------------ detail
 

@@ -36,7 +36,7 @@ export const seed = (): MockTask[] => [
   { ref: 'beta:5', text: 'Book flights', project: 'beta', section: '🔄 Active', done: true, depth: 0, notes: [] },
 ];
 
-export const INBOX_CATALOG = [{ id: 'reply-draft', label: 'Draft reply', ready: true }, { id: 'mark-done', label: 'Mark done', ready: true }, { id: 'snooze', label: 'Snooze', ready: true }, { id: 'ask-me-later', label: 'Ask me later', ready: true }, { id: 'create-task', label: 'Create task', ready: true }, { id: 'archive', label: 'Archive', ready: false }, { id: 'unsubscribe', label: 'Unsubscribe', ready: false }, { id: 'delegate', label: 'Delegate to agent', ready: false }, { id: 'schedule', label: 'Schedule', ready: false }, { id: 'forward-draft', label: 'Draft forward', ready: false }];
+export const INBOX_CATALOG = [{ id: 'reply-draft', label: 'Draft reply', ready: true }, { id: 'mark-done', label: 'Mark done', ready: true }, { id: 'snooze', label: 'Snooze', ready: true }, { id: 'ask-me-later', label: 'Ask me later', ready: true }, { id: 'create-task', label: 'Create task', ready: true }, { id: 'not-junk', label: 'Not junk', ready: true }, { id: 'archive', label: 'Archive', ready: false }, { id: 'unsubscribe', label: 'Unsubscribe', ready: false }, { id: 'delegate', label: 'Delegate to agent', ready: false }, { id: 'schedule', label: 'Schedule', ready: false }, { id: 'forward-draft', label: 'Draft forward', ready: false }];
 const json = (route: Route, status: number, body: unknown) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
 /** In-memory fake of the Stack api plus SWA's `/.auth/me`. */
@@ -116,12 +116,19 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     if (path === '/meetings') return json(route, 200, { items: m.meetings });
     if (path === '/inbox-items') return json(route, 200, { items: m.inboxItems, actions: INBOX_CATALOG, ...m.inboxSources });
     if (path === '/inbox-sources') { m.sourceQueries.push(new URL(req.url()).search); return json(route, 200, m.inboxSources); }
+    if (path === '/inbox-junk' && req.method() === 'POST') {
+      const junk = m.inboxItems.filter((i) => i.source === 'email' && (i.kind === 'spam' || i.kind === 'newsletter') && i.notJunk !== true);
+      const stay = junk.filter((i) => i.account === 'readonly@example.test');
+      m.inboxItems = m.inboxItems.filter((i) => !junk.includes(i) || stay.includes(i));
+      return json(route, 200, { archived: junk.length - stay.length, unsubscribed: body.action === 'unsubscribe-archive' ? junk.filter((i) => i.kind === 'newsletter' && !stay.includes(i)).length : 0, kept: stay.length });
+    }
     const idt = /^\/inbox-items\/([^/]+)\/detail$/.exec(path);
     if (idt) { const item = m.inboxItems.find((i) => i.id === idt[1]); if (!item) return json(route, 404, { error: { code: 'not_found', message: 'Inbox item not found' } }); return json(route, 200, { item, live: false, ...(m.inboxDetail[idt[1]] ?? {}) }); }
     const ia = /^\/inbox-items\/([^/]+)\/action$/.exec(path);
     if (ia && req.method() === 'POST') {
       m.calls.push({ path, body });
       if (body.request) return json(route, 200, { via: 'issue', url: 'https://github.com/Xerilium/stack/issues/1' });
+      if (body.action === 'not-junk') { const it = m.inboxItems.find((i) => i.id === ia[1]); if (it) it.notJunk = true; }
       if (body.action === 'reply-draft') return json(route, 200, { ok: true, link: 'https://outlook.example.test/draft/D1' });
       return json(route, 200, { ok: true });
     }
