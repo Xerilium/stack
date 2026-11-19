@@ -1,6 +1,6 @@
 /**
  * PR cards are quiet: a neutral panel, a muted 3 px owner edge, strong = elevation, one accent. On a phone the title uses the full width.
- * @req FR:pr-page/card.color @req FR:pr-page/card.color.edge @req FR:pr-page/card.color.strong @req FR:pr-page/card.color.contrast @req FR:pr-page/card.accent @req FR:pr-page/card.phone
+ * @req FR:pr-page/card.color @req FR:pr-page/card.color.edge @req FR:pr-page/card.color.strong @req FR:pr-page/card.color.contrast @req FR:pr-page/nav.accent @req FR:pr-page/card.phone
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
@@ -91,3 +91,21 @@ test('one accent: primary buttons and the selected tab use the app accent, never
   expect(bg).toBe(accent);
   expect(tab).toBe(accent);
 });
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`${scheme}: a selected project chip keeps 4.5:1 with the accent`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await mockApi(page);
+    const b = BOARD();
+    b.rows[2] = { ...b.rows[2], project: 'ftk', repo: 'microsoft/finops-toolkit' };
+    await page.route('**/api/prs**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(b) }));
+    await page.goto('/#/prs');
+    const pg = page.getByTestId('prs-page');
+    const chip = pg.locator('.prs-chip').first();
+    await expect(chip).toBeVisible();
+    await chip.click();
+    await expect(pg.locator('.prs-chip[aria-pressed="true"]')).toHaveCount(1);
+    const axe = await new AxeBuilder({ page }).include('[data-testid="prs-page"]').withRules(['color-contrast']).analyze();
+    expect(axe.violations).toEqual([]);
+  });
+}

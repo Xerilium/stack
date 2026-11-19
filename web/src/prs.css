@@ -17,8 +17,8 @@
   --pr-mine-edge: color-mix(in srgb, var(--ok) 50%, var(--panel));
   --pr-other-edge: color-mix(in srgb, var(--warn) 50%, var(--panel));
 }
-/* One accent: the Fluent brand tokens on the PR page follow the app accent (buttons, tab underline, chips). @req FR:pr-page/card.accent */
-.prs-fly.fl { --fl-brand: var(--accent); --fl-brand-hover: color-mix(in srgb, var(--accent) 88%, var(--ink)); --fl-brand-pressed: color-mix(in srgb, var(--accent) 76%, var(--ink)); --fl-on-brand: var(--accent-ink); --fl-brand-fg: var(--accent); --fl-brand2: var(--accent-soft); }
+/* One accent: the Fluent brand tokens on the PR page follow the app accent (buttons, tab underline, chips). @req FR:pr-page/nav.accent */
+.prs-fly.fl { --fl-brand: var(--accent); --fl-brand-hover: color-mix(in srgb, var(--accent) 88%, var(--ink)); --fl-brand-pressed: color-mix(in srgb, var(--accent) 76%, var(--ink)); --fl-on-brand: var(--accent-ink); --fl-brand-fg: color-mix(in srgb, var(--accent) 80%, var(--ink)); --fl-brand2: var(--accent-soft); }
 
 .prs-scrim { position: fixed; inset: 0; z-index: 60; background: rgb(0 0 0 / 28%); display: flex; justify-content: flex-end; }
 .prs-fly { position: relative; width: min(480px, 100vw); height: 100dvh; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); box-shadow: var(--shadow); border-left: 1px solid var(--line); animation: prs-in var(--t-sheet) var(--ease); }
