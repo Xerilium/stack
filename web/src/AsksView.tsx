@@ -365,7 +365,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
       {items.length > 0 && <p class="keys-hint" aria-hidden="true">j k move · z defer · r reply · a agent · u undo</p>}
       {asks.stale.length > 0 && (
         <StaleGroup n={asks.stale.length} open={asks.staleOpen} onToggle={() => asks.setStaleOpen(!asks.staleOpen)}>
-          {asks.stale.map((a) => (a.key === cursor ? <Card key={a.key} a={a} n={a.rank ?? 0} total={asks.stale.length} asks={asks} run={run} talk={talk} /> : <Row key={a.key} a={a} n={a.rank ?? 0} now={asks.now} fresh={false} onPick={() => { asks.setCursor(a.key); asks.setPanel('none'); asks.setDetail(false); }} />))}
+          {asks.stale.map((a) => (a.key === cursor ? <Card key={a.key} a={a} n={a.rank ?? 0} total={asks.stale.length} asks={asks} run={run} talk={talk} /> : <Row key={a.key} a={a} n={a.rank ?? 0} now={asks.now} fresh={false} onPick={() => { asks.setCursor(a.key); asks.setPanel('none'); asks.setDetail(false); }} onAct={(x) => act(a, x)} onOpenTask={asks.openTask} />))}
         </StaleGroup>
       )}
       {(asks.sent.length > 0 || asks.snoozed.length > 0) && (

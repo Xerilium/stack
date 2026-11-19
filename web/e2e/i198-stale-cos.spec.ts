@@ -48,7 +48,7 @@ test('opening the group lists the stale items with their actions unchanged', asy
   await page.getByTestId('stale-group').getByRole('button', { name: /^Stale · 11/ }).click();
   const list = page.getByRole('list', { name: 'Stale asks' });
   await expect(list.locator('.ask-li')).toHaveCount(11);
-  await list.locator('.ask-li').first().click();
+  await list.locator('.ask-row').first().click();
   const card = list.locator('.ask-card');
   await expect(card).toContainText('Escalation old0');
   await expect(card.getByRole('button', { name: /Reply/ })).toBeVisible();
