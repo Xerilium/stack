@@ -6,7 +6,7 @@
  * @req FR:web-app/ux.feedback @req FR:web-app/ux.responsive
  */
 import { Fragment } from 'preact';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, createClient } from './api';
 import { capacityRows } from './capacity';
 import { applyFilters, buildHash, NO_FILTERS, parseHash, redirectHash, type Filters } from './filters';
@@ -333,6 +333,9 @@ export function App() {
   const [teamActive, setTeamActive] = useState(false);
   /** @req FR:agent-sessions/web.view */
   const sessions = useSessions(api, toast, agentsOn, view === 'sessions' || teamActive);
+  // Going to another page closes the open session and the composer: no sheet stays over the next page. A layout effect, so it runs before the next page opens its own chat. @req FR:agent-sessions/web.drawer.nav
+  const shownView = useRef(view);
+  useLayoutEffect(() => { if (shownView.current === view) return; shownView.current = view; sessions.closeDrawer(); }, [view]);
   /** @req FR:agent-sessions/web.pins @req FR:agent-sessions/web.groups */
   const pinsCtl = usePins(store());
   /** @req FR:agent-team/web.chip @req FR:agent-team/web.talk */

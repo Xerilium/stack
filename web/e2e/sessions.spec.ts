@@ -288,6 +288,37 @@ test.describe('Sessions', () => {
     await expect(page.locator('.agent-card.on .ac-name')).toHaveText('Alpha Lead');
   });
 
+  // @req FR:agent-sessions/web.drawer.nav
+  test('leaving Agents closes the chat it showed: no sheet stays over the next page', async ({ page }) => {
+    await open(page, teamSeed(), true);
+    await expect(page.getByTestId('chat-pane').getByRole('region')).toHaveAccessibleName('👔 CoS · morning brief');
+    await page.evaluate(() => { location.hash = '#/projects'; });
+    await expect(page.getByRole('region', { name: 'Agents', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.sess-scrim')).toHaveCount(0);
+    await page.evaluate(() => { location.hash = '#/sessions'; }); // back on Agents the chat is under the chart again
+    await expect(page.getByTestId('chat-pane').getByRole('region')).toHaveAccessibleName('👔 CoS · morning brief');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+
+  // @req FR:agent-sessions/web.drawer.nav
+  test('leaving Agents closes an open drawer and the composer', async ({ page }) => {
+    await open(page);
+    await page.locator('.sess-row').nth(1).click();
+    await expect(drawer(page)).toBeVisible();
+    await page.evaluate(() => { location.hash = '#/projects'; });
+    await expect(page.getByRole('region', { name: 'Agents', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.evaluate(() => { location.hash = '#/sessions'; });
+    await page.locator('.sess-tools').getByRole('button', { name: /^New/ }).click();
+    await expect(drawer(page).getByRole('heading', { level: 2 })).toHaveText('New session');
+    await page.evaluate(() => { location.hash = '#/projects'; });
+    await expect(page.getByRole('region', { name: 'Agents', exact: true })).toHaveCount(0);
+    await page.evaluate(() => { location.hash = '#/sessions'; });
+    await expect(page.locator('.sess-row').first()).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+
   // @req FR:agents-team/chart.layout
   test('375px: no horizontal scroll, cards are tap-sized', async ({ page }, info) => {
     test.skip(info.project.name !== 'mobile', 'touch layout');
