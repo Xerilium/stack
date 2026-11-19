@@ -30,14 +30,14 @@ const CTRL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
 /** Tool input for display: one line, no control characters; paths and commands stay readable (the secret redactor flags long paths). */
 const plain = (s: string, n: number) => cut(s.replace(CTRL, ' ').replace(/\s+/g, ' ').trim(), n);
 // eslint-disable-next-line no-control-regex
-const CTRL_BUT_NL = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029]/g;
+const CTRL_BUT_NL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029]/g;
 const INVISIBLE = /[\uFE0E\uFE0F\u200B-\u200F\u2060\uFEFF\u00AD]/g;
 /** Context the harness injects into any turn. */
 const REMINDERS = /<(system-reminder|ide_opened_file)>[\s\S]*?<\/\1>/g;
 /** Harness wrappers the CLI writes as user turns: never the owner's words. An agent may quote them, so its turns keep them. @req FR:agent-sessions/sessions.messages.text */
 const WRAPPERS = /<(side-sessions-event|task-notification|tool-use-id|local-command-[a-z-]+|command-[a-z-]+)(?:\s[^>]*)?>[\s\S]*?<\/\1>/g;
 /**
- * Turn text for the transcript: harness wrappers gone, redacted, line breaks kept so markdown survives; other control characters become spaces.
+ * Turn text for the transcript: harness wrappers gone, redacted, line breaks and tabs kept so markdown and code survive; other control characters become spaces.
  * @req FR:agent-sessions/sessions.messages @req FR:agent-sessions/sessions.messages.text
  */
 export function turnText(s: string, user = true, n = MAX_TEXT): string {

@@ -51,10 +51,13 @@ export function mdBlocks(text: string): MdBlockNode[] {
   const flush = () => { if (para.length) out.push({ t: 'p', text: para.join('\n') }); para = []; };
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
-    if (/^\s*```/.test(l)) {
+    const fence = /^\s*(`{3,})/.exec(l);
+    if (fence) {
       flush();
       const code: string[] = [];
-      for (i++; i < lines.length && !/^\s*```\s*$/.test(lines[i]); i++) code.push(lines[i]);
+      // Only a fence at least as long as the opening one closes it, so a block can quote a shorter fence.
+      const close = new RegExp(`^\\s*\`{${fence[1].length},}\\s*$`);
+      for (i++; i < lines.length && !close.test(lines[i]); i++) code.push(lines[i]);
       out.push({ t: 'pre', text: code.join('\n') });
       continue;
     }

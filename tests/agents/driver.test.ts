@@ -105,13 +105,13 @@ describe('createSdkDriver', () => {
         msg('user', [{ type: 'text', text: '<local-command-stdout>ok</local-command-stdout>' }, { type: 'text', text: '<command-name>/clear</command-name>\n<command-args></command-args>' }]),
         msg('user', '<system-reminder>noise</system-reminder>Ship\u0007it now'),
         msg('assistant', 'Use <command-name>/clear</command-name> to reset'),
-        msg('assistant', [{ type: 'text', text: '---\n## Title\n\n\n\n- a\n- `b`\n[x](https://x.test) token ghp_abcdefghijklmnopqrstuvwxyz0123456789ab' }]),
+        msg('assistant', [{ type: 'text', text: '---\n## Title\n\n\n\n- a\n- `b`\n\tindented\n[x](https://x.test) token ghp_abcdefghijklmnopqrstuvwxyz0123456789ab' }]),
       ] }), configDir: home, now: () => NOW,
     });
     expect((await d.getMessages('a1b2c3d4-0000-0000-0000-000000000002')).map((x) => [x.role, x.text])).toEqual([
       ['user', 'Ship it now'],
       ['assistant', 'Use <command-name>/clear</command-name> to reset'],
-      ['assistant', '---\n## Title\n\n- a\n- `b`\n[x](https://x.test) [redacted]'],
+      ['assistant', '---\n## Title\n\n- a\n- `b`\n\tindented\n[x](https://x.test) [redacted]'],
     ]);
   });
   it('getMessages: an id the SDK and the store do not know is not found; an empty transcript the store knows is a session', async () => {
