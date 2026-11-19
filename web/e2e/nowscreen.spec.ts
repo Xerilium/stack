@@ -383,8 +383,8 @@ test.describe('Now screen', () => {
     await page.screenshot({ path: `e2e/screenshots/now-dark-${info.project.name}.png` });
   });
 
-  // @req FR:ux-consolidation/one.meetings @req FR:ux-consolidation/one.messages @req FR:ux-consolidation/one.answer @req FR:ux-consolidation/one.focus @req FR:ux-consolidation/one.layout
-  test('the one place: next meetings and top messages under the task; one tap answers', async ({ page }, info) => {
+  // @req FR:ux-consolidation/one.meetings @req FR:ux-consolidation/one.focus @req FR:ux-consolidation/one.layout
+  test('the one place: next meetings under the task; asks stay in Needs you', async ({ page }, info) => {
     const d = new Date(); d.setHours(10, 0, 0, 0); await page.clock.install({ time: d });
     const m = await mockApi(page, { tasks: seed() });
     const at = (h: number, mi = 0) => { const x = new Date(d); x.setHours(h, mi, 0, 0); return x.toISOString(); };
@@ -406,24 +406,15 @@ test.describe('Now screen', () => {
     await expect(meetings.getByRole('link', { name: 'Join' })).toHaveAttribute('href', 'https://example.test/join');
     await expect(meetings).not.toContainText('Third');
     await expect(page.getByTestId('now-layer')).toHaveText(/Live calendar/);
-    const waiting = page.getByTestId('now-asks');
-    await expect(waiting.locator('li')).toHaveCount(3);
-    await expect(waiting.locator('li').first()).toContainText('Reply to Dana'); // messages first
-    await expect(waiting).toContainText('Approve the budget');
-    await expect(waiting).not.toContainText('Fourth ask');
-    await expect(page.getByRole('button', { name: '1 more in Notifications' })).toBeVisible();
+    // asks live in Notifications, not on Now @req FR:priorities-tables/web.place
+    await expect(page.getByTestId('now-asks')).toHaveCount(0);
     // only the task, the reason, and the actions sit above the first section head
     const sections = await now.locator('h2').count();
-    expect(sections).toBe(2);
+    expect(sections).toBe(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     if (info.project.name === 'mobile') for (const b of await now.locator('button, a.now-join').all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await page.waitForTimeout(400);
     await page.screenshot({ path: `e2e/screenshots/now-one-${info.project.name}.png`, fullPage: true });
-    // one tap answers the message the same way Needs you does, and the line leaves
-    await waiting.locator('li').first().getByRole('button', { name: 'Approve', exact: true }).click();
-    await expect.poll(() => m.asks.find((a) => a.key === 'm1')?.state).toBe('answered');
-    await expect(waiting).not.toContainText('Reply to Dana');
-    await expect(page.getByRole('status')).toContainText('Sent to email-triage');
   });
 
   // @req FR:ux-consolidation/cal.fresh: only a fresh, connected calendar may say there are no meetings
@@ -433,18 +424,6 @@ test.describe('Now screen', () => {
     m.events = [];
     await page.goto('/#/now');
     await expect(page.getByText('No meetings left today.')).toBeVisible();
-    await expect(page.getByText('Nothing waiting.')).toBeVisible();
-    await expect(page.getByRole('button', { name: /more in Notifications/ })).toHaveCount(0);
-  });
-
-  // @req FR:ux-consolidation/one.messages
-  test('the more link opens Notifications', async ({ page }) => {
-    await ten(page);
-    const m = await mockApi(page, { tasks: seed() });
-    m.asks = ['a1', 'a2', 'a3', 'a4'].map((k, i) => ask(k, 'cos', 90 - i));
-    await page.goto('/#/now');
-    await page.getByRole('button', { name: '1 more in Notifications' }).click();
-    await expect(page).toHaveURL(/#\/notifications/);
   });
 
   // @req FR:ux-consolidation/one.clamp

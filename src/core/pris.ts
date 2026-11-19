@@ -10,7 +10,9 @@ import type { Issue } from './reports';
 
 export const PRI_STATUSES = ['active', 'paused', 'blocked', 'done'] as const;
 export const PRI_ITEM_STATUSES = ['todo', 'doing', 'blocked', 'done'] as const;
-const LIMITS = { pris: 30, items: 20, backlog: 50, weekly: 12, links: 20 } as const;
+const LIMITS = { pris: 30, items: 20, backlog: 50, weekly: 12, links: 20, windows: 7 } as const;
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const SESSION = /^[A-Za-z0-9_-]{1,128}$/;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
 const SLUG = /^[a-z0-9][a-z0-9-]{0,23}$/;
 const WEEK = /^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$/;
@@ -29,7 +31,17 @@ export interface Pri {
   slot?: number;
   /** Weekday slots (`mon`..`sun`), or `off` to leave the priority out that day. */
   days?: Partial<Record<PriDay, number | 'off'>>;
+  /** Short project name for the priorities tables; without it, the title before the first `(`. @req FR:priorities-tables/$window */
+  label?: string;
+  /** A fixed next action that wins over the note (`work with FOCUS CoS`). */
+  action?: string;
+  /** The Claude session id of the agent that works this priority. */
+  session?: string;
+  /** The hours the owner can work it (local time); without them, all day. */
+  windows?: PriWindow[];
 }
+/** `from` is inside, `to` is outside; no `days` means every weekday. @req FR:priorities-tables/$window */
+export interface PriWindow { days?: PriDay[]; from?: string; to?: string }
 export const PRI_DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 export type PriDay = (typeof PRI_DAYS)[number];
 export interface PrisFile { version: 1; rev: number; updatedAt?: string; seed?: { source: string; at: string; sha256: string }; pris: Pri[] }
@@ -84,7 +96,7 @@ export function parsePris(body: unknown): Pri[] {
   const out = body.flatMap((raw, i): Pri[] => {
     const f = `[${i}]`;
     if (!isObj(raw)) { bad(f, 'Must be an object'); return []; }
-    unknown(f, raw, ['id', 'title', 'status', 'items', 'backlog', 'weekly', ...PRI_LINKS, 'statusAt', 'slot', 'days']);
+    unknown(f, raw, ['id', 'title', 'status', 'items', 'backlog', 'weekly', ...PRI_LINKS, 'statusAt', 'slot', 'days', 'label', 'action', 'session', 'windows']);
     let id: string | undefined;
     if (typeof raw.id !== 'string' || !SLUG.test(raw.id)) bad(`${f}.id`, 'Must match [a-z0-9][a-z0-9-]{0,23}');
     else if (ids.has(raw.id)) bad(`${f}.id`, 'Must be unique');
@@ -129,7 +141,31 @@ export function parsePris(body: unknown): Pri[] {
         day.days = days;
       }
     }
-    return id && title && status ? [{ id, title, status, items: its, backlog, weekly, ...links, ...(statusAt ? { statusAt } : {}), ...day }] : [];
+    // @req FR:priorities-tables/$window
+    const view: Pick<Pri, 'label' | 'action' | 'session' | 'windows'> = {};
+    if (raw.label !== undefined) { const t = text(`${f}.label`, raw.label, 40); if (t) view.label = t; }
+    if (raw.action !== undefined) { const t = text(`${f}.action`, raw.action, 200); if (t) view.action = t; }
+    if (raw.session !== undefined) { if (typeof raw.session === 'string' && SESSION.test(raw.session)) view.session = raw.session; else bad(`${f}.session`, 'Must match [A-Za-z0-9_-]{1,128}'); }
+    if (raw.windows !== undefined) {
+      view.windows = list(`${f}.windows`, raw.windows, LIMITS.windows).flatMap((w, j): PriWindow[] => {
+        const g = `${f}.windows[${j}]`;
+        if (!isObj(w)) { bad(g, 'Must be an object {days, from, to}'); return []; }
+        unknown(g, w, ['days', 'from', 'to']);
+        const out: PriWindow = {};
+        if (w.days !== undefined) {
+          const ds = list(`${g}.days`, w.days, 7);
+          if (ds.some((d) => !(PRI_DAYS as readonly unknown[]).includes(d))) bad(`${g}.days`, 'Must list mon, tue, wed, thu, fri, sat or sun');
+          else out.days = ds as PriDay[];
+        }
+        for (const k of ['from', 'to'] as const) {
+          if (w[k] === undefined) continue;
+          if (typeof w[k] === 'string' && HHMM.test(w[k] as string)) out[k] = w[k] as string; else bad(`${g}.${k}`, 'Must be HH:MM (00:00-23:59)');
+        }
+        if (out.from && out.to && out.from >= out.to) bad(`${g}.to`, 'Must be after from');
+        return [out];
+      });
+    }
+    return id && title && status ? [{ id, title, status, items: its, backlog, weekly, ...links, ...(statusAt ? { statusAt } : {}), ...day, ...view }] : [];
   });
   if (issues.length) throw new PrisInvalid(issues);
   return out;

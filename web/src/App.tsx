@@ -26,10 +26,9 @@ import { usePrisSessions } from './usePrisSessions';
 import { InboxView } from './InboxView';
 import { PrsButton, PrsFlyoutHost, PrsNavItem, PrsPage, prsNavNow } from './PrsPanel';
 import { FeedbackButton, FeedbackHost, feedbackActive } from './FeedbackPanel';
-import { actionsFor, type AskItem, type DeferChoice, type Send } from './asks';
+import { actionsFor, type AskItem, type Send } from './asks';
 import { isFresh, sourceOf, type CalSource } from './calsource';
 import { postStep, waitForHost, type Fetch } from './onboarding';
-import { changeText } from './triage';
 import { useAsks } from './useAsks';
 import { Drawer, SessionsView } from './SessionsView';
 import { usePins } from './pins';
@@ -59,6 +58,7 @@ import { displayName } from './detail';
 import { HAVE, homeOf, topAsksOf, windowNow } from './home';
 import { agentMark, DONE_MS, nowOf, type NowTask } from './nowscreen';
 import { NowScreen } from './NowView';
+import { usePriorities } from './PrioritiesTables';
 import { Avatar } from './AgentAvatar';
 import { nameBeside } from './avatar';
 import './myday.css';
@@ -411,21 +411,8 @@ export function App() {
     if (r.restart && !(await waitForHost(f))) return 'Stack did not come back. Is it still running?';
     return null;
   }, []);
-  /** The ask cards on Now answer as Needs you does: same calls, toast, and Undo. @req FR:ux-consolidation/one.answer */
-  const nowAsks = {
-    whoOf: (from: string) => team.team.find((a) => a.slug === from || a.name === from) ?? { slug: from, name: from },
-    answer: (a: AskItem, x: Send) => {
-      // Same guard as Needs you: an answer that changes a task (apply/applies) has no Undo. @req FR:quick-triage/web.undo
-      const will = x.answer === 'go' && a.apply ? a.apply : x.answer === 'option' && a.applies && a.options ? a.applies[a.options.indexOf(x.text ?? '')] : undefined;
-      const changes = !!will && will !== '-';
-      void asks.answer(a, x, changes ? changeText(will!, a.ask) : x.answer === 'option' ? `Sent to ${a.from}: ${x.text}` : `Sent to ${a.from}`, !changes);
-    },
-    reply: (a: AskItem, text: string) => void asks.reply(a, text),
-    defer: (a: AskItem, c: DeferChoice) => void asks.defer(a, c.at, c.label),
-    deferChoices: () => asks.deferChoices(),
-    openTask: (a: AskItem) => { if (a.ref) asks.openTask(a.ref); },
-    openInNeeds: (a: AskItem) => { asks.setCursor(a.key); asks.setPanel('none'); go('asks'); },
-  };
+  // The priorities tables on Now: read while Now is open. @req FR:priorities-tables/web.live
+  const pri = usePriorities(api, asks.liveTick, view === 'now');
   const briefBusy = useMemo(() => {
     const d0 = day.origin ?? clockNow, n = day.origin ? 2 : 1;
     return liveCal ? busyTime.map((b) => ({ ...b, events: enrich(b.events, rules) })) : busyIntervals(expandWeekly(rules, d0, n), d0, n);
@@ -1039,8 +1026,7 @@ export function App() {
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
         {phase === 'ready' && view === 'now' && <NowScreen n={nowTask} done={!!nowTask && justDone.has(nowTask.task.ref)} b={brief} layer={liveCal ? 'live' : rules.length ? 'weekly' : 'none'} busy={busy} onAct={(a) => (a === 'done' ? void doAct('done', nowTask?.task.ref) : void notNow(nowTask?.task.ref))}
-          chat={nowTask ? nowChat(nowTask.task) : undefined} now={clockNow} asks={nowAsks} cal={{ source: calSource }}
-          onOpenAsks={() => go('asks')} />}
+          chat={nowTask ? nowChat(nowTask.task) : undefined} now={clockNow} pri={pri} cal={{ source: calSource }} />}
         {/* Settings needs no task data: it shows while tasks load. @req FR:settings/view.route */}
         {view === 'settings' && <SettingsView api={api} cal={{ source: calSource, canConnect: local, onCheck: checkCalendar, onConnect: connectCalendar }} updates={updates} onAccounts={() => void checkCalendar()} now={clockNow} />}
         {phase === 'ready' && view === 'home' && <HomeView live={asks.status} h={home} minutesLeft={minutesLeft} win={win} have={haveLeft !== null && haveLeft > 0 ? have!.minutes : null} onHave={setHave} p={rowProps} busy={busy} onAct={(a, ref) => rowAct(a, ref ?? next?.ref)} onProject={(p) => go('list', { ...NO_FILTERS, project: p })} onMoreTime={() => setHave(minutesLeft + STEP)} />}

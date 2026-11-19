@@ -1,0 +1,21 @@
+/* Now's priorities: four plain tables. Fluent 2 tokens only; dark through the token values. @req NFR:priorities-tables/a11y.tokens @req NFR:priorities-tables/a11y.mobile */
+.pri-tables { display: grid; gap: var(--fl-s-l); margin-top: var(--fl-s-xxl); min-width: 0; }
+@media (min-width: 1100px) { .now > .pri-tables { grid-column: 1 / -1; } }
+.pri-scroll { overflow-x: auto; max-width: 100%; border-radius: var(--fl-r-md); }
+.pri-table { width: 100%; border-collapse: collapse; font-size: var(--fl-body); line-height: var(--fl-body-lh); color: var(--fl-fg1); }
+.pri-h2 { margin: 0 0 var(--fl-s-s); font-size: var(--fl-sub2); line-height: var(--fl-sub2-lh); font-weight: 600; color: var(--fl-fg1); }
+.pri-rule { width: 100%; margin: 0; border: 0; border-top: 1px solid var(--fl-stroke1); }
+.pri-stamp { font-size: var(--fl-caption); line-height: var(--fl-caption-lh); font-weight: 400; color: var(--fl-fg2); margin-inline-start: var(--fl-s-s); }
+.pri-stamp.stale, .pri-stale { font-weight: 600; color: var(--fl-fg1); }
+.pri-stale { font-size: var(--fl-caption); }
+.pri-table th, .pri-table td { text-align: start; vertical-align: top; padding: var(--fl-s-s) var(--fl-s-m); border-bottom: 1px solid var(--fl-stroke2); }
+.pri-table th { font-size: var(--fl-caption); line-height: var(--fl-caption-lh); font-weight: 600; color: var(--fl-fg2); white-space: nowrap; }
+.pri-table th:first-child, .pri-table td:first-child { padding-inline-start: 0; }
+.pri-project { font-weight: 600; white-space: nowrap; }
+.pri-table td:nth-child(3) { min-width: 16ch; }
+.pri-table a { color: var(--fl-brand-fg); text-decoration: underline; text-underline-offset: 2px; }
+/* 44 px targets on touch. @req FR:ux-consolidation/one.layout */
+@media (max-width: 719px), (hover: none) { .pri-table a { display: inline-flex; align-items: center; min-height: 44px; } }
+.pri-tables a:focus-visible, .pri-scroll:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 1px; border-radius: var(--fl-r-sm); }
+.pri-none { color: var(--fl-fg2); }
+@media (max-width: 719px) { .pri-table { min-width: 560px; } }

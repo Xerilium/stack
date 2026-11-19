@@ -41,6 +41,7 @@ import { emailCmd } from './email';
 import { agentCmd } from './agent';
 import { graphCmd } from './graph';
 import { prsCmd } from './prs';
+import { liveDeps, prioritiesCmd } from './priorities';
 import { appCmd, realAppDeps } from './app';
 import { findStackDir, userConfig, walkStackDir } from './discover';
 import { devicesCmd } from './devices';
@@ -111,6 +112,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   qm: { flags: ['file'], usage: 'qm [--json] | qm put --file plan.json [--json]', help: 'the weekly QM (quota-maxxing) plan (~/.stack/qm-plan.json, never git; schema in .xe/features/qm-plan/spec.md); agents write it with put' },
   feedback: { flags: ['route', 'since'], usage: 'feedback add "<text>" [--route r] | list [--since id] | done <id>', help: 'owner feedback on the app (~/.stack/feedback.jsonl, one JSON line each; docs/feedback.md); done writes feedback.done.jsonl' },
   sessions: { flags: [], usage: 'sessions [--json]', help: 'Claude app sessions: counts, ranked Needs you (waiting, stuck) with claude:// links, archive candidates; read-only, cached in ~/.stack/sessions.json' },
+  priorities: { flags: [], usage: 'priorities [--json]', help: 'the owner priorities as tables: Now (top 3), Promote to Autopilot (PRs, fewest spec lines first), Today, Next 3 days; priority rows show project, agent session link and next action; each row is stamped with its last live check (stale after 30 min); read live from ~/.stack/pris.json, the session store and GitHub' },
   pris: { flags: ['file', 'projects', 'keywords', 'refs'], usage: 'pris [--json] | pris seed --file <md> | pris put --file <json> | pris link <id> [--projects a,b] [--keywords a,b] [--refs a,b] | pris note <id> <text> | pris gaps', help: 'the owner priorities in order (~/.stack/pris.json); seed runs once; put replaces the list (slot and days set the order of each weekday); link sets the terms that link tasks; note records status; gaps lists priorities with no status, stale status (>7 days) or no linked tasks' },
   'pr-pri': { flags: ['rank', 'to', 'to-rank', 'note', 'rev', 'agent', 'reason', 'thread', 'on', 'remove', 'file', 'refresh'], usage: PR_PRI_USAGE, help: 'the PR priority queue the Sweep Manager works top down (~/.stack/pr-priority.json, never git): owner edits, agent recommendations, owner decisions, merge-order edges, thread acks, the escalation set; see docs/pr-priority.md' },
   app: { flags: ['check', 'install', 'no-build', 'source'], usage: 'app install [--no-build] | update [--check | --install] [--no-build] | status [--source dir]', help: 'build Stack.app from the source checkout (STACK_SOURCE or ~/.local/share/stack) and install or update it in /Applications; update never quits a running app unless --install (docs/desktop-install.md)' },
@@ -126,6 +128,14 @@ const VERBS: Record<string, string> = {
 
 const taskText = (line: string | undefined): string => (line ?? '').replace(/^\s*- \[[ xX]\] ?/, '');
 const flag = (f: Record<string, string | true>, n: string): string | undefined => (typeof f[n] === 'string' ? (f[n] as string) : undefined);
+/** The `--now` clock, or undefined for the real one. */
+function nowOf(f: Record<string, string | true>): Date | undefined {
+  const v = flag(f, 'now');
+  if (v === undefined) return undefined;
+  const at = new Date(v);
+  if (Number.isNaN(at.getTime())) throw new UsageError(`--now must be an ISO date: ${v}`);
+  return at;
+}
 
 function num(v: string | undefined, name: string): number | undefined {
   if (v === undefined) return undefined;
@@ -945,7 +955,7 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     }
     // Devices live in ~/.stack (STACK_HOME), not the content repo. @req FR:tailnet-access/pair.@cli
     if (p.command === 'devices') { const d = await devicesCmd(p.positionals[0], p.positionals.slice(1), stackHome()); io.out(`${json ? JSON.stringify(d.json) : d.text}\n`); return EXIT.ok; }
-    const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : p.command === 'sessions' ? sessionsCmd(p) : p.command === 'feedback' ? await feedbackCmd(p) : p.command === 'qm' ? qmCmd(p) : p.command === 'prs' ? await prsCmd(p.flags, p.positionals, () => loadConfig(dir), stackHome()) : p.command === 'pris' ? await prisCmd(p, () => buildCtx(p.flags, dir)) : p.command === 'app' ? await appCmd(p.positionals[0], p.flags, realAppDeps(home)) : p.command === 'pr-pri' ? await prPriCmd(p.positionals, p.flags, io.in ?? readStdin) : await dispatch(p.command, p, dir);
+    const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : p.command === 'sessions' ? sessionsCmd(p) : p.command === 'feedback' ? await feedbackCmd(p) : p.command === 'qm' ? qmCmd(p) : p.command === 'prs' ? await prsCmd(p.flags, p.positionals, () => loadConfig(dir), stackHome()) : p.command === 'priorities' ? await prioritiesCmd(p.flags, p.positionals, liveDeps(stackHome(), () => loadConfig(dir), process.env, nowOf(p.flags))) : p.command === 'pris' ? await prisCmd(p, () => buildCtx(p.flags, dir)) : p.command === 'app' ? await appCmd(p.positionals[0], p.flags, realAppDeps(home)) : p.command === 'pr-pri' ? await prPriCmd(p.positionals, p.flags, io.in ?? readStdin) : await dispatch(p.command, p, dir);
     if (json) io.out(`${JSON.stringify(r.json)}\n`);
     else if (r.text) io.out(`${r.text}\n`);
     return r.code ?? EXIT.ok;

@@ -1486,26 +1486,17 @@ paths:
                 $ref: "#/components/schemas/PrisFile"
         default:
           $ref: "#/components/responses/Error"
-  /qm:
+  /priorities:
     get:
-      summary: Owner only. The weekly QM (quota-maxxing) plan from ~/.stack/qm-plan.json (.xe/features/qm-plan/spec.md); plan is null when none is stored, broken is true when the file is not a valid plan. Agents write it with stack qm put. 404 on hosts with no store
-      operationId: getQmPlan
+      summary: "Owner only. The priorities as tables: now (top 3 open), autopilot (PRs ready to promote to Autopilot, fewest spec lines first), today, next 3 days. Priority rows: project, agent session link, next action; every row has its last live check (stale after 30 min). 404 on hosts with no store"
+      operationId: getPrioritiesTables
       responses:
         "200":
-          description: QM plan
+          description: Priorities tables
           content:
             application/json:
               schema:
-                type: object
-                required:
-                  - plan
-                properties:
-                  plan:
-                    allOf:
-                      - $ref: "#/components/schemas/QmPlan"
-                    nullable: true
-                  broken:
-                    type: boolean
+                $ref: "#/components/schemas/PrioritiesView"
         default:
           $ref: "#/components/responses/Error"
   /pr-priority:
@@ -3929,6 +3920,152 @@ components:
                 type: string
                 minLength: 1
                 maxLength: 500
+        label:
+          type: string
+          minLength: 1
+          maxLength: 40
+          description: Project name in the priorities tables
+        action:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Fixed next action; wins over the note
+        session:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,128}$
+          description: Claude session id of the agent
+        windows:
+          type: array
+          maxItems: 7
+          description: Local hours the owner can work it; none means all day
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              days:
+                type: array
+                items:
+                  type: string
+                  enum:
+                    - mon
+                    - tue
+                    - wed
+                    - thu
+                    - fri
+                    - sat
+                    - sun
+              from:
+                type: string
+                pattern: ^([01]\d|2[0-3]):[0-5]\d$
+              to:
+                type: string
+                pattern: ^([01]\d|2[0-3]):[0-5]\d$
+    PriRow:
+      type: object
+      required:
+        - id
+        - project
+        - agent
+        - action
+        - at
+        - stale
+      properties:
+        id:
+          type: string
+        project:
+          type: string
+        action:
+          type: string
+          description: At most 20 words; -- when none
+        agent:
+          type: object
+          nullable: true
+          properties:
+            name:
+              type: string
+            link:
+              type: string
+        at:
+          type: string
+          format: date-time
+          description: The oldest live check the row used
+        stale:
+          type: boolean
+    PriTable:
+      type: object
+      required:
+        - at
+        - stale
+        - rows
+      properties:
+        at:
+          type: string
+          format: date-time
+        stale:
+          type: boolean
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/PriRow"
+    PrTableRow:
+      type: object
+      required:
+        - project
+        - number
+        - url
+        - title
+        - at
+        - stale
+      properties:
+        project:
+          type: string
+        number:
+          type: integer
+        url:
+          type: string
+        title:
+          type: string
+        at:
+          type: string
+          format: date-time
+        stale:
+          type: boolean
+    PrTable:
+      type: object
+      required:
+        - at
+        - stale
+        - rows
+      properties:
+        at:
+          type: string
+          format: date-time
+        stale:
+          type: boolean
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/PrTableRow"
+    PrioritiesView:
+      type: object
+      required:
+        - at
+        - now
+        - autopilot
+        - today
+        - next
+      properties:
+        at:
+          type: string
+          format: date-time
+        now:
+          $ref: "#/components/schemas/PriTable"
+        autopilot:
+          $ref: "#/components/schemas/PrTable"
+        today:
+          $ref: "#/components/schemas/PriTable"
+        next:
+          $ref: "#/components/schemas/PriTable"
     PrRec:
       type: object
       required:
@@ -4102,91 +4239,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PrRec"
-    QmPlan:
-      type: object
-      additionalProperties: false
-      required:
-        - version
-        - asOf
-        - projects
-      properties:
-        version:
-          type: integer
-          enum:
-            - 1
-        asOf:
-          type: string
-          format: date-time
-        projects:
-          type: array
-          maxItems: 50
-          items:
-            type: object
-            additionalProperties: false
-            required:
-              - project
-              - agent
-              - tasks
-              - weeklyTokens
-              - preAckMin
-              - postReviewMin
-            properties:
-              project:
-                type: string
-                minLength: 1
-                maxLength: 80
-                description: Unique in the plan (case-insensitive)
-              agent:
-                type: object
-                additionalProperties: false
-                required:
-                  - name
-                properties:
-                  name:
-                    type: string
-                    minLength: 1
-                    maxLength: 80
-                  sessionId:
-                    type: string
-                    pattern: ^[A-Za-z0-9_.-]{1,100}$
-                  url:
-                    type: string
-                    format: uri
-                    pattern: ^https://
-                    maxLength: 2000
-              tasks:
-                type: array
-                maxItems: 5
-                items:
-                  type: object
-                  additionalProperties: false
-                  required:
-                    - title
-                  properties:
-                    title:
-                      type: string
-                      minLength: 1
-                      maxLength: 200
-                    url:
-                      type: string
-                      format: uri
-                      pattern: ^https://
-                      maxLength: 2000
-              weeklyTokens:
-                type: integer
-                minimum: 0
-                nullable: true
-                description: null = pending
-              preAckMin:
-                type: integer
-                minimum: 0
-                nullable: true
-                description: null = pending
-              postReviewMin:
-                type: integer
-                minimum: 0
-                nullable: true
-                description: null = pending
     PrisFile:
       type: object
       required:

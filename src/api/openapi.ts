@@ -350,6 +350,10 @@ const DOCS: Record<string, RouteDoc> = {
     operationId: 'getPriorities', summary: 'Owner only. The owner priorities, most important first (~/.stack/pris.json); rev 0 and an empty list when none. 404 on hosts with no store',
     responses: ok('Priorities', ref('PrisFile')),
   },
+  'priorities.get': {
+    operationId: 'getPrioritiesTables', summary: 'Owner only. The priorities as tables: now (top 3 open), autopilot (PRs ready to promote to Autopilot, fewest spec lines first), today, next 3 days. Priority rows: project, agent session link, next action; every row has its last live check (stale after 30 min). 404 on hosts with no store',
+    responses: ok('Priorities tables', ref('PrioritiesView')),
+  },
   'pris.put': {
     operationId: 'putPriorities', summary: 'Owner only. Replace the priorities list. Send the rev you read: a stale rev is 409. 400 lists every issue',
     requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['rev', 'pris'], properties: { rev: { type: 'integer', minimum: 0 }, pris: { type: 'array', maxItems: 30, items: ref('Pri') } } } } } },
@@ -654,8 +658,24 @@ export function buildOpenApi(): J {
             id: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,23}$' }, title: { type: 'string', minLength: 1, maxLength: 200 }, status: { type: 'string', enum: [...PRI_STATUSES] },
             items: { type: 'array', maxItems: 20, items: ref('PriItem') }, backlog: { type: 'array', maxItems: 50, items: ref('PriItem') },
             weekly: { type: 'array', maxItems: 12, description: 'Weekly progress, newest first', items: { type: 'object', additionalProperties: false, required: ['week', 'text'], properties: { week: { type: 'string', pattern: '^\\d{4}-W(0[1-9]|[1-4]\\d|5[0-3])$' }, text: { type: 'string', minLength: 1, maxLength: 500 } } } },
+            label: { type: 'string', minLength: 1, maxLength: 40, description: 'Project name in the priorities tables' },
+            action: { type: 'string', minLength: 1, maxLength: 200, description: 'Fixed next action; wins over the note' },
+            session: { type: 'string', pattern: '^[A-Za-z0-9_-]{1,128}$', description: 'Claude session id of the agent' },
+            windows: { type: 'array', maxItems: 7, description: 'Local hours the owner can work it; none means all day', items: { type: 'object', additionalProperties: false, properties: { days: { type: 'array', items: { type: 'string', enum: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] } }, from: { type: 'string', pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' }, to: { type: 'string', pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' } } } },
           },
         },
+        PriRow: {
+          type: 'object', required: ['id', 'project', 'agent', 'action', 'at', 'stale'],
+          properties: {
+            id: { type: 'string' }, project: { type: 'string' }, action: { type: 'string', description: 'At most 20 words; -- when none' },
+            agent: { type: 'object', nullable: true, properties: { name: { type: 'string' }, link: { type: 'string' } } },
+            at: { type: 'string', format: 'date-time', description: 'The oldest live check the row used' }, stale: { type: 'boolean' },
+          },
+        },
+        PriTable: { type: 'object', required: ['at', 'stale', 'rows'], properties: { at: { type: 'string', format: 'date-time' }, stale: { type: 'boolean' }, rows: { type: 'array', items: ref('PriRow') } } },
+        PrTableRow: { type: 'object', required: ['project', 'number', 'url', 'title', 'at', 'stale'], properties: { project: { type: 'string' }, number: { type: 'integer' }, url: { type: 'string' }, title: { type: 'string' }, at: { type: 'string', format: 'date-time' }, stale: { type: 'boolean' } } },
+        PrTable: { type: 'object', required: ['at', 'stale', 'rows'], properties: { at: { type: 'string', format: 'date-time' }, stale: { type: 'boolean' }, rows: { type: 'array', items: ref('PrTableRow') } } },
+        PrioritiesView: { type: 'object', required: ['at', 'now', 'autopilot', 'today', 'next'], properties: { at: { type: 'string', format: 'date-time' }, now: ref('PriTable'), autopilot: ref('PrTable'), today: ref('PriTable'), next: ref('PriTable') } },
         PrRec: {
           type: 'object', required: ['id', 'repo', 'number', 'url', 'agent', 'reason', 'state', 'at'],
           properties: {

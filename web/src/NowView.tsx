@@ -1,38 +1,28 @@
 /**
  * Now: the one place. One task, one reason, two actions, a message to its agent; beside it on wide screens (under it on
- * phones) the next meetings and the top asks.
+ * phones) the next meetings; under both, the priorities tables.
  * @req FR:now-screen/now.one @req FR:now-screen/now.why @req FR:now-screen/now.actions @req FR:now-screen/now.compose @req FR:now-screen/now.next @req FR:now-screen/now.empty @req FR:now-screen/now.a11y @req FR:now-screen/now.layout
- * @req FR:ux-consolidation/one.meetings @req FR:ux-consolidation/one.messages @req FR:ux-consolidation/one.answer @req FR:ux-consolidation/one.focus @req FR:ux-consolidation/one.clamp @req FR:ux-consolidation/one.layout
- * @req FR:product-reset/ui.done @req FR:product-reset/ia.now
+ * @req FR:ux-consolidation/one.meetings @req FR:ux-consolidation/one.messages @req FR:ux-consolidation/one.focus @req FR:ux-consolidation/one.clamp @req FR:ux-consolidation/one.layout
+ * @req FR:product-reset/ui.done @req FR:product-reset/ia.now @req FR:priorities-tables/web.place
  */
-import type { AskItem } from './asks';
 import type { Brief } from './brief';
 import { Md } from './parts';
 import type { NowTask } from './nowscreen';
-import { NowAsks, type AskCtl } from './NowAsks';
 import { NowChat, type NowChatProps } from './NowChat';
 import { NowNext, type CalCtl, type Layer } from './NowNext';
+import type { PrioritiesView } from './priorities';
+import { PrioritiesTables } from './PrioritiesTables';
 import './nowscreen.css';
 
 export type NowAct = 'done' | 'defer';
 export type { Layer };
-const WAITING = 3;
-
-/** The top 3 of the merged asks: messages first (best score first), then the rest. @req FR:ux-consolidation/one.messages */
-export function waitingOf(b: Pick<Brief, 'messages' | 'actions' | 'moreMessages' | 'moreActions'>): { rows: AskItem[]; more: number } {
-  const all = [...b.messages, ...b.actions];
-  return { rows: all.slice(0, WAITING), more: Math.max(0, all.length - WAITING) + b.moreMessages + b.moreActions };
-}
-
-export function NowScreen({ n, done = false, b, layer, busy, onAct, asks, cal, now, onOpenAsks, chat }: {
+export function NowScreen({ n, done = false, b, layer, busy, onAct, pri, cal, now, chat }: {
   n: NowTask | null; /** Done just ran on this task: the card plays the check, then the next task replaces it. @req FR:product-reset/ui.done */ done?: boolean; b: Brief; layer: Layer; busy: boolean; onAct: (a: NowAct) => void;
   /** The message composer under the task. */ chat?: Omit<NowChatProps, 'taskRef' | 'busy'>;
-  /** Answers on the ask cards, as Needs you answers them. */ asks: Omit<AskCtl, 'busy' | 'now'>;
+  /** The priorities tables; null hides them (loading, or no store on this host). */ pri: PrioritiesView | null;
   /** The calendar source; fixes live in Settings. */ cal: Pick<CalCtl, 'source'>;
   now: Date;
-  onOpenAsks: () => void;
 }) {
-  const waiting = waitingOf(b);
   return (
     <section class="now" aria-label="Now" data-testid="now">
       <div class="now-focus" data-testid="now-focus">
@@ -63,8 +53,8 @@ export function NowScreen({ n, done = false, b, layer, busy, onAct, asks, cal, n
 
       <div class="now-side" data-testid="now-side">
         <NowNext meetings={b.meetings} layer={layer} cal={cal} now={now} />
-        <NowAsks rows={waiting.rows} more={waiting.more} ctl={{ ...asks, busy, now }} onOpenAsks={onOpenAsks} />
       </div>
+      {pri && <PrioritiesTables v={pri} />}
     </section>
   );
 }
