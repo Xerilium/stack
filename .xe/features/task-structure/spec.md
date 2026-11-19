@@ -58,6 +58,7 @@ The owner needs Stack system files kept apart from task files so that they never
 - **FR:system.ask-key** (P1): An ask key MUST resolve to its file at any level
   - A key in more than one folder resolves to the first path in sort order.
   - Archive moves an ask to `archive/` in its own `.stack/` folder.
+  - Superseded by `FR:task-asks/place.unique` (an ask key resolves to its row; the first task file in sort order wins) and `FR:task-asks/core.archive`.
 - **FR:system.watch** (P2): The file watcher MUST report a change under any `tasks/**/.stack/asks/` folder as `asks`
 
 ## Next slices

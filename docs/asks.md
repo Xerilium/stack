@@ -1,6 +1,6 @@
 # Asks: agent contract
 
-Agents bring the owner decisions through ask files, never chat. One ask is one exact decision. The owner sees the top few, ranked by Stack, with your recommendation and default-if-silent. Keep asks rare, specific, and answerable in one tap.
+Agents bring the owner decisions through asks, never chat. An ask is a 🙋 task row under the task it blocks (`- [ ] 🙋 ‼️ Approve X` with `> key: value` lines), so one read of a task file shows the work and what blocks it. One ask is one exact decision. The owner sees the top few, ranked by Stack, with your recommendation and default-if-silent. Keep asks rare, specific, and answerable in one tap.
 
 Spec: [.xe/features/ask-queue/spec.md](../.xe/features/ask-queue/spec.md). Design: [docs/design/ask-queue.md](design/ask-queue.md).
 
@@ -16,14 +16,15 @@ stack asks put pr-879-approve \
 ```
 
 - `--dir <repo folder>` points at the served folder (`stack web` prints it). Over HTTP: `POST /api/asks/<key>` with the same fields and an API token (`tasks:write`); `from` defaults to the token's name.
-- The key is yours and stable. Writing it again updates the ask. A `done` ask needs `--reopen` to open again.
+- The key is yours and stable. Writing it again updates the ask. The key is the row's `> id:`. A `done` ask needs `--reopen` to open again.
 - `ask` is one line, at most 200 characters, a decision not a topic ("Approve X", "Pick Y or Z", "Review draft to Dana").
 - `kind`: `approve` (yes/no), `decide` (give `--options "A|B"`, recommend one), `review` (open the link, then "Looks good" or "Needs changes"), `go-do` (a human-only step), `answer` (you need a fact in words).
 - `recommend` always; `default` and `--reversible yes` only when silence is safe. Irreversible, costly, or external actions never get a default.
 - `by` is the real deadline. `blocks` is how many things wait on this. `priority`: `crit`, `high`, `normal`, `low`.
 - `--from <agent>` is required: it names you on the page and in `waiting on <agent>`.
+- Where the row goes: with `--ref`, the last child of that task; else with `--project`, the end of the first section of `tasks/<project>.md`; else the end of `tasks/asks.md` (created when missing). A put on an existing key updates that row where it is.
 - `--ref tasks/<file>.md:<line>` (1-based, the CLI ref; over HTTP `ref` is `<project>:<line>`) ties the ask to a task: it shows in that task's thread and follows the row when it moves. Answer the owner on the task with `stack inbox reply tasks/<file>.md:<line> --from <agent> --text "..."`.
-- Never answer for the owner. Over HTTP always send your token (a token on `/answer` gets `403`); without a token the local server treats the request as the owner's page. Never edit `answer` or `state` in an ask file by hand.
+- Never answer for the owner. Over HTTP always send your token (a token on `/answer` gets `403`); without a token the local server treats the request as the owner's page. Never edit `answer` or `state` on an ask row by hand.
 - Never put secrets, tokens, or full message bodies in an ask. Detail is for the owner's eyes only and renders as plain text.
 
 ## Read the answer
@@ -54,11 +55,22 @@ When the owner answers, Stack adds one line to `tasks/.stack/wake/<from>.md` (yo
 ## Keep the queue small
 
 ```bash
-stack asks archive            # moves done asks untouched for 14 days to tasks/.stack/asks/archive/
+stack asks archive            # deletes the rows of done asks untouched for 14 days
 stack asks archive --days 3   # sooner
 ```
 
-Run it at the start of each run (one commit, nothing is lost). The archive is never shown or ranked.
+Run it at the start of each run (one commit; git history keeps the rows).
+
+## Import old ask files
+
+Asks used to be one file each (`tasks/.stack/asks/<key>.md`). Run once:
+
+```bash
+stack asks import --dry-run   # lists what it would import
+stack asks import             # open and answered ask files become rows, one commit; the files stay
+```
+
+A key that is already a row is skipped, so a second run changes nothing.
 
 ## Rules of thumb
 

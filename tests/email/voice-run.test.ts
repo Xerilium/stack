@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
-import { asksPath, parseAsk } from '../../src/core/asks';
+import { askRows } from '../helpers/ask-rows';
+const rowAsk = async (s: Parameters<typeof askRows>[0], key: string) => (await askRows(s)).find((r) => r.key === key)!.ask;
 import { DEFAULT_RULES } from '../../src/email/rules';
 import { runTriage } from '../../src/email/run';
 import { toAsk } from '../../src/email/to-ask';
@@ -25,7 +26,7 @@ function setup(drafts: string[]) {
   const drafter: Drafter = { draft: jest.fn(async () => queue.shift() ?? GOOD) };
   return { provider, classifier, drafter, created };
 }
-const askOf = async (storage: { read(p: string): Promise<{ content: string }> }) => parseAsk('k', (await storage.read(asksPath(keyOf('conv-1')))).content);
+const askOf = async (storage: Parameters<typeof askRows>[0]) => (await rowAsk(storage, keyOf('conv-1')));
 
 // @req FR:email-voice/score.redraft
 describe('runTriage voice check', () => {

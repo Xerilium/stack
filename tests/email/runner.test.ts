@@ -1,7 +1,9 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { answerAsk, asksPath, handleAsk, parseAsk } from '../../src/core/asks';
+import { answerAsk, handleAsk } from '../../src/core/asks';
+import { askKeys, askRows, askText } from '../helpers/ask-rows';
+const rowAsk = async (s: Parameters<typeof askRows>[0], key: string) => (await askRows(s)).find((r) => r.key === key)!.ask;
 import { createGraphActions, createGraphMail, htmlToText, messageDetails, sentItems } from '../../src/email/graph-mail';
 import { createGraphGuard, GRAPH_BASE, GraphDenied, type GraphRequest } from '../../src/email/guard';
 import { createServer, request as httpRequest } from 'http';
@@ -210,12 +212,12 @@ describe('runPass end to end (fake Graph, fake models)', () => {
     expect(statSync(sp).mode & 0o777).toBe(0o600);
     expect(readState(sp).cursor).toContain('deltatoken=t1');
     const archiveKey = readState(sp).hygiene.batches.find((b) => b.kind === 'archive')!.key;
-    expect(await storage.listAsks!()).toContain(asksPath(archiveKey));
+    expect(await askKeys(storage)).toContain((archiveKey));
     await answerAsk(c0, archiveKey, { answer: 'go' });
     const g2 = fakeGraph({ ...routes([]), '/messages/delta': { value: [], '@odata.deltaLink': `${GRAPH_BASE}/me/mailfolders/inbox/messages/delta?$deltatoken=t2` } });
     await runPass({ ctx: c0, account: 'sam@example.test', transport: g2.transport, mode: 'drafts', llm: m.llm, dataDir });
     expect(g2.seen.filter((r) => r.url.endsWith('/move')).map((r) => r.url)).toEqual([`${GRAPH_BASE}/me/messages/n/move`]);
-    expect(parseAsk(archiveKey, (await storage.read(asksPath(archiveKey))).content)).toMatchObject({ state: 'done', note: 'Archived 1' });
+    expect((await rowAsk(storage, archiveKey))).toMatchObject({ state: 'done', note: 'Archived 1' });
   });
 
   // @req FR:email-runner/cli.nosend
@@ -245,7 +247,7 @@ describe('runPass end to end (fake Graph, fake models)', () => {
         expect(path.replace(/\/createReply$/, '')).not.toMatch(SENDISH);
       }
       if (mode === 'observe') expect(all.every((r) => r.method === 'GET')).toBe(true);
-      expect(await storage.listAsks!()).toBeDefined();
+      expect(await askKeys(storage)).toBeDefined();
     }
   });
 
@@ -330,7 +332,7 @@ describe('stack email', () => {
     const g = fakeGraph({ '/messages/delta': { value: [], '@odata.deltaLink': `${GRAPH_BASE}/me/mailfolders/inbox/messages/delta?$deltatoken=t` } });
     const r = await emailCmd(ctx, 'run', { 'dry-run': true }, { cache: await cacheWith(['Mail.ReadWrite']), dataDir, transport: g.transport, llm: fakeLlm(() => ({})).llm });
     expect(r.json).toMatchObject({ ok: true, dryRun: true, mode: 'drafts', messages: 0 });
-    expect(await storage.listAsks!()).toEqual([]);
+    expect(await askKeys(storage)).toEqual([]);
     expect(existsSync(statePath('sam@example.test', dataDir))).toBe(false);
     expect(g.seen[0].url).toContain('receivedDateTime+ge+');
   });
@@ -364,7 +366,7 @@ describe('stack email', () => {
         expect(r.json).toMatchObject({ ok: true, dryRun: true, offline: true, messages: 2 });
         block.all.forEach((s) => expect(s).not.toHaveBeenCalled());
       } finally { block.restore(); }
-      expect(await storage.listAsks!()).toEqual([]);
+      expect(await askKeys(storage)).toEqual([]);
       expect(existsSync(statePath('sam@example.test', dataDir))).toBe(false);
     });
     it('runs with no fixture (empty mailbox) and a default account', async () => {
@@ -418,12 +420,12 @@ describe('owner replies from Outlook', () => {
     const link = (f: string, t: string) => `${GRAPH_BASE}/me/mailfolders/${f}/messages/delta?$deltatoken=${t}`;
     const llm = fakeLlm((c) => ((c.schema as { required: string[] }).required[0] === 'reply' ? { reply: 'Hi Alex,\n\nYes.\n\nThanks,\nSam' } : { class: 'needs_reply', urgency: 1, confidence: 0.9, reason: 'q', injectionSuspected: false })).llm;
     await runPass({ ctx: c0, account: 'sam@example.test', transport: fakeGraph({ 'inbox/messages/delta': { value: [inboxQ], '@odata.deltaLink': link('inbox', 'i1') }, '/me/messages/q?': { internetMessageHeaders: [], uniqueBody: { contentType: 'text', content: 'Can you review?' } }, '/createReply': { id: 'D', webLink: 'https://outlook.example.test/d' } }).transport, mode: 'drafts', llm, dataDir });
-    const key = (await storage.listAsks!()).map((p) => p.replace(/^.*\//, '').replace(/\.md$/, '')).find((k) => k.startsWith('mail-') && !k.startsWith('mail-archive'))!;
-    expect(parseAsk(key, (await storage.read(asksPath(key))).content).state).toBe('open');
+    const key = (await askKeys(storage)).map((p) => p.replace(/^.*\//, '').replace(/\.md$/, '')).find((k) => k.startsWith('mail-') && !k.startsWith('mail-archive'))!;
+    expect((await rowAsk(storage, key)).state).toBe('open');
     const reply = { ...inboxQ, id: 'r1', from: { emailAddress: { address: 'sam@example.test' } }, receivedDateTime: '2026-10-27T10:00:00Z' };
     const s = await runPass({ ctx: c0, account: 'sam@example.test', transport: fakeGraph({ 'sentitems/messages/delta': { value: [reply], '@odata.deltaLink': link('sentitems', 's2') }, 'inbox/messages/delta': { value: [], '@odata.deltaLink': link('inbox', 'i2') } }).transport, mode: 'drafts', llm, dataDir });
     expect(s.resolved).toBe(1);
-    expect(parseAsk(key, (await storage.read(asksPath(key))).content)).toMatchObject({ state: 'done', outcome: 'resolved' });
+    expect((await rowAsk(storage, key))).toMatchObject({ state: 'done', outcome: 'resolved' });
     expect(readState(statePath('sam@example.test', dataDir)).sentCursor).toContain('deltatoken=s2');
   });
 });
@@ -591,7 +593,7 @@ describe('model down (claude signed out)', () => {
     const dataDir = tmp();
     const c = new FileTokenCache(join(tmp(), 'graph-token.json'));
     await c.write({ version: 1, tenant: 't', clientId: 'id', scopes: ['Mail.ReadWrite'], refreshToken: 'r', accessToken: 'a', expiresAt: Date.now() + 3600_000, account: 'sam@example.test' });
-    const state = async () => parseAsk(CLAUDE_LOGIN_ASK, (await storage.read(asksPath(CLAUDE_LOGIN_ASK))).content).state;
+    const state = async () => (await rowAsk(storage, CLAUDE_LOGIN_ASK)).state;
     const run = (llm: ClaudeJson) => emailCmd(ctx, 'run', { mode: 'observe' }, { cache: c, dataDir, transport: fakeGraph(delta3).transport, llm });
     await run(failing(AUTH));
     await handleAsk(ctx, CLAUDE_LOGIN_ASK, { outcome: 'handled' }, 'me');
@@ -607,7 +609,7 @@ describe('model down (claude signed out)', () => {
       const dataDir = tmp();
       const { storage, ctx } = mkCtx();
       await expect(runPass({ ctx, account: 'sam@example.test', transport: fakeGraph(routes).transport, mode: 'drafts', llm: failing(text), dataDir })).rejects.toBeInstanceOf(ModelUnavailable);
-      expect(await storage.listAsks!()).toEqual([]);
+      expect(await askKeys(storage)).toEqual([]);
       expect(existsSync(statePath('sam@example.test', dataDir))).toBe(false);
     }
   });
@@ -626,8 +628,8 @@ describe('model down (claude signed out)', () => {
     expect(all.code).toBe(4);
     // The mailboxes share one claude login: after one is down the rest are skipped, not retried.
     expect((all.json.accounts as { skipped?: boolean }[]).filter((x) => x.skipped)).toHaveLength(1);
-    expect(await storage.listAsks!()).toEqual([asksPath(CLAUDE_LOGIN_ASK)]);
-    expect(parseAsk(CLAUDE_LOGIN_ASK, (await storage.read(asksPath(CLAUDE_LOGIN_ASK))).content)).toMatchObject({ state: 'open', ask: expect.stringMatching(/^Claude login expired: run .claude. and sign in$/) });
+    expect(await askKeys(storage)).toEqual([(CLAUDE_LOGIN_ASK)]);
+    expect((await rowAsk(storage, CLAUDE_LOGIN_ASK))).toMatchObject({ state: 'open', ask: expect.stringMatching(/^Claude login expired: run .claude. and sign in$/) });
   });
 });
 
@@ -644,9 +646,9 @@ describe('sensitive mail never reaches a model', () => {
     const s = await runPass({ ctx, account: 'sam@example.test', transport: g.transport, mode: 'drafts', llm: m.llm, dataDir });
     expect(m.calls).toEqual([]);
     expect(s).toMatchObject({ rules: 1, model: 0, drafts: 0, asks: 1 });
-    const keys = await storage.listAsks!();
+    const keys = await askKeys(storage);
     expect(keys).toHaveLength(1);
-    expect((await storage.read(keys[0])).content).toMatch(/Sensitive mail from Dr. Kim/);
+    expect(await askText(storage, keys[0])).toMatch(/Sensitive mail from Dr. Kim/);
   });
   it('rules.json sensitive {keywords, domains} adds to the defaults; the legacy list still works', () => {
     const d = tmp();

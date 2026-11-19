@@ -95,7 +95,7 @@ describe('taskThread', () => {
     await sendToInbox(ctx, { path: 'tasks/flantastic-4.md', line: 7 }, 'Still here?', 'reply');
     await replyFromAgent(ctx, { path: 'tasks/flantastic-4.md', line: 7 }, 'Yes.', 'cid-manager');
     await putAsk(ctx, 'q-moved', { ask: 'Which cover?', kind: 'answer', from: 'cid-manager', ref: 'flantastic-4:7' }, 'cid-manager');
-    await storage.write('tasks/flantastic-4.md', F4.replace('## 🔄 Active\n\n', '## 🔄 Active\n\n- [ ] A new row on top 🟢\n'));
+    await storage.write('tasks/flantastic-4.md', (await storage.read('tasks/flantastic-4.md')).content.replace('## 🔄 Active\n\n', '## 🔄 Active\n\n- [ ] A new row on top 🟢\n'));
     const th = await taskThread(ctx, undefined, 'flantastic-4:8'); // the single moved down one line
     expect(th.items.map((i) => i.kind)).toEqual(['owner', 'agent', 'ask', 'subtask']);
     expect(th.items[2]).toMatchObject({ kind: 'ask', ask: { key: 'q-moved', row: 'flantastic-4:8' } });

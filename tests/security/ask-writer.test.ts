@@ -1,5 +1,6 @@
 import { putAsk } from "../../src/core/asks";
 import { NOW, setup } from "./helpers";
+import { askText } from "../helpers/ask-rows";
 
 // Security review M5: a token must not rewrite another agent's ask, so the owner never answers text he did not see.
 // @req FR:ask-queue/flow.put
@@ -29,7 +30,7 @@ describe("an ask is updated only by the token that wrote it", () => {
     ).toBe(200);
     const r = await put(s, "a-q1", s.b, { ask: "Ship v1?" });
     expect(r.status).toBe(403);
-    expect((await s.storage.read("tasks/.stack/asks/a-q1.md")).content).toContain(
+    expect(await askText(s.storage, "a-q1")).toContain(
       "Ship v2?",
     );
   });
@@ -59,10 +60,10 @@ describe("an ask is updated only by the token that wrote it", () => {
         })
       ).status,
     ).toBe(200);
-    const c = (await s.storage.read("tasks/.stack/asks/a-q2.md")).content;
+    const c = await askText(s.storage, "a-q2");
     expect(c).toContain("Tests pass");
-    expect(c).toContain("priority: high");
-    expect(c).toContain("writer: token:agent-a");
+    expect(c).toContain("🙋 ‼️ "); // priority high is its emoji on the row
+    expect(c).toContain("> writer: token:agent-a");
   });
 
   it("a token cannot claim to be the writer", async () => {

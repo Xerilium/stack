@@ -1,3 +1,4 @@
+import { askKeys } from '../helpers/ask-rows';
 import { readInbox, runInbox, syncInbox, type ChatConnector, type ChatItem } from '../../src/inbox';
 import { runTriage } from '../../src/email/run';
 import type { TriageResult } from '../../src/email/types';
@@ -54,7 +55,7 @@ describe('runInbox', () => {
     const r1 = await runInbox(ctx, { connectors: { teams: conn([chat('chat-aaaaaaaaaaaa', 'teams'), chat('chat-bbbbbbbbbbbb', 'teams')]), slack: conn([chat('chat-cccccccccccc', 'slack')]) } });
     expect(r1).toEqual({ chats: 3, failed: [] });
     expect((await readInbox(storage)).map((i) => i.source).sort()).toEqual(['email', 'slack', 'teams', 'teams']);
-    expect(await storage.listAsks()).toHaveLength(3);
+    expect(await askKeys(storage)).toHaveLength(3);
     await runInbox(ctx, { connectors: { teams: conn([chat('chat-aaaaaaaaaaaa', 'teams')]) } });
     expect((await readInbox(storage)).filter((i) => i.source === 'teams')).toHaveLength(1);
     expect((await readInbox(storage)).filter((i) => i.source === 'slack')).toHaveLength(1);

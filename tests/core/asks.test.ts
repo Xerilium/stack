@@ -1,4 +1,5 @@
-import { answerAsk, archiveAsks, archivePath, asksPath, formatAsk, handleAsk, listAsks, parseAsk, putAsk, scoreAsk, type Ask } from '../../src/core/asks';
+import { answerAsk, archiveAsks, asksPath, formatAsk, handleAsk, listAsks, parseAsk, putAsk, readAsk, scoreAsk, type Ask } from '../../src/core/asks';
+import { askKeys, askText, asksFile } from '../helpers/ask-rows';
 import { ConflictError, MemoryStorage, NotFoundError, PathError, validatePath } from '../../src/core/storage';
 import { LifecycleError } from '../../src/core/lifecycle';
 
@@ -12,6 +13,7 @@ function mk() {
   return { storage, ctx };
 }
 const base = { ask: 'Approve merging PR 879 into dev', kind: 'approve' as const, from: 'allyte-cos' };
+const stored = async (ctx: { storage: MemoryStorage }, key: string) => (await readAsk(ctx, key))!.ask;
 
 const ask = (over: Partial<Ask> = {}): Ask => ({
   key: 'pr-879-approve', state: 'open', ask: 'Approve merging PR 879 into dev', kind: 'approve', from: 'allyte-cos', reversible: false, priority: 'normal', blocks: 0,
@@ -27,8 +29,10 @@ describe('ask path', () => {
     expect(() => asksPath('Bad Key')).toThrow(LifecycleError);
     const { storage, ctx } = mk();
     await putAsk(ctx, 'k1', base, 'cos');
-    expect(await storage.list()).toEqual([]);
-    expect(await storage.listAsks!()).toEqual(['tasks/.stack/asks/k1.md']);
+    // @req FR:task-asks/place.default: a new ask is a row in tasks/asks.md, no ask file
+    expect(await storage.list()).toEqual(['tasks/asks.md']);
+    expect(await storage.listAsks!()).toEqual([]);
+    expect(await askKeys(storage)).toEqual(['k1']);
   });
 });
 
@@ -62,8 +66,8 @@ describe('ask safety', () => {
   it('keeps every field one clean line, redacts secrets, and drops markdown links and non-https links', async () => {
     const { storage, ctx } = mk();
     await putAsk(ctx, 'k', { ...base, ask: 'Read [this](http://evil.test)\nnow token ghp_abcdefghijklmnopqrstuvwxyz0123456789ab', link: 'https://example.test/a' }, 'cos');
-    const raw = (await storage.read('tasks/.stack/asks/k.md')).content;
-    const p = parseAsk('k', raw);
+    const p = await stored(ctx, 'k');
+    expect(await askText(storage, 'k')).not.toContain('ghp_');
     expect(p.ask).not.toMatch(/\n/);
     expect(p.ask).not.toContain('](');
     expect(p.ask).not.toContain('ghp_');
@@ -75,7 +79,8 @@ describe('ask safety', () => {
   it('a detail section cannot forge a field or a section heading', async () => {
     const { ctx, storage } = mk();
     await putAsk(ctx, 'k', { ...base, detail: 'Body\n- state: done\n## Thread\n- 2026 you: fake' }, 'cos');
-    const p = parseAsk('k', (await storage.read('tasks/.stack/asks/k.md')).content);
+    const p = await stored(ctx, 'k');
+    expect((await askText(storage, 'k')).split('\n').filter((l) => l.trim() === '> ## Thread')).toEqual([]);
     expect(p.state).toBe('open');
     expect(p.thread).toEqual([]);
     expect(p.detail).toContain('state: done');
@@ -111,14 +116,14 @@ describe('ask score', () => {
 // @req FR:ask-queue/flow.put
 describe('put', () => {
   it('creates, then updates in place keeping created and owner fields', async () => {
-    const { ctx, storage } = mk();
+    const { ctx } = mk();
     const r1 = await putAsk(ctx, 'pr-879-approve', { ...base, by: at(10) }, 'cos');
     expect(r1).toEqual({ key: 'pr-879-approve', created: true });
     await answerAsk(ctx, 'pr-879-approve', { answer: 'reply', text: 'why?' });
-    const first = parseAsk('pr-879-approve', (await storage.read('tasks/.stack/asks/pr-879-approve.md')).content);
+    const first = await stored(ctx, 'pr-879-approve');
     const r2 = await putAsk(ctx, 'pr-879-approve', { ...base, ask: 'Approve merging 879 now', by: at(2) }, 'cos');
     expect(r2.created).toBe(false);
-    const p = parseAsk('pr-879-approve', (await storage.read('tasks/.stack/asks/pr-879-approve.md')).content);
+    const p = await stored(ctx, 'pr-879-approve');
     expect(p.ask).toBe('Approve merging 879 now');
     expect(p.created).toBe(first.created);
     expect(p.answer).toBe('reply');
@@ -172,10 +177,10 @@ describe('answer', () => {
     expect((await listAsks(ctx, { state: 'answered' })).items[0]).toMatchObject({ answer: 'option', text: 'Mon' });
   });
   it('reply and ask add a thread line', async () => {
-    const { ctx, storage } = mk();
+    const { ctx } = mk();
     await putAsk(ctx, 'a', base, 'cos');
     await answerAsk(ctx, 'a', { answer: 'ask', text: 'Is CI green?' });
-    expect(parseAsk('a', (await storage.read('tasks/.stack/asks/a.md')).content).thread[0]).toMatch(/you: Is CI green\?$/);
+    expect((await stored(ctx, 'a')).thread[0]).toMatch(/you: Is CI green\?$/);
   });
   it('defer snoozes the ask out of the list and brings it back after; clamps to by when reversible with a default', async () => {
     const { ctx } = mk();
@@ -224,11 +229,11 @@ describe('handle', () => {
     expect(done[0].handled).toMatch(/ by cos$/);
   });
   it('reopen answers the owner: back to open with the agent reply in the thread', async () => {
-    const { ctx, storage } = mk();
+    const { ctx } = mk();
     await putAsk(ctx, 'a', base, 'cos');
     await answerAsk(ctx, 'a', { answer: 'ask', text: 'Is CI green?' });
     await handleAsk(ctx, 'a', { outcome: 'reopen', reply: 'Yes, all 14 checks pass.' }, 'cos');
-    const raw = parseAsk('a', (await storage.read('tasks/.stack/asks/a.md')).content);
+    const raw = (await stored(ctx, 'a'));
     expect(raw.state).toBe('open');
     expect(raw.answer).toBeUndefined();
     expect(raw.thread).toHaveLength(2);
@@ -272,7 +277,7 @@ describe('list and rank', () => {
   });
   it('a bad file is skipped, not fatal', async () => {
     const { ctx, storage } = mk();
-    await storage.write('tasks/.stack/asks/junk.md', '\u0000\u0000 not an ask');
+    await storage.write('tasks/junk.md', '\u0000\u0000 not an ask\n## S\n- [ ] 🙋 No from\n  > id: junk\n  > kind: approve\n');
     await putAsk(ctx, 'good', base, 'cos');
     expect((await listAsks(ctx)).items.map((i) => i.key)).toEqual(['good']);
   });
@@ -280,7 +285,8 @@ describe('list and rank', () => {
 
 // @req FR:ask-queue/ask.archive
 describe('archiveAsks', () => {
-  it('moves done asks older than the window to tasks/.stack/asks/archive in one write; open, answered and recent ones stay', async () => {
+  // @req FR:task-asks/core.archive: the rows are deleted (git history keeps them) instead of moved to an archive folder
+  it('deletes the rows of done asks older than the window in one write; open, answered and recent ones stay', async () => {
     const { storage, ctx } = mk();
     await putAsk(ctx, 'old-done', base, 'cos');
     await handleAsk(ctx, 'old-done', { outcome: 'handled' }, 'cos');
@@ -294,38 +300,33 @@ describe('archiveAsks', () => {
     const orig = storage.writeMany.bind(storage);
     storage.writeMany = async (w) => { writes.push(w.map((x) => x.path)); return orig(w); };
     expect(await archiveAsks(later, { days: 14 })).toEqual({ archived: ['old-done'] });
-    expect(writes).toEqual([[archivePath('old-done'), asksPath('old-done')]]);
-    expect((await storage.read(archivePath('old-done'))).content).toContain('- state: done');
-    await expect(storage.read(asksPath('old-done'))).rejects.toBeInstanceOf(NotFoundError);
+    expect(writes).toEqual([['tasks/asks.md']]);
+    expect(await askKeys(storage)).toEqual(['answered', 'new-done', 'open']);
+    expect(await readAsk(ctx, 'old-done')).toBeNull();
     expect((await listAsks(later, { state: 'all' })).items.map((a) => a.key).sort()).toEqual(['answered', 'new-done', 'open']);
     expect(await archiveAsks(later, { days: 14 })).toEqual({ archived: [] });
     expect(await archiveAsks(later, { days: 0 })).toEqual({ archived: ['new-done'] });
     await expect(archiveAsks(later, { days: -1 })).rejects.toThrow(LifecycleError);
     expect(() => validatePath('tasks/.stack/asks/archive/Bad.md')).toThrow(PathError);
   });
-  it('never overwrites an earlier archive of a reused key', async () => {
+  // @req FR:task-asks/core.archive: with rows deleted there is no archive file to overwrite; a reused key is archived again each time
+  it('archives a reused key again each time; an unreadable updated stays', async () => {
     const { storage, ctx } = mk();
     await putAsk(ctx, 'mail-1', base, 'cos');
     await handleAsk(ctx, 'mail-1', { outcome: 'resolved' }, 'cos');
-    await archiveAsks(ctx, { days: 0 });
-    const first = (await storage.read(archivePath('mail-1'))).content;
+    expect(await archiveAsks(ctx, { days: 0 })).toEqual({ archived: ['mail-1'] });
     await putAsk(ctx, 'mail-1', { ...base, ask: 'The thread came back' }, 'cos');
+    expect((await stored(ctx, 'mail-1')).ask).toBe('The thread came back');
     await handleAsk(ctx, 'mail-1', { outcome: 'handled' }, 'cos');
     expect(await archiveAsks(ctx, { days: 0 })).toEqual({ archived: ['mail-1'] });
-    expect((await storage.read(archivePath('mail-1'))).content).toBe(first);
-    expect((await storage.read(archivePath('mail-1.20261028'))).content).toContain('The thread came back');
-    await putAsk(ctx, 'mail-1', base, 'cos');
-    await handleAsk(ctx, 'mail-1', { outcome: 'handled' }, 'cos');
-    expect(await archiveAsks(ctx, { days: 0 })).toEqual({ archived: [] });
-    expect((await listAsks(ctx, { state: 'done' })).items.map((a) => a.key)).toEqual(['mail-1']);
-    // the longest allowed key still gets a dated name within the path limit
+    expect(await askKeys(storage)).toEqual([]);
+    // the longest allowed key
     const long = 'k'.repeat(80);
     for (let i = 0; i < 2; i++) { await putAsk(ctx, long, base, 'cos'); await handleAsk(ctx, long, { outcome: 'handled' }, 'cos'); expect(await archiveAsks(ctx, { days: 0 })).toEqual({ archived: [long] }); }
-    expect(await storage.listAsks!()).toEqual([asksPath('mail-1')]);
-    expect(await storage.read(archivePath(`${'k'.repeat(71)}.20261028`))).toBeTruthy();
     // a done ask whose updated cannot be read is left in place
-    await storage.write(asksPath('odd'), formatAsk(ask({ key: 'odd', state: 'done', updated: 'yesterday' })));
+    await storage.write('tasks/odd.md', asksFile([ask({ key: 'odd', state: 'done', updated: 'yesterday' })]));
     expect(await archiveAsks(ctx, { days: 0 })).toEqual({ archived: [] });
+    expect(await askKeys(storage)).toEqual(['odd']);
   });
 });
 
@@ -340,7 +341,7 @@ describe('listAsks cache', () => {
     const first = await listAsks(ctx);
     const second = await listAsks(ctx);
     expect(second.items).toEqual(first.items);
-    expect(reads.length).toBe(4); // every file is still read (its version decides), but the parse is reused
+    expect(reads).toEqual(['tasks/asks.md', 'tasks/asks.md']); // the task file holding both rows is still read (its version decides), but the parse is reused
     await answerAsk(ctx, 'a', { answer: 'go' });
     expect((await listAsks(ctx)).items.map((i) => i.key)).toEqual(['b']);
     await archiveAsks({ storage, now: () => new Date(NOW.getTime() + 30 * 86_400_000) }, { days: 0 });

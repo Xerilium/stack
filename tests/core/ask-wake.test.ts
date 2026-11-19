@@ -1,5 +1,5 @@
 /** @req FR:ask-queue/wake.path @req FR:ask-queue/wake.write @req FR:ask-queue/wake.clear @req FR:ask-queue/wake.fail */
-import { answerAsk, handleAsk, putAsk } from '../../src/core/asks';
+import { answerAsk, handleAsk, putAsk, readAsk } from '../../src/core/asks';
 import { wakePath } from '../../src/core/ask-wake';
 import { MemoryStorage, PathError, validatePath } from '../../src/core/storage';
 
@@ -23,7 +23,7 @@ describe('wake path', () => {
     const { storage, ctx } = mk();
     await putAsk(ctx, 'k1', base, 'cos');
     await answerAsk(ctx, 'k1', { answer: 'go' });
-    expect(await storage.list()).toEqual([]);
+    expect(await storage.list()).toEqual(['tasks/asks.md']); // the ask row's file; the wake file is never a project
   });
 });
 
@@ -84,6 +84,6 @@ describe('wake fail', () => {
     const w = storage.write.bind(storage);
     storage.write = (async (p: string, ...r: any[]) => { if (p.startsWith('tasks/.stack/wake/')) throw new Error('disk'); return (w as any)(p, ...r); }) as any;
     await expect(answerAsk(ctx, 'k1', { answer: 'go' })).resolves.toEqual({ changed: true });
-    expect((await storage.read('tasks/.stack/asks/k1.md')).content).toContain('state: answered');
+    expect((await readAsk(ctx, 'k1'))?.ask.state).toBe('answered');
   });
 });

@@ -2,12 +2,13 @@
  * `stack agent run` against the fake ACP agent. Permission requests land as asks; the test plays the owner and answers them.
  * @req FR:acp-driver/cli.run @req FR:acp-driver/cli.safe @req FR:acp-driver/perm.broker
  */
-import { mkdirSync, mkdtempSync, readdirSync } from 'fs';
+import { mkdirSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { answerAsk, readAsk } from '../../src/core/asks';
 import { FsStorage } from '../../src/core/storage';
 import { run } from '../../src/cli/run';
+import { askKeys } from '../helpers/ask-rows';
 
 // Jest compiles the ESM-only SDK to CommonJS; the real loader uses a native import().
 jest.mock('../../src/agents/acp-sdk', () => ({ loadAcpSdk: () => import('@agentclientprotocol/sdk') }));
@@ -28,10 +29,9 @@ function owner(d: string, answer: 'go' | 'no') {
   let stop = false;
   const loop = (async () => {
     while (!stop) {
-      let files: string[] = [];
-      try { files = readdirSync(join(d, 'tasks/.stack/asks')); } catch { /* not yet */ }
-      for (const f of files.filter((x) => x.startsWith('perm-') && x.endsWith('.md'))) {
-        const key = f.replace(/\.md$/, '');
+      let keys: string[] = [];
+      try { keys = await askKeys(ctx.storage); } catch { /* not yet */ }
+      for (const key of keys.filter((x) => x.startsWith('perm-'))) {
         if (seen.has(key)) continue;
         seen.add(key);
         await answerAsk(ctx, key, { answer });
@@ -168,10 +168,10 @@ describe('stack agent run: cancel, timeout, crash', () => {
     expect(r.code).toBe(1);
     expect(r.err).toContain('error: Agent exited (code 4)');
     expect(r.err).toContain('agent stderr: fake agent died mid-ask');
-    const keys = readdirSync(join(d, 'tasks/.stack/asks')).filter((f) => f.startsWith('perm-'));
+    const keys = (await askKeys(new FsStorage(d))).filter((k) => k.startsWith('perm-'));
     expect(keys).toHaveLength(1);
     await new Promise((res) => setTimeout(res, 100));
-    const ask = await readAsk({ storage: new FsStorage(d) }, keys[0].replace(/\.md$/, ''));
+    const ask = await readAsk({ storage: new FsStorage(d) }, keys[0]);
     expect(ask?.ask).toMatchObject({ state: 'done', outcome: 'resolved' });
   });
 });

@@ -282,7 +282,7 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Asks', { type: 'object', properties: { items: { type: 'array', items: ref('Ask') }, total: { type: 'integer' }, latest: { type: 'string', format: 'date-time' }, snoozed: { type: 'integer' } } }),
   },
   'asks.put': {
-    operationId: 'putAsk', summary: 'Create or update an ask (tasks/.stack/asks/<key>.md). The key is stable, so writing it again updates the ask. A token gets 403 on an ask another writer created and on perm-* keys',
+    operationId: 'putAsk', summary: 'Create or update an ask (a 🙋 task row whose id is <key>). The key is stable, so writing it again updates the ask. A token gets 403 on an ask another writer created and on perm-* keys',
     desc: { ask: 'The one exact ask, one line. Required on create', kind: 'Required on create', from: "Agent name; defaults to the token's name (the owner session writes as owner)", default: 'What happens if the owner stays silent', by: 'Deadline (ISO)', reopen: 'Open a done ask again', detail: 'Free markdown shown only when the owner expands the ask', flow: 'Quick triage: the flow this question belongs to (slug)', seq: 'Its place in the flow (1-99)', ref: 'The task this ask belongs to (project:line); the task must exist', apply: 'Action Stack runs on go: set prop=value…, due Mon d, suspend 7d, skip, complete, start, resume, note text', applies: 'One action per option (- for none)' },
     responses: ok('Written', { type: 'object', properties: { key: { type: 'string' }, created: { type: 'boolean' } } }),
   },
@@ -841,7 +841,7 @@ export function buildOpenApi(): J {
         },
         Ask: {
           type: 'object',
-          description: 'One ask for the owner (tasks/.stack/asks/<key>.md) with its computed score and rank.',
+          description: 'One ask for the owner (a 🙋 task row whose id is the key) with its computed score and rank.',
           properties: {
             key: { type: 'string' }, state: { type: 'string', enum: ['open', 'answered', 'done'] }, ask: { type: 'string' }, kind: { type: 'string', enum: [...ASK_KINDS] }, from: { type: 'string' },
             project: { type: 'string' }, why: { type: 'string' }, recommend: { type: 'string' }, options: { type: 'array', items: { type: 'string' } }, default: { type: 'string' },

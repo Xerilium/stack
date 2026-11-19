@@ -5,6 +5,7 @@
  */
 import { DUE_MARK } from './autopri-tags';
 import { SUSPEND_MARK } from './lifecycle';
+import { HUMAN_MARK } from './owner';
 import { parseProject, type Task } from './parser';
 import { TRIGGER } from './query-tasks';
 import { AGENT_TAG, TIERS } from './tiered-tasks';
@@ -114,7 +115,8 @@ export function fencedLines(lines: string[]): Set<number> {
 
 /** Issues of one row: none for a checked row, a script-owned query row, or a row inside a code fence. @req FR:task-lint/scope.open @req FR:task-lint/scope.generated */
 function rowIssues(path: string, lines: string[], task: Task, fenced: Set<number>): LintIssue[] {
-  if (task.checked || fenced.has(task.line) || task.text.trimStart().startsWith('🌐')) return [];
+  // An ask row (🙋 with `kind`) is written by Stack, not a person: the bloat rules do not apply. @req FR:task-asks/format.row
+  if (task.checked || fenced.has(task.line) || task.text.trimStart().startsWith('🌐') || (HUMAN_MARK.test(task.text) && !!task.meta?.some(([k]) => k === 'kind'))) return [];
   return [
     ...lintTitle(task.text).map((f) => ({ path, line: task.line + 1, ...f })),
     ...proseLines(lines, task, fenced).map((i) => ({ path, line: i + 1, rule: 'detail-nesting' as const, message: 'Detail line is not a bullet. Start it with "- ".' })),

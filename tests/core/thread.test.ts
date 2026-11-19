@@ -1,8 +1,9 @@
 /** @req FR:agent-thread/ask.ref @req FR:agent-thread/reply.entry */
-import { apiRefOf, listAsks, parseAsk, putAsk } from '../../src/core/asks';
+import { apiRefOf, listAsks, putAsk, readAsk } from '../../src/core/asks';
 import { formatEntry, listInbox, parseInbox, replyFromAgent, sendToInbox } from '../../src/core/inbox';
 import { MemoryStorage, NotFoundError } from '../../src/core/storage';
 import { LifecycleError } from '../../src/core/lifecycle';
+import { askText } from '../helpers/ask-rows';
 
 const F4 = '# 🎧 Flantastic 4\n\n## 🔄 Active\n\n- [ ] Release the single 🟡\n- [ ] 🤖 Ship labels\n';
 function mk() {
@@ -17,15 +18,16 @@ describe('asks belong to tasks', () => {
     const { storage, ctx } = mk();
     await storage.write('tasks/flantastic-4.md', F4);
     await putAsk(ctx, 'q1', { ask: 'Which cover?', kind: 'answer', from: 'cid-manager', ref: 'flantastic-4:4' }, 'cid-manager');
-    const raw = (await storage.read('tasks/.stack/asks/q1.md')).content;
-    expect(raw).toContain('- ref: flantastic-4:4');
-    expect(raw).toContain('- reftext: Release the single 🟡');
-    expect(parseAsk('q1', raw)).toMatchObject({ ref: 'flantastic-4:4', refText: 'Release the single 🟡' });
+    // @req FR:task-asks/place.ref: the ask is a row under the task, with ref and reftext metadata
+    const raw = await askText(storage, 'q1');
+    expect(raw).toContain('> ref: flantastic-4:4');
+    expect(raw).toContain('> reftext: Release the single 🟡');
+    expect((await readAsk(ctx, 'q1'))!.ask).toMatchObject({ ref: 'flantastic-4:4', refText: 'Release the single 🟡' });
     let list = await listAsks(ctx, { state: 'open' });
     expect(list.items[0]).toMatchObject({ key: 'q1', ref: 'flantastic-4:4', row: 'flantastic-4:4', task: 'Release the single 🟡' });
     expect(apiRefOf('tasks/a b.md:12')).toBe('a b:11');
     // A row added above moves the task; the ask still points at it.
-    await storage.write('tasks/flantastic-4.md', F4.replace('- [ ] Release', '- [ ] New first\n- [ ] Release'));
+    await storage.write('tasks/flantastic-4.md', (await storage.read('tasks/flantastic-4.md')).content.replace('- [ ] Release', '- [ ] New first\n- [ ] Release'));
     list = await listAsks(ctx, { state: 'open' });
     expect(list.items[0]).toMatchObject({ ref: 'flantastic-4:4', row: 'flantastic-4:5' });
   });

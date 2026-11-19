@@ -1,5 +1,6 @@
 import notes from '../fixtures/github/notifications.json';
 import { readInbox, writeInbox } from '../../src/inbox';
+import { askKeys } from '../helpers/ask-rows';
 import { createGhGuard, githubConnector, githubItems, githubSignal, type GhNotification, type GhRun } from '../../src/inbox/connectors/github';
 import { runGithub } from '../../src/inbox/connectors/github-runner';
 import { mkCtx } from '../email/fixtures';
@@ -104,7 +105,7 @@ describe('runGithub', () => {
     expect(stored.filter((i) => i.source === 'github')).toHaveLength(7);
     expect(stored.filter((i) => i.source === 'slack')).toHaveLength(1);
     expect(stored.find((i) => i.kind === 'ci_failed')?.link).toBe('https://github.com/example/app/actions');
-    const asks = await storage.listAsks();
+    const asks = await askKeys(storage);
     expect(asks).toHaveLength(5);
     await runGithub(ctx, { connector: conn(githubItems(fx.slice(0, 1), 'octo')) });
     expect((await readInbox(storage)).filter((i) => i.source === 'github')).toHaveLength(1);

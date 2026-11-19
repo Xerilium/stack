@@ -1,5 +1,7 @@
 import { createHash } from 'crypto';
-import { asksPath, handleAsk, parseAsk } from '../../src/core/asks';
+import { handleAsk } from '../../src/core/asks';
+import { askKeys, askRows } from '../helpers/ask-rows';
+const rowAsk = async (s: Parameters<typeof askRows>[0], key: string) => (await askRows(s)).find((r) => r.key === key)!.ask;
 import { DEFAULT_RULES } from '../../src/email/rules';
 import { runTriage } from '../../src/email/run';
 import type { Classification, Classifier, Drafter, MailProvider, Message } from '../../src/email/types';
@@ -39,8 +41,8 @@ describe('runTriage', () => {
     expect(summary.counts).toMatchObject({ needs_reply: 1, newsletter: 1, receipt: 1, sensitive: 1, fyi: 1 });
     expect(s.created).toEqual([{ id: 'm1', text: expect.stringMatching(/^⟦AI draft: review before sending⟧\nThanks, Friday works\.$/) }]);
     // the sensitive ask is grouped by sender and subject (FR:email-triage/ask.group)
-    expect((await storage.listAsks!()).sort()).toEqual([asksPath(keyOf('c1')), asksPath(groupKey(msg({ from: { name: 'Counsel', address: 'counsel@example.test' } })))].sort());
-    const a = parseAsk(keyOf('c1'), (await storage.read(asksPath(keyOf('c1')))).content);
+    expect((await askKeys(storage)).sort()).toEqual([(keyOf('c1')), (groupKey(msg({ from: { name: 'Counsel', address: 'counsel@example.test' } })))].sort());
+    const a = (await rowAsk(storage, keyOf('c1')));
     expect(a).toMatchObject({ kind: 'review', project: 'work', link: 'https://outlook.example.test/mail/drafts/m1' });
   });
 
@@ -57,7 +59,7 @@ describe('runTriage', () => {
     const s = setup([msg({ from: { address: 'boss@example.test' }, headers: bulk })], () => ({ class: 'needs_reply', urgency: 0, confidence: 0.9, reason: 'x' }));
     await runTriage({ ctx, provider: s.provider, classifier: s.classifier, drafter: s.drafter, rules: { ...rules, vip: ['boss@example.test'] } });
     expect(s.classifier.classify).toHaveBeenCalledWith(expect.anything(), { vip: true });
-    const a = parseAsk('k', (await ctx.storage.read(asksPath(keyOf('conv-1')))).content);
+    const a = (await rowAsk(ctx.storage, keyOf('conv-1')));
     expect(a.priority).toBe('normal');
   });
 
@@ -78,7 +80,7 @@ describe('runTriage', () => {
     const { summary } = await runTriage({ ctx, provider: s.provider, classifier: s.classifier, rules });
     expect(s.created).toEqual([]);
     expect(summary).toMatchObject({ drafts: 0, asks: 1 });
-    expect(parseAsk('k', (await storage.read(asksPath(keyOf('conv-1')))).content).kind).toBe('go-do');
+    expect((await rowAsk(storage, keyOf('conv-1'))).kind).toBe('go-do');
   });
 
   it('distrusts the classifier: unknown class or injection suspicion goes to the owner undrafted', async () => {
@@ -90,7 +92,7 @@ describe('runTriage', () => {
     const { summary } = await runTriage({ ctx, provider: s.provider, classifier: s.classifier, drafter: s.drafter, rules });
     expect(s.created).toEqual([]);
     expect(summary.counts.needs_decision).toBe(2);
-    for (const subject of ['Plan A', 'Plan B']) expect(parseAsk('k', (await storage.read(asksPath(groupKey(msg({ subject }))))).content).kind).toBe('answer');
+    for (const subject of ['Plan A', 'Plan B']) expect((await rowAsk(storage, groupKey(msg({ subject })))).kind).toBe('answer');
   });
 });
 
@@ -104,7 +106,7 @@ describe('runTriage owner replies', () => {
     const { summary } = await runTriage({ ctx, provider: next.provider, classifier: next.classifier, rules });
     expect(next.classifier.classify).not.toHaveBeenCalled();
     expect(summary).toMatchObject({ resolved: 1, counts: { skip: 1 } });
-    expect(parseAsk('k', (await storage.read(asksPath(keyOf('conv-1')))).content)).toMatchObject({ state: 'done', outcome: 'resolved' });
+    expect((await rowAsk(storage, keyOf('conv-1')))).toMatchObject({ state: 'done', outcome: 'resolved' });
   });
 });
 
@@ -120,7 +122,7 @@ describe('runTriage drafts once per conversation', () => {
     expect(again.created).toEqual([]);
     expect(again.drafter.draft).not.toHaveBeenCalled();
     expect(r2.summary).toMatchObject({ drafts: 0, asks: 1 });
-    const a = parseAsk('k', (await storage.read(asksPath(keyOf('conv-1')))).content);
+    const a = (await rowAsk(storage, keyOf('conv-1')));
     expect(a).toMatchObject({ state: 'open', kind: 'review', link: 'https://outlook.example.test/mail/drafts/AAMk-msg-1' });
     expect(a.detail).toMatch(/Thanks, Friday works\./);
   });
@@ -149,12 +151,12 @@ describe('runTriage when the model stops mid-pass', () => {
     await expect(runTriage({ ctx, provider: s.provider, classifier: s.classifier, drafter: s.drafter, rules })).rejects.toThrow('down');
     expect(n).toBe(1);
     expect(s.created).toHaveLength(1);
-    expect(await storage.listAsks!()).toEqual([asksPath(keyOf('c1'))]);
+    expect(await askKeys(storage)).toEqual([(keyOf('c1'))]);
   });
   it('beforeAsks can stop the pass after triage, before any ask', async () => {
     const { storage, ctx } = mkCtx();
     const s = setup([msg({ id: 'm1', conversationId: 'c1', from: { address: 'counsel@example.test' } })], () => needsReply);
     await expect(runTriage({ ctx, provider: s.provider, classifier: s.classifier, rules, beforeAsks: () => { throw new Error('stop'); } })).rejects.toThrow('stop');
-    expect(await storage.listAsks!()).toEqual([]);
+    expect(await askKeys(storage)).toEqual([]);
   });
 });

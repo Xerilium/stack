@@ -1183,7 +1183,7 @@ paths:
           $ref: "#/components/responses/Error"
   /asks/{key}:
     post:
-      summary: Create or update an ask (tasks/.stack/asks/<key>.md). The key is stable, so writing it again updates the ask. A token gets 403 on an ask another writer created and on perm-* keys
+      summary: Create or update an ask (a 🙋 task row whose id is <key>). The key is stable, so writing it again updates the ask. A token gets 403 on an ask another writer created and on perm-* keys
       operationId: putAsk
       parameters:
         - name: key
@@ -4956,7 +4956,7 @@ components:
           description: Where the row is now, found by title (lines move); absent when the row is gone
     Ask:
       type: object
-      description: One ask for the owner (tasks/.stack/asks/<key>.md) with its computed score and rank.
+      description: One ask for the owner (a 🙋 task row whose id is the key) with its computed score and rank.
       properties:
         key:
           type: string

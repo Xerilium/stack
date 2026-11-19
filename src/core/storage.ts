@@ -25,7 +25,7 @@ export interface FileWrite { path: string; /** `null` deletes the file (multi-fi
 /** @req FR:storage-git/interface.@type */
 export interface Storage {
   list(): Promise<string[]>;
-  /** Paths of ask files (`tasks/<dir>/.stack/asks/<key>.md`). @req FR:ask-queue/ask.path */
+  /** Paths of old ask files (`tasks/<dir>/.stack/asks/<key>.md`), read only by `stack asks import`. @req FR:ask-queue/ask.path */
   listAsks?(): Promise<string[]>;
   /** Paths of agent files (`tasks/<dir>/.stack/agents/<slug>.md`). @req FR:agent-team/agent.path */
   listAgents?(): Promise<string[]>;

@@ -1,5 +1,5 @@
 /** @req FR:quick-triage/flow.fields @req FR:quick-triage/flow.actions @req FR:quick-triage/flow.apply @req FR:quick-triage/flow.text @req FR:quick-triage/flow.order */
-import { answerAsk, formatAsk, listAsks, parseAsk, putAsk, type Ask } from '../../src/core/asks';
+import { answerAsk, formatAsk, listAsks, parseAsk, putAsk, readAsk, readAskRows, type Ask } from '../../src/core/asks';
 import { parseAction } from '../../src/core/ask-actions';
 import { ConflictError, MemoryStorage, NotFoundError } from '../../src/core/storage';
 import { LifecycleError } from '../../src/core/lifecycle';
@@ -14,8 +14,17 @@ function mk() {
   return { storage, ctx };
 }
 const seed = async (storage: MemoryStorage) => { await storage.write('tasks/finance.md', FILE); };
-const row = async (storage: MemoryStorage, n: number) => (await storage.read('tasks/finance.md')).content.split('\n')[n - 1];
-const askOf = async (storage: MemoryStorage, key: string) => parseAsk(key, (await storage.read(`tasks/.stack/asks/${key}.md`)).content);
+// @req FR:task-asks/place.ref: asks are rows under their task now, so row numbers and refs skip or follow the ask lines.
+const content = async (storage: MemoryStorage) => (await storage.read('tasks/finance.md')).content;
+/** Line n (1-based) of the file without its ask rows. */
+const row = async (storage: MemoryStorage, n: number) => {
+  const c = await content(storage);
+  const drop = new Set(readAskRows(c).flatMap((r) => Array.from({ length: r.end - r.line + 1 }, (_, i) => r.line + i)));
+  return c.split('\n').filter((_, i) => !drop.has(i))[n - 1];
+};
+/** The api ref of the (non-ask) row with this text, where it is now. */
+const refOf = async (storage: MemoryStorage, text: string) => `finance:${(await content(storage)).split('\n').findIndex((l) => /^\s*- \[[ x]\] /.test(l) && !l.includes('🙋') && l.includes(text))}`;
+const askOf = async (storage: MemoryStorage, key: string) => (await readAsk({ storage }, key))!.ask;
 const base = { from: 'finance-cos', project: 'finance' };
 
 describe('flow fields', () => {
@@ -55,7 +64,7 @@ describe('actions', () => {
 describe('apply on answer', () => {
   it('go runs apply on the row and records it in the thread, in one write', async () => {
     const { storage, ctx } = mk(); await seed(storage);
-    await putAsk(ctx, 'q1', { ...base, ask: 'Make Pay bills critical?', kind: 'approve', ref: 'finance:4', apply: 'set priority=🚨', reversible: true }, 'cos');
+    await putAsk(ctx, 'q1', { ...base, ask: 'Make Pay bills critical?', kind: 'approve', ref: await refOf(storage, 'Pay bills'), apply: 'set priority=🚨', reversible: true }, 'cos');
     await answerAsk(ctx, 'q1', { answer: 'go' });
     expect(await row(storage, 5)).toBe('- [ ] 🚨 Pay bills 💰 🟢');
     const a = await askOf(storage, 'q1');
@@ -64,33 +73,33 @@ describe('apply on answer', () => {
   });
   it('option runs the matching applies entry; "-" runs nothing; no runs nothing', async () => {
     const { storage, ctx } = mk(); await seed(storage);
-    await putAsk(ctx, 'q2', { ...base, ask: 'Car registration?', kind: 'decide', ref: 'finance:5', options: ['Add deadline', 'Park it', 'Leave'], applies: ['due Nov 3', 'suspend 7d', '-'] }, 'cos');
+    await putAsk(ctx, 'q2', { ...base, ask: 'Car registration?', kind: 'decide', ref: await refOf(storage, 'Renew'), options: ['Add deadline', 'Park it', 'Leave'], applies: ['due Nov 3', 'suspend 7d', '-'] }, 'cos');
     await answerAsk(ctx, 'q2', { answer: 'option', text: 'Add deadline' });
     expect(await row(storage, 6)).toBe('- [ ] 📅 Nov 3: Renew the car registration');
-    await putAsk(ctx, 'q3', { ...base, ask: 'Insurer?', kind: 'decide', ref: 'finance:7', options: ['Skip', 'Leave'], applies: ['skip', '-'] }, 'cos');
+    await putAsk(ctx, 'q3', { ...base, ask: 'Insurer?', kind: 'decide', ref: await refOf(storage, 'Reply to the insurer'), options: ['Skip', 'Leave'], applies: ['skip', '-'] }, 'cos');
     await answerAsk(ctx, 'q3', { answer: 'option', text: 'Leave' });
     expect(await row(storage, 8)).toBe('- [ ] Reply to the insurer');
-    await putAsk(ctx, 'q4', { ...base, ask: 'Skip the insurer?', kind: 'approve', ref: 'finance:7', apply: 'skip' }, 'cos');
+    await putAsk(ctx, 'q4', { ...base, ask: 'Skip the insurer?', kind: 'approve', ref: await refOf(storage, 'Reply to the insurer'), apply: 'skip' }, 'cos');
     await answerAsk(ctx, 'q4', { answer: 'no' });
     expect(await row(storage, 8)).toBe('- [ ] Reply to the insurer');
   });
   it('a failed action records no answer and is a conflict', async () => {
     const { storage, ctx } = mk(); await seed(storage);
-    await putAsk(ctx, 'q5', { ...base, ask: 'Done with bills?', kind: 'approve', ref: 'finance:4', apply: 'complete' }, 'cos');
-    await storage.write('tasks/finance.md', FILE.replace('- [ ] Pay bills 💰 🟢\n', ''));
+    await putAsk(ctx, 'q5', { ...base, ask: 'Done with bills?', kind: 'approve', ref: await refOf(storage, 'Pay bills'), apply: 'complete' }, 'cos');
+    await storage.write('tasks/finance.md', (await content(storage)).replace('- [ ] Pay bills 💰 🟢\n', ''));
     await expect(answerAsk(ctx, 'q5', { answer: 'go' })).rejects.toThrow(ConflictError);
     expect((await askOf(storage, 'q5')).state).toBe('open');
   });
   it('a note above a row moves it; a later ask still finds the row by its text; a reply retries once after a failed action', async () => {
     const { storage, ctx } = mk(); await seed(storage);
-    await putAsk(ctx, 'n1', { ...base, ask: 'Top of mind?', kind: 'answer', ref: 'finance:4' }, 'cos');
-    await putAsk(ctx, 'n2', { ...base, ask: 'Make the registration critical?', kind: 'approve', ref: 'finance:5', apply: 'set priority=🚨' }, 'cos');
+    await putAsk(ctx, 'n1', { ...base, ask: 'Top of mind?', kind: 'answer', ref: await refOf(storage, 'Pay bills') }, 'cos');
+    await putAsk(ctx, 'n2', { ...base, ask: 'Make the registration critical?', kind: 'approve', ref: await refOf(storage, 'Renew'), apply: 'set priority=🚨' }, 'cos');
     await answerAsk(ctx, 'n1', { answer: 'reply', text: 'Taxes' }); // inserts a line after row 4: row 5 is now row 6
     await answerAsk(ctx, 'n2', { answer: 'go' });
     expect(await row(storage, 7)).toBe('- [ ] 🚨 Renew the car registration');
     expect((await askOf(storage, 'n2')).thread.at(-1)).toMatch(/applied: set priority=🚨/);
     // an edited row is a conflict: the ask reopens, nothing applied, and a retry would run once
-    await putAsk(ctx, 'n3', { ...base, ask: 'Skip the insurer?', kind: 'approve', ref: 'finance:8', apply: 'skip' }, 'cos'); // the insurer row, one down after the note
+    await putAsk(ctx, 'n3', { ...base, ask: 'Skip the insurer?', kind: 'approve', ref: await refOf(storage, 'Reply to the insurer'), apply: 'skip' }, 'cos'); // the insurer row, one down after the note
     const file = (await storage.read('tasks/finance.md')).content;
     await storage.write('tasks/finance.md', file.replace('Reply to the insurer', 'Reply to the insurer today'));
     await expect(answerAsk(ctx, 'n3', { answer: 'go' })).rejects.toThrow(ConflictError);
@@ -98,14 +107,14 @@ describe('apply on answer', () => {
     expect(n3.state).toBe('open');
     expect(n3.thread.at(-1)).toMatch(/failed: skip \(/);
     // a second ask on a row whose marks changed since it was put still finds it (same words)
-    await putAsk(ctx, 'n4', { ...base, ask: 'Also 1 hour?', kind: 'approve', ref: 'finance:6', apply: 'set effort=🟡' }, 'cos');
+    await putAsk(ctx, 'n4', { ...base, ask: 'Also 1 hour?', kind: 'approve', ref: await refOf(storage, 'Renew'), apply: 'set effort=🟡' }, 'cos');
     await answerAsk(ctx, 'n2', { answer: 'retract' }); await answerAsk(ctx, 'n2', { answer: 'go' }); // priority set again → no change, still fine
     await answerAsk(ctx, 'n4', { answer: 'go' });
     expect(await row(storage, 7)).toBe('- [ ] 🚨 Renew the car registration 🟡');
   });
   it('an answer to a question with a ref lands under the row as a note', async () => {
     const { storage, ctx } = mk(); await seed(storage);
-    await putAsk(ctx, 'q6', { ...base, ask: 'What is top of mind?', kind: 'answer', ref: 'finance:4' }, 'cos');
+    await putAsk(ctx, 'q6', { ...base, ask: 'What is top of mind?', kind: 'answer', ref: await refOf(storage, 'Pay bills') }, 'cos');
     await answerAsk(ctx, 'q6', { answer: 'reply', text: 'Taxes before anything else' });
     expect(await row(storage, 6)).toBe('  > 🙋 2026-10-29: Taxes before anything else');
     expect(await row(storage, 7)).toBe('- [ ] Renew the car registration');

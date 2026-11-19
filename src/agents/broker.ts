@@ -1,11 +1,10 @@
 /**
- * Permission prompts as asks: a request becomes `tasks/.stack/asks/perm-<session8>-<request>.md`, the owner answers it on the home view,
+ * Permission prompts as asks: a request becomes the ask row `perm-<session8>-<request>`, the owner answers it on the home view,
  * and the answer resolves the agent's request. Unanswered requests are denied at the deadline so an agent never waits forever.
  * @req FR:agent-sessions/perm.ask @req FR:agent-sessions/perm.answer @req FR:agent-sessions/perm.timeout
  */
-import { asksPath, handleAsk, listAsks, oneLine, parseAsk, putAsk, type Ask } from '../core/asks';
+import { handleAsk, listAsks, oneLine, putAsk, readAsk, type Ask } from '../core/asks';
 import type { LifecycleContext } from '../core/lifecycle';
-import { NotFoundError } from '../core/storage';
 import { redact } from '../core/triage';
 import { projectOf, type PermissionAnswer, type PermissionRequest } from './driver';
 
@@ -32,7 +31,7 @@ export function createPermissionBroker(ctx: LifecycleContext, o: BrokerOptions =
   const pending = new Map<string, { runId: string; sessionId: string; resolve: (a: PermissionAnswer) => void; settled: boolean }>();
 
   const read = async (key: string): Promise<Ask | null> => {
-    try { return parseAsk(key, (await ctx.storage.read(asksPath(key))).content); } catch (e) { if (e instanceof NotFoundError) return null; throw e; }
+    return (await readAsk(ctx, key))?.ask ?? null;
   };
   const close = async (key: string, outcome: 'handled' | 'resolved' | 'defaulted', note?: string) => { try { await handleAsk(ctx, key, { outcome, note }, 'stack'); } catch { /* the ask may be gone; the answer still stands */ } };
   const settle = (key: string, a: PermissionAnswer) => { const p = pending.get(key); if (!p || p.settled) return; p.settled = true; pending.delete(key); p.resolve(a); };
