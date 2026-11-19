@@ -153,7 +153,7 @@ describe('team shape', () => {
   });
 });
 
-// @req FR:agent-team/agent.team.scan.run @req FR:agent-team/agent.team.scan.run.cwd @req FR:agent-team/agent.team.scan.run.prompt
+// @req FR:agent-team/agent.team.scan.run @req FR:agent-team/agent.team.scan.run.cwd @req FR:agent-team/agent.team.scan.run.prompt @req FR:agent-team/agent.team.scan.run.private
 describe('scanned agents through the API', () => {
   it('Start chat, review and an inbox pick resolve a scanned agent; it runs in its repo; GET /team never shows its file', async () => {
     const { mkdirSync, mkdtempSync, writeFileSync } = await import('fs');

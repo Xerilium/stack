@@ -216,6 +216,16 @@ describe('runDeliveryPass', () => {
     expect(prompts()[0].system).toContain('MIXER_BODY');
     expect(prompts()[1].cwd).toBe('/dev/todo');
   });
+  /** @req FR:agent-team/agent.team.scan.run.pick */
+  it('waits when the scan fails and the named agent is missing: never runs another agent in its place', async () => {
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { ctx, d, prompts } = await mk({}, { agentScan: async () => { throw new Error('disk gone'); } });
+    await sendToInbox(ctx, ref(6), 'Mixer, mix it', 'instruction', undefined, undefined, 'mixer');
+    expect((await runDeliveryPass(d)).items).toEqual([]);
+    expect(prompts()).toHaveLength(0);
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('agent scan failed (disk gone)'));
+    errors.mockRestore();
+  });
   /** @req FR:agent-delivery/pick.agent */
   it('fails an entry no agent covers and does not retry it', async () => {
     const storage = new MemoryStorage();

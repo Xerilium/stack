@@ -40,7 +40,7 @@ export interface TeamAgent extends Omit<AgentDef, 'extra'> {
 }
 /**
  * An agent found outside the content repo (`scanAgents`). `file` and `dir` stay on the server: `GET /team` never returns them.
- * @req FR:agent-team/agent.team.scan @req FR:agent-team/agent.team.scan.run
+ * @req FR:agent-team/agent.team.scan @req FR:agent-team/agent.team.scan.run @req FR:agent-team/agent.team.scan.run.private
  */
 export interface ScannedAgent {
   def: AgentDef;

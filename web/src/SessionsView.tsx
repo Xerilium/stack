@@ -15,7 +15,7 @@ import { agentStatus, chartOrder, chatsFor, orgChart, otherSessions, type ChartN
 import { composeDefault, folderFor, orderAgents, repoRoot } from './org';
 import { groupByProject, orderWithPins, type Pins } from './pins';
 import { barWidths, dayLabel, fmtTokens, groupTurns, localDay, orderSessions, priceLine, rowOf, scopeSessions, splitSessions, usageStrip, type Line, type SessionItem } from './sessions';
-import { matchAgent, nameKey, rollupOf, type TeamAgent } from './team';
+import { local, matchAgent, nameKey, rollupOf, type TeamAgent } from './team';
 import type { Sessions } from './useSessions';
 import { feedbackActive } from './FeedbackPanel';
 import './sessions.css';
@@ -136,7 +136,7 @@ export function Drawer({ s, item, cursorItem, team = [], onClose, defaultAgent, 
   const end = useRef<HTMLDivElement | null>(null);
   const [text, setText] = useState('');
   const isNew = s.composing;
-  const [agent, setAgentState] = useState(() => (isNew ? (defaultAgent ?? rollupOf(team)?.slug ?? NONE) : NONE));
+  const [agent, setAgentState] = useState(() => (isNew ? (defaultAgent ?? rollupOf(team.filter(local))?.slug ?? NONE) : NONE));
   const chosen = team.find((a) => a.slug === agent);
   const [cwd, setCwd] = useState(() => (isNew ? (chosen ? folderFor(chosen, s.items, team) : (item?.cwd ?? cursorItem?.cwd ?? '')) : ''));
   const [editCwd, setEditCwd] = useState(() => isNew && !chosen);

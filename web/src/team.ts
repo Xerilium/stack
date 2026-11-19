@@ -153,5 +153,5 @@ export function chipFor(o: { agent?: TeamAgent; review?: ReviewItem; session?: S
 
 /** The ask's agent when it is a team member, else the project's active agent. @req FR:agent-team/web.anything @req FR:agent-team/agent.team.scan.run */
 export function agentForAsk(team: TeamAgent[], ask: { from: string; project?: string }): TeamAgent | undefined {
-  return team.find((a) => a.slug === ask.from || a.name === ask.from) ?? (ask.project ? agentsFor(team, ask.project)[0] : undefined);
+  return team.find((a) => a.slug === ask.from || a.name === ask.from) ?? (ask.project ? agentsFor(team, ask.project).find(local) : undefined);
 }

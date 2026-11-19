@@ -20,6 +20,11 @@ describe('scanned agents run', () => {
     expect(agentForAsk([base, away], { from: 'fh-dev', project: 'f4' })?.slug).toBe('fh-dev');
     expect(agentForAsk([away], { from: 'FH Dev' })?.slug).toBe('fh-dev');
   });
+  // @req FR:agent-team/agent.team.scan.run.pick
+  it('are never the fallback agent of an ask', () => {
+    expect(agentForAsk([away], { from: 'someone', project: 'f4' })).toBeUndefined();
+    expect(agentForAsk([base, away], { from: 'someone', project: 'f4' })?.slug).toBe('cos');
+  });
 });
 
 describe('agentsFor', () => {
