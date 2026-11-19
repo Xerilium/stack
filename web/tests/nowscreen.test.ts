@@ -62,6 +62,7 @@ describe('whyLine', () => {
     whyLine(homeOf({ tasks: [T('alpha:1', text)], projects: [P('alpha')], ranked: [{ ...R('alpha:1'), pri }], now: at, minutesLeft: minutes }).one!, minutes);
   it('names the owner priority first', () => expect(whyPri('Release FTK v16 🟢', { rank: 4, title: 'FTK 16' })).toBe('priority 4: FTK 16 · fits your 2h'));
   it('keeps one more factor after the priority', () => expect(whyPri('‼️ 📅 Oct 27: Ship it 🟡', { rank: 1, title: 'FTK 16' })).toBe('priority 1: FTK 16 · 2d late · fits your 2h'));
+  it('says urgent, not high priority, next to an owner priority', () => expect(whyPri('‼️ Ship it 🟢', { rank: 1, title: 'FTK 16' })).toBe('priority 1: FTK 16 · urgent · fits your 2h'));
   it('clips a long priority title to fit', () => {
     const line = whyPri('‼️ 📅 Oct 27: Ship it 🟡', { rank: 12, title: 'Ship the very long named priority that goes on and on forever' }, 45);
     expect(line.length).toBeLessThanOrEqual(WHY_MAX);

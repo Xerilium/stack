@@ -25,7 +25,7 @@ export function whyLine(item: HomeItem, minutesLeft: number, agentHasIt = false)
   if (item.pri) factors.push(priHead + item.pri.title);
   if (item.due && item.due.tone !== 'calm') factors.push(item.due.tone === 'late' ? item.due.text : `due ${item.due.text}`);
   else if (item.due) factors.push(`due ${item.due.text}`);
-  if (r.priority && /^(🚨|‼)/u.test(r.priority)) factors.push(r.priority.startsWith('🚨') ? 'critical' : 'high priority');
+  if (r.priority && /^(🚨|‼)/u.test(r.priority)) factors.push(r.priority.startsWith('🚨') ? 'critical' : item.pri ? 'urgent' : 'high priority');
   if (r.status && r.status.startsWith('🚧')) factors.push('in progress');
   if (agentHasIt) factors.push('agent has it');
   const top = factors.slice(0, 2);
