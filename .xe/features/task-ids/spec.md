@@ -2,7 +2,7 @@
 id: task-ids
 title: Task IDs and Metadata
 author: flanakin
-description: "Give each task a readable, path-qualified ID, read blockquote metadata, and move project files without breaking refs."
+description: "Give each task a readable, path-qualified ID, read blockquote metadata under a task, and move project files without breaking refs."
 dependencies: [cli, task-lint, task-parser, task-structure]
 ---
 
@@ -45,14 +45,15 @@ The owner needs extra task fields as `key: value` lines under a task so that peo
 
 - **FR:meta.parse** (P1): The parser MUST read each indented `> key: value` line directly under a task row as task metadata
   - Only consecutive lines before any other content of the task count.
-  - Key: `[a-z][a-z0-9_-]*`. Value: trimmed rest of line.
+  - Key: `[a-z][a-z0-9_-]*` (lint flags `_`). Value: trimmed rest of line.
 - **FR:meta.model** (P1): `Task` MUST expose metadata as ordered `[key, value]` pairs
-  - Unknown keys are kept. Metadata lines are not notes.
+  - Unknown keys are kept. Metadata lines other than `id` also stay notes, so every reader of notes still sees them.
 - **FR:meta.emoji** (P1): A field that has an emoji today MUST stay an emoji
-  - Fields: priority 1️⃣-5️⃣, status 🚧/⛔/💤, effort, impact, human blocker 🙋, agent 🪄/🤖, and every other emoji in `.stack/README.md`.
+  - Fields: priority ⭐️ and 1️⃣-5️⃣, status 🚧/⛔/💤, due 📅, start-after ⏰, effort 🔹🟢🟡🟠🔴⚫️, impact, human blocker 🙋, agent 🪄/🤖, and every other emoji in `.stack/README.md`.
   - The emoji is the source of truth; a metadata key that names such a field is ignored by the model and flagged by lint.
   - No migration.
-- **FR:meta.fields** (P2): Known metadata keys are `id`, `owner`, `due`, `next`, `blocked_by`, `links`, `req`; others are kept as unknown
+- **FR:meta.fields** (P2): Known metadata keys: `id`, `agent` (a session link, `[Name](#local_<id>)`; overrides the inherited agent, see `goal-model`), `blocked` (`T:` IDs), and typed links, one per line: `pr`, `issue`, `mail`, `session`, `doc`, `link` (generic). The key sets how the UI renders the value and which actions show. Others are kept as unknown
+- **FR:meta.retired** (P2): Lint MUST flag (as a warning) a key with `_`, and the retired keys `owner` (the default owner is the owner; a task is agent-owned only through an agent), `next` (the next action is the next subtask), `req`, and `blocked_by`
 - **FR:meta.roundtrip** (P1): Reading metadata MUST NOT change a byte (`FR:task-parser/roundtrip.exact`)
 
 ### FR:id: Task IDs
@@ -92,7 +93,8 @@ The owner needs dangling and duplicate IDs flagged so that every ref resolves to
 
 - **FR:lint.duplicate** (P1): `stack lint` MUST flag a slug used twice in one project file
 - **FR:lint.dangling** (P1): `stack lint` MUST flag a `T:` ref in any task file that the index does not resolve
-- **FR:lint.slug** (P2): `stack lint` MUST flag an invalid `id` slug and a metadata key that names an emoji field (`FR:meta.emoji`)
+- **FR:lint.slug** (P2): `stack lint` MUST flag an `id` value that is not a valid slug, a metadata key that names an emoji field (`meta-emoji`, `FR:meta.emoji`), and a key with `_` or a retired key (`meta-key`, `FR:meta.retired`)
+- **FR:lint.status-note** (P2): `stack lint` MUST flag (as a warning) status-note prose in a nested line of an open task (`as of`, `done`, `merged`, `shipped`, `waiting`, a date, and progress claims such as `50%` or `3/5`). State lives in emoji, git history, and the app
 
 ## Data Model
 
