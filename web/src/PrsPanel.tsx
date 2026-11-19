@@ -9,6 +9,7 @@
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type createClient } from './api';
+import { errText } from './errtext';
 import {
   actionable, actionsOf, authorText, flagText, clip, countOf, createPrStore, EMPTY, ITEM_WORD, LANE_WORD, loadPrefs, moveTo, needCount, PROJECT_LABEL, projectsOf, refOf, rowsOf, savePrefs, signInText, specText,
   summaryView, TAB_LABEL, tabsOf, toneOf, updatedText, whenText, type PrAuthState, type PrBoard, type Prefs, type PrRow, type LiveCheck, type PrStore, type QuickAction, type SignInSession, type Tab,
@@ -34,7 +35,6 @@ export function useStore(api: Client) {
   return s;
 }
 const local = () => store() ?? null;
-const errText = (e: unknown, fallback: string) => (e instanceof ApiFailure ? e.message : fallback);
 
 function PrIcon() {
   return <svg class="prs-ic" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 4v10m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm12 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 0V9a3 3 0 0 0-3-3h-4m0 0 2.5-2.5M11 6l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></svg>;
@@ -106,7 +106,7 @@ function SignIn({ api, auth, onDone }: { api: Client; auth: PrAuthState; onDone:
   }, [sess?.state]);
   const start = async () => {
     setBusy(true); setErr('');
-    try { const x = await api.prSignIn(); if (x.state === 'done') onDone(); else setSess(x); } catch (e) { setErr(errText(e, 'Could not start the sign-in')); } finally { setBusy(false); }
+    try { const x = await api.prSignIn(); if (x.state === 'done') onDone(); else setSess(x); } catch (e) { setErr(errText(e, 'start the sign-in')); } finally { setBusy(false); }
   };
   const copy = async () => { try { await navigator.clipboard.writeText(sess?.userCode ?? ''); setCopied(true); } catch { setCopied(false); } };
   return (
@@ -436,20 +436,20 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
   /** Pin adds the PR to the queue when needed; Unpin keeps it queued. @req FR:pr-page/pin.toggle */
   const pin = (r: PrRow) => void run(async () => {
     try { await api.prQueue(r.repo, r.number, r.pinned ? 'unpin' : 'pin'); toast(r.pinned ? `Unpinned ${refOf(r)}` : `Pinned ${refOf(r)}`); reload(); }
-    catch (e) { toast(errText(e, 'Pin failed'), 'err'); }
+    catch (e) { toast(errText(e, 'pin the PR'), 'err'); }
   });
   /** A drop in Pinned: the new rank (pinned items lead the queue). @req FR:pr-page/pin.drag */
   const moveRow = (r: PrRow, rank: number) => void run(async () => {
     try { await api.prQueue(r.repo, r.number, 'move', rank); reload(); }
-    catch (e) { toast(errText(e, 'Move failed'), 'err'); reload(); }
+    catch (e) { toast(errText(e, 'move the PR'), 'err'); reload(); }
   });
   /** Resolve with Undo, which reopens the thread. @req FR:pr-page/detail.signoff @req FR:pr-page/api.resolve */
   const resolve = (r: PrRow, id: string) => void run(async () => {
     try {
       await api.prResolve(r.repo, r.number, id, 'resolve');
-      toast(`Resolved a thread on ${refOf(r)}`, 'ok', () => { void api.prResolve(r.repo, r.number, id, 'unresolve').then(reload, (e) => toast(errText(e, 'Undo failed'), 'err')); });
+      toast(`Resolved a thread on ${refOf(r)}`, 'ok', () => { void api.prResolve(r.repo, r.number, id, 'unresolve').then(reload, (e) => toast(errText(e, 'undo it'), 'err')); });
       reload();
-    } catch (e) { toast(errText(e, 'Could not resolve the thread'), 'err'); }
+    } catch (e) { toast(errText(e, 'resolve the thread'), 'err'); }
   });
 
   /** Copies, or shows the text when the clipboard fails. @req FR:pr-page/menu.run @req FR:pr-page/check.view */
@@ -459,16 +459,16 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
     if (a.id === 'copy') return copyText(a.text ?? '');
     if (a.id === 'sweep') return void run(async () => {
       try { await api.prQueue(r.repo, r.number, a.op === 'add' ? 'add' : 'top'); toast(`${refOf(r)} is next for the Sweep Manager`); reload(); }
-      catch (e) { toast(errText(e, 'Could not move it'), 'err'); }
+      catch (e) { toast(errText(e, 'move the PR'), 'err'); }
     });
     if (a.id === 'autopilot-on' || a.id === 'autopilot-off') {
       const op = a.id === 'autopilot-on' ? 'add' : 'remove';
       return void run(async () => {
         try {
           await api.prLabel(r.repo, r.number, op);
-          toast(op === 'add' ? `Autopilot on for ${refOf(r)}` : `Autopilot off for ${refOf(r)}`, 'ok', () => { void api.prLabel(r.repo, r.number, op === 'add' ? 'remove' : 'add').then(reload, (e) => toast(errText(e, 'Undo failed'), 'err')); });
+          toast(op === 'add' ? `Autopilot on for ${refOf(r)}` : `Autopilot off for ${refOf(r)}`, 'ok', () => { void api.prLabel(r.repo, r.number, op === 'add' ? 'remove' : 'add').then(reload, (e) => toast(errText(e, 'undo it'), 'err')); });
           reload();
-        } catch (e) { toast(errText(e, 'Could not change the label'), 'err'); }
+        } catch (e) { toast(errText(e, 'change the label'), 'err'); }
       });
     }
   };

@@ -8,6 +8,7 @@
 import { Fragment } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, createClient } from './api';
+import { errText, UserError } from './errtext';
 import { capacityRows } from './capacity';
 import { applyFilters, buildHash, NO_FILTERS, parseHash, redirectHash, type Filters } from './filters';
 import { Dialog, GROUP_NAMES, GROUPS, Help, Picker, setRefProjects, Toasts, type GroupName, type Toast } from './parts';
@@ -220,7 +221,7 @@ export function App() {
       const r = calendarRange(s, at);
       const c = await api.calendar(r.from, r.to).catch(() => ({ items: [] as CalEvent[] }));
       setAhead({ sched: s, events: c.items });
-    } catch (e) { toast(e instanceof Error ? e.message : 'Could not load tomorrow', 'err'); }
+    } catch (e) { toast(errText(e, 'load tomorrow'), 'err'); }
   }, [ahead, sched]);
   /** Change wake/bed for the shown day or its weekday; the plan reloads. @req FR:home/day.override */
   const saveTimes = useCallback(async (c: { wake?: string; bed?: string; every?: boolean; reset?: boolean }): Promise<boolean> => {
@@ -236,7 +237,7 @@ export function App() {
       const span2 = `${clock(wallMinutes(new Date(s.wake), new Date(`${shown.date}T00:00:00`)))}–${clock(wallMinutes(new Date(s.bed), new Date(`${shown.date}T00:00:00`)))}`;
       toast(c.reset ? `${wd}: back to your usual hours` : `${c.every ? 'Every ' : ''}${wd} ${span2}`);
       return true;
-    } catch (e) { toast(e instanceof Error ? e.message : 'Could not save', 'err'); return false; }
+    } catch (e) { toast(errText(e, 'save your hours'), 'err'); return false; }
   }, [ahead, sched]);
   /** @req FR:web-app/today.capacity */
   const setBudget = useCallback((m: number | null) => { const v = m === null ? null : clampBudget(m); const now = new Date(); saveBudget(store(), now, v, dayKey); setSaved(v === null ? null : { date: dayKey, minutes: v }); }, [dayKey]);
@@ -298,7 +299,7 @@ export function App() {
     /** @req FR:web-app/today.meetings */
     calReadAt.current = Date.now();
     if (c.status === 'fulfilled') { setEvents(c.value.items); setCalError(c.value.error ?? ''); setCalOn(c.value.configured); setCalSource(sourceOf(c.value, new Date())); } else { setCalError('Calendar unavailable'); setCalSource({ kind: 'calendar', state: 'error' }); }
-    if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(a.reason instanceof Error ? a.reason.message : 'Failed to load');
+    if (a.status === 'fulfilled') { setAgentItems(a.value); setAgentsError(''); } else setAgentsError(errText(a.reason));
     await inboxDone;
   }, []);
   /** Live mode: what the server has not committed yet. @req FR:web-shell/state.unsaved */
@@ -327,8 +328,8 @@ export function App() {
     } catch (e) {
       if (e instanceof ApiFailure && e.status === 401) { toLogin(); return; }
       if (e instanceof ApiFailure && e.status === 403) { setPhase('denied'); return; }
-      setLoadError(e instanceof Error ? e.message : 'Failed to load'); setPhase((p) => (p === 'ready' ? p : 'error'));
-      if (phase === 'ready') toast(e instanceof Error ? e.message : 'Refresh failed', 'err');
+      setLoadError(errText(e)); setPhase((p) => (p === 'ready' ? p : 'error'));
+      if (phase === 'ready') toast(errText(e, 'refresh'), 'err');
     }
   }, [phase, toast]);
 
@@ -513,7 +514,7 @@ export function App() {
     } catch (e) {
       if (e instanceof ApiFailure && e.status === 401) { toLogin(); return; }
       if (e instanceof ApiFailure && e.status === 409) { toast('Changed elsewhere. Reloaded; try again.', 'err'); await refresh(); }
-      else toast(e instanceof Error ? e.message : 'Failed', 'err');
+      else toast(errText(e, 'save the change'), 'err');
     } finally { setBusy(false); }
   }, [refresh, toast]);
 
@@ -541,7 +542,7 @@ export function App() {
           await fn(target); ok++;
         } catch (err) {
           if (err instanceof ApiFailure && err.status === 401) { toLogin(); return null; }
-          why ||= err instanceof Error ? err.message : 'Failed';
+          why ||= errText(err, 'update the task');
           left.push(ref);
           if (err instanceof ApiFailure && err.status === 409) { stop = true; why = 'Changed elsewhere. Reloaded; try again.'; }
         }
@@ -597,10 +598,10 @@ export function App() {
     const id = a.key.replace(/^need:/, '');
     // A PR priority recommendation: Go accepts, a reply rejects with the text as the reason; it has no defer and no undo. @req FR:pr-priority/needs.actions
     if (a.decide) {
-      if (s.answer === 'defer') throw new Error('A PR priority recommendation cannot be deferred: accept it or reply to reject it');
+      if (s.answer === 'defer') throw new UserError('A PR priority recommendation cannot be deferred: accept it or reply to reject it');
       const accept = s.answer === 'go' || s.answer === 'done';
       const reason = s.text?.trim() || (s.answer === 'no' ? 'No' : '');
-      if (!accept && !reason) throw new Error('Reply with a reason to reject');
+      if (!accept && !reason) throw new UserError('Reply with a reason to reject');
       await api.decideRec(a.decide, accept ? { decision: 'accept' } : { decision: 'reject', reason });
       setNeeds(await api.needs());
       toast(accept ? 'Accepted · PR priority changed' : 'Rejected · the agent will see the reason', 'ok');
@@ -608,7 +609,7 @@ export function App() {
     }
     // A blocked live check: Go or a reply reopens it for the agent; it has no defer and no undo. @req FR:pr-review-lane/lane.needs
     const live = id.startsWith('lv.');
-    if (live && s.answer === 'defer') throw new Error('A blocked live check cannot be deferred: answer it or reply');
+    if (live && s.answer === 'defer') throw new UserError('A blocked live check cannot be deferred: answer it or reply');
     const body = s.answer === 'defer' && s.until ? { choice: 'defer' as const, until: s.until }
       : s.answer === 'go' || s.answer === 'done' ? { choice: 'go' as const }
         : { choice: 'reply' as const, text: s.text || (s.answer === 'no' ? 'No' : 'Noted') };
@@ -620,7 +621,7 @@ export function App() {
   const answerTask = async (a: AskItem, s: Send) => {
     if (a.source === 'need') return answerNeedItem(a, s);
     const t = tasks.find((x) => x.ref === a.ref);
-    if (!t) throw new Error('Row changed elsewhere');
+    if (!t) throw new UserError('Row changed elsewhere. Reload, then try again.');
     let ok: unknown;
     if (s.answer === 'go') ok = await sendReply(t, `Go with the recommendation: ${a.recommend}`, 'decision', '');
     else if (s.answer === 'defer' && s.until) ok = await run(() => api.action('suspend', t.ref, { hours: Math.max(1, Math.round((new Date(s.until!).getTime() - Date.now()) / 3600_000)) }), () => '');
@@ -742,7 +743,7 @@ export function App() {
     let stale = false;
     const h = setTimeout(async () => {
       try { const r = await api.capture(text, { project: defaultProject(), dryRun: true }); if (!stale) setPreview({ spec: r.spec }); }
-      catch (e) { if (!stale) setPreview({ error: e instanceof Error ? e.message : 'Cannot parse', retry: e instanceof ApiFailure && e.status === 0 ? 'preview' : undefined }); }
+      catch (e) { if (!stale) setPreview({ error: errText(e, 'read the task'), retry: e instanceof ApiFailure && e.status === 0 ? 'preview' : undefined }); }
     }, 250);
     return () => { stale = true; clearTimeout(h); };
   }, [captureText, next, projects, previewTry]);
@@ -759,7 +760,7 @@ export function App() {
       await refresh();
     } catch (e) {
       // @req FR:web-shell/state.capture
-      setPreview({ error: e instanceof Error ? e.message : 'Capture failed', retry: e instanceof ApiFailure && e.status === 0 ? 'submit' : undefined });
+      setPreview({ error: errText(e, 'add the task'), retry: e instanceof ApiFailure && e.status === 0 ? 'submit' : undefined });
     } finally { setBusy(false); }
   };
 

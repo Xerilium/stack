@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type Client } from './api';
 import { deferChoices, keepCursor, newKeys, pageTitle, replyKind, type AskItem, type Send } from './asks';
+import { errText } from './errtext';
 import { connectLive, type LiveHandle, type LiveStatus } from './live';
 import { mergeNeeds } from './needs';
 import type { Toast } from './parts';
@@ -84,7 +85,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
       if (added.length) { setFresh((f) => new Set([...f, ...added])); setTimeout(() => setFresh((f) => { const n = new Set(f); added.forEach((k) => n.delete(k)); return n; }), FRESH_MS); }
     } catch (e) {
       if (mine !== seq.current) return;
-      setError(e instanceof Error ? e.message : 'Failed to load');
+      setError(errText(e));
       setErrorCode(e instanceof ApiFailure ? e.code : '');
       setPhase((p) => (p === 'ready' ? p : 'error'));
     }
@@ -160,7 +161,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
       if (a.source !== 'need') toastRef.current(sentText, 'ok'); // a need answer shows its own Undo toast
     } catch (e) {
       setCursor(a.key);
-      if (!(e instanceof Error && (e as { shown?: boolean }).shown)) toastRef.current(e instanceof Error ? e.message : 'Failed', 'err');
+      if (!(e instanceof Error && (e as { shown?: boolean }).shown)) toastRef.current(errText(e, 'send the answer'), 'err');
     } finally { release(a.key); bump((n) => n + 1); }
   }, [setCursor, setPanel]);
 
@@ -180,7 +181,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     const undo = undoable && s.answer !== 'defer' ? () => {
       undoRef.current = null;
       void (async () => {
-        try { await call; await api.answerAsk(a.key, { answer: 'retract' }); release(a.key); await load(); setCursor(a.key); toastRef.current('Restored'); } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Undo failed', 'err'); }
+        try { await call; await api.answerAsk(a.key, { answer: 'retract' }); release(a.key); await load(); setCursor(a.key); toastRef.current('Restored'); } catch (e) { toastRef.current(errText(e, 'undo the answer'), 'err'); }
       })();
     } : undefined;
     undoRef.current = undo ?? null;
@@ -191,7 +192,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     } catch (e) {
       release(a.key);
       setCursor(a.key);
-      toastRef.current(e instanceof ApiFailure && e.status === 409 ? 'Changed elsewhere. Reloaded.' : e instanceof Error ? e.message : 'Failed', 'err');
+      toastRef.current(e instanceof ApiFailure && e.status === 409 ? 'Changed elsewhere. Reloaded.' : errText(e, 'send the answer'), 'err');
       await load();
     }
   }, [api, load, answerTask]);
@@ -213,13 +214,13 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     draft.current = { key: a.key, text: a.text ?? '' };
     undoRef.current = null; // the toast's Undo would retract a second time
     try { await api.answerAsk(a.key, { answer: 'retract' }); release(a.key); await load(); setCursor(a.key); setPanel('reply'); }
-    catch (e) { draft.current = null; toastRef.current(e instanceof Error ? e.message : 'Edit failed', 'err'); }
+    catch (e) { draft.current = null; toastRef.current(errText(e, 'reopen the answer'), 'err'); }
   }, [api, load]);
   /** The text a Card starts with when it opens the reply box after Edit (read once). */
   const takeDraft = (key: string) => { const d = draft.current; if (d && d.key === key) { draft.current = null; return d.text; } return ''; };
   const retract = useCallback(async (a: AskItem) => {
     try { await api.answerAsk(a.key, { answer: 'retract' }); release(a.key); await load(); setCursor(a.key); toastRef.current('Restored'); }
-    catch (e) { toastRef.current(e instanceof Error ? e.message : 'Undo failed', 'err'); }
+    catch (e) { toastRef.current(errText(e, 'undo the answer'), 'err'); }
   }, [api, load]);
 
   return {

@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type Client } from './api';
+import { errText } from './errtext';
 import { applyUpdate, type CostReport, type SessionItem, type Transcript, type Turn, type Update } from './sessions';
 import type { Toast } from './parts';
 
@@ -50,7 +51,7 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
       setItems(l.items); setTotal(l.total); setCost(c); setNow(new Date()); setPhase('ready'); setError('');
     } catch (e) {
       if (mine !== seq.current) return;
-      setError(e instanceof Error ? e.message : 'Failed to load');
+      setError(errText(e));
       setPhase((p) => (p === 'ready' ? p : 'error'));
     }
   }, [api, enabled]);
@@ -94,7 +95,7 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
     // Always listen: a finished run replays for 10 minutes, a running one streams, a session with no run answers 204 and the source closes.
     listen(id);
     setTurnsLoading(true);
-    try { setTurns(await api.sessionMessages(id)); } catch (e) { setTurnsError(e instanceof Error ? e.message : 'Cannot load the history'); } finally { setTurnsLoading(false); }
+    try { setTurns(await api.sessionMessages(id)); } catch (e) { setTurnsError(errText(e, 'load the history')); } finally { setTurnsLoading(false); }
   }, [api, listen]);
 
   const setComposing = useCallback((on: boolean, agent?: string) => { setComposingState(on); setComposeAgent(on ? (agent ?? null) : null); setSendError(''); }, []);
@@ -112,7 +113,7 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
       setItems((l) => l.map((s) => (s.id === open ? { ...s, state: 'running' } : s)));
       return true;
     } catch (e) {
-      setSendError(e instanceof ApiFailure && e.status === 409 ? 'This session is active in another window; message it there or through its inbox' : e instanceof Error ? e.message : 'Failed to send');
+      setSendError(e instanceof ApiFailure && e.status === 409 ? 'This session is active in another window; message it there or through its inbox' : errText(e, 'send the message'));
       return false;
     }
   }, [api, open, listen]);
@@ -127,13 +128,13 @@ export function useSessions(api: Client, toast: ToastFn, enabled: boolean | null
       listen(r.sessionId ?? r.runId);
       void load();
       return true;
-    } catch (e) { setSendError(e instanceof Error ? e.message : 'Failed to start'); return false; }
+    } catch (e) { setSendError(errText(e, 'start the session')); return false; }
   }, [api, listen, load]);
 
   const stop = useCallback(async (id = open) => {
     if (!id) return;
     if (id.startsWith('run-')) { toastRef.current('Starting; stop it once it has a session'); return; }
-    try { const r = await api.cancelSession(id); toastRef.current(r.changed ? 'Stopping' : 'Nothing to stop'); } catch (e) { toastRef.current(e instanceof Error ? e.message : 'Failed to stop', 'err'); }
+    try { const r = await api.cancelSession(id); toastRef.current(r.changed ? 'Stopping' : 'Nothing to stop'); } catch (e) { toastRef.current(errText(e, 'stop the session'), 'err'); }
   }, [api, open]);
 
   useEffect(() => () => closeStream(), [closeStream]);

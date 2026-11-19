@@ -82,6 +82,18 @@ Owner needs every connection, permission, and save state to say what is wrong an
   > - @req FR:live-deploy/web.unsaved
   - **FR:state.unsaved.pill** (P2): In live mode the rail footer pill MUST read `Live · <branch>` and the brand `Stack` (no `[DEMO]`)
 - **FR:state.capture** (P1): A capture that fails MUST keep the text and show the reason inline (`FR:state.unreachable` wording when unreachable) with **Retry**
+- **FR:state.errors** (P1): Each error toast and inline error in the shell, its hooks (`useAsks`, `useSessions`, `useTeam`, `useThread`), and the PR page MUST say what happened and what to do next
+  - **FR:state.errors.shared** (P1): One shared helper MUST build the text from the error and an action, a verb phrase such as `save the task`
+  - **FR:state.errors.code** (P1): Bare API text MUST map by code. Bare text is `Failed`, `Conflict`, `Not found`, `Validation failed`, `Request cannot be applied`, `Internal error`, `Forbidden`, `Method not allowed`, `Invalid path`, `Request failed (<status>)`, or empty:
+    - `conflict`: `Changed somewhere else. Reload, then try again.`
+    - `not_found`: `This item no longer exists. Reload to see the latest.`
+    - `invalid`: `Could not <action>. Check the values and try again.`
+    - `forbidden`: `Could not <action>. This account is not allowed to do that.`
+    - `internal`: `Could not <action>. Try again. If it happens again, send feedback (F).`
+    - any other code, and an error that is not from the API: `Could not <action>. Try again.`
+  - **FR:state.errors.details** (P1): An API error with field details MUST show the first `details[].message`, whatever its code
+  - **FR:state.errors.specific** (P1): These MUST show as-is: a server message that names the cause (for example `No live lane on this host`), a `network` or `offline` message (`FR:state.unreachable`), and an error the app throws with words written for the owner (for example `Reply with a reason to reject`)
+  - **FR:state.errors.prefixed** (P1): Where the view already says what failed (for example `Cannot load asks: `), the helper with no action MUST give only the next step (`Try again.`, `Check the values and try again.`)
 
 ## Data Model
 
