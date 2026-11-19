@@ -19,7 +19,7 @@ One PR per group. Tests first in each PR. `@req FR:task-store/...` on every test
 - Schema test: older `schemaVersion` upgrades; newer throws (`FR:store.schema`).
 - Round-trip test: fixtures `import md` then `export md` then `import md` give equal items (`FR:export.roundtrip`).
 - Import map test: parent row becomes project; gate fail becomes inbox; quotes go to `body` (`FR:import.map`).
-- Import ID test: two imports of the same md give the same IDs; `--replace` clears tombstones; `updatedAt` from `git blame` (`FR:import.ids`, `FR:import.once`).
+- Import ID test: two imports of the same md give the same IDs; `--replace` clears tombstones; new `meta.epoch` makes the cache reload; `updatedAt` from `git blame` (`FR:import.ids`, `FR:import.once`).
 - Parity test: same fixture ranks the same on md and on the store (`FR:rank.parity`).
 - Restore test: snapshot, bad write, restore, data equals snapshot (`FR:backup.restore`).
 - Remote test on a local bare repo: exports commit `stack.json`; `setup --restore` on an empty store gives the same items (`FR:backup.remote`, `FR:backup.new`).
@@ -52,7 +52,7 @@ One PR per group. Tests first in each PR. `@req FR:task-store/...` on every test
 
 ## 4: store-io
 
-- [ ] `stack import md` with map, `--dry-run`, `--replace`, report (`FR:import.*`)
+- [ ] `stack import md` with map, `--dry-run`, `--replace`, report (`FR:import.*`); epoch reload (`FR:import.epoch`)
 - [ ] `stack export md` and `stack export json` (`FR:export.*`)
 
 ## 5: store-backup

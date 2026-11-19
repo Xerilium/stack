@@ -138,7 +138,7 @@ Many writers need a safe write path so that no writer loses another's edit.
 - **FR:write.json** (P1): Every read command MUST support `--json` and give the item shape (`FR:$item`).
 - **FR:write.rev** (P1): Each item MUST carry `rev`, the Cosmos `_etag`.
 - **FR:write.expect** (P1): Every update and remove MUST send `If-Match: rev`. A mismatch MUST throw `ConflictError` with the current item. The caller reads again and retries.
-- **FR:write.patch** (P1): `update` MUST change only the fields in the patch. `links` and `steps` change by ops (`add`, `remove`, `set` by index or target), never by whole-array replace.
+- **FR:write.patch** (P1): `update` MUST change only the fields in the patch. `links` and `steps` change by ops (`add`, `remove`, `set` by step ID or link target), never by whole-array replace.
 - **FR:write.retry** (P1): After `ConflictError` the store MAY reapply the patch to the fresh item, at most 3 times, only when every patched field still equals the value the caller read (three-way check). The caller MUST send those values as `base`. Ops on `links` and `steps` target an ID, so they pass when that ID is unchanged. A patch to `body` MUST NOT retry. Any other case MUST throw `ConflictError` to the caller.
 - **FR:write.actor** (P1): Each write MUST record `updatedBy`: the API token's owner, else `STACK_ACTOR`, else `me`.
 - **FR:write.throttle** (P1): A `429` MUST retry with the server's back-off. It MUST NOT surface to the owner unless it fails for 30 seconds.
@@ -149,7 +149,7 @@ Many writers need a safe write path so that no writer loses another's edit.
 
 The owner needs done work to leave so that the store holds only what is next.
 
-- **FR:done.delete** (P1): `complete` MUST delete the task, remove `blocks` links that point to it, and add 1 to today's `dayplan` done count for its area with a patch `incr` (no conflict between writers), in one batch.
+- **FR:done.delete** (P1): `complete` MUST delete the task, remove `blocks` links that point to it, and add 1 to today's `dayplan` done count for its area with a patch `incr` (no conflict between writers), in one batch. The batch MUST first upsert today's `dayplan` when it does not exist.
 - **FR:done.tombstone** (P1): A delete MUST write a tombstone: the item keeps only `id`, `ownerId`, `type`, `deleted: true` and `ttl` of 90 days. Reads MUST skip tombstones. The change feed shows them, so caches and live views drop the item.
 - **FR:done.recurring** (P1): `complete` on a recurring task MUST roll its dates and keep the task.
 - **FR:done.project** (P1): `complete` on a project with open tasks MUST throw `LifecycleError`, unless `--cascade` is given. `--cascade` deletes the tasks in the same batch.
@@ -202,7 +202,7 @@ The owner needs a copy outside Azure so that a lost account or a bad write recov
 - **FR:backup.remote** (P1): Each export MUST be a commit of `stack.json` on branch `snapshots` of the private repo in config `backup.remote` (default `{owner}/stack-data`). Commits accrue; the file is text, so git keeps it small.
 - **FR:backup.private** (P1): The export MUST refuse to push when the repo is public.
 - **FR:backup.fail** (P2): A failed push MUST retry on the next export and show `Backup failed at h:mm` in the app.
-- **FR:backup.restore** (P1): `stack restore [--at <commit|time>]` MUST, in order: set the store lock (`FR:store.lock`), export the current state to `stack.before-restore.json`, replace the partition with the snapshot (`FR:store.bulk`), and clear the lock. No argument means the latest snapshot.
+- **FR:backup.restore** (P1): `stack restore [--at <commit|time>] [--container name]` MUST, in order: set the store lock (`FR:store.lock`), export the current state to `stack.before-restore.json`, replace the partition with the snapshot (`FR:store.bulk`), and clear the lock. No argument means the latest snapshot.
 - **FR:backup.pitr** (P2): For damage inside 7 days that the snapshot missed, the owner MAY use Cosmos point-in-time restore [C6]. It makes a new account with no free tier, so the runbook (`docs/restore.md`) MUST copy the data back with `stack restore` and delete the new account the same day.
 - **FR:backup.new** (P1): `stack setup --restore [--container name]` MUST load the latest snapshot into an empty container. A lost account or container recovers this way.
 
@@ -218,8 +218,9 @@ The owner needs current tasks moved once so that nothing is lost at cutover.
   - Notes, `>` quotes and status prose go to `body`.
   - `updatedAt` MUST come from the row's `git blame` date, so ranking on activity matches md (`G1`).
 - **FR:import.ids** (P1): Import MUST make the same ID for the same md row on every run (file, then slug from title, clash order by line).
+- **FR:import.epoch** (P1): A change of `meta.epoch` MUST make every cache and view drop its data and reload the full partition, because hard deletes do not reach the change feed. `restore` MUST also set a new epoch.
 - **FR:import.report** (P1): Import MUST print counts per project, rows sent to inbox, and renamed IDs. `--dry-run` writes nothing.
-- **FR:import.once** (P1): Import into a store that holds items MUST refuse, unless `--replace` is given. `--replace` MUST hard-delete every item and tombstone first (no ID reserve), then import. It is for the shadow stage and the final import only.
+- **FR:import.once** (P1): Import into a store that holds items MUST refuse, unless `--replace` is given. `--replace` MUST hard-delete every item and tombstone except `meta` (no ID reserve), then import, then set a new `meta.epoch`. It is for the shadow stage and the final import only.
 - **FR:import.done** (P1): Import MUST skip done rows (`- [x]`).
 
 ### FR:export: md on demand
@@ -301,8 +302,8 @@ The owner needs a fast undo so that a bad change or a bad cutover is cheap.
 - **FR:$inbox** (P1): **`InboxItem`** extends `Item`: `source` (`email` | `pr` | `calendar` | `agent` | `capture` | `import`), `capturedAt`.
 - **FR:$dayplan** (P1): **`DayPlan`** extends `Item`: `date`, `picks` (task ID[]), `doneByArea` (map), `note` (string?), `ttl` (2 days).
 - **FR:$priority** (P1): **`Priority`** extends `Item`: one item per ranked focus, with `rank`, `slot` and `days` as defined in [179](https://github.com/Xerilium/stack/pull/179). `parentId` is the area or project it ranks.
-- **FR:$meta** (P1): **`Meta`**: one item, ID `meta`, with `readOnly`, `reason`, `bulk` ({op, chunk}?), `schemaVersion`. Not an `Item` subtype; never listed.
-- **FR:$tombstone** (P1): **`Tombstone`**: `id`, `type`, `deleted: true`, `ttl` (90 days).
+- **FR:$meta** (P1): **`Meta`**: one item, ID `meta`, with `readOnly`, `reason`, `epoch` (string), `bulk` ({op, chunk}?), `schemaVersion`. Not an `Item` subtype; never listed.
+- **FR:$tombstone** (P1): **`Tombstone`**: `id`, `ownerId`, `type`, `deleted: true`, `ttl` (90 days).
 - **FR:$link** (P1): **`Link`**: `{kind, target}`.
   - `kind` (`blocks` | `pr` | `issue` | `email` | `req` | `url`)
   - `target`: a task ID for `blocks`; `owner/repo#N` for `pr` and `issue`; `FR:{feature}/{req}` for `req`; a URL otherwise
