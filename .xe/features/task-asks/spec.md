@@ -40,8 +40,15 @@ An ask is a task row with the human-blocker emoji 🙋 (`HUMAN_MARK`), nested un
 ```
 
 - Emoji fields stay emoji (`FR:task-ids/meta.emoji`): ask priority `crit`/`high`/`low` is 🚨/‼️/🔻 (none is `normal`); the open/done state is the checkbox.
-- All other ask fields are `> key: value` metadata with the `ask-queue` names. The duration estimate is `time` (the `effort` name belongs to the effort emoji).
-- `## Detail` and `## Thread` content becomes indented lines under the metadata.
+- All other ask fields are `> key: value` metadata with the `ask-queue` names. The duration estimate is `time` (the `effort` name belongs to the effort emoji). `state` is written only when the checkbox and `answer` cannot tell it.
+- Detail and thread follow the metadata as blockquote lines, so no detail line can parse as a task or as metadata:
+
+```markdown
+    > ## Detail
+    > Long markdown, one line per line (`>` alone for a blank line).
+    > ## Thread
+    > - 2026-10-28T14:03:11Z owner: go
+```
 
 ## Scenarios
 
@@ -72,7 +79,7 @@ Every surface needs the ask core to keep its contract so that the API, MCP, CLI,
 
 - **FR:core.contract** (P1): The ask core MUST read and write ask rows instead of ask files, keeping inputs, outputs, errors, and scores (`FR:ask-queue/*`)
   - Ask core: `putAsk`, `answerAsk`, `handleAsk`, `listAsks`, and `archiveAsks`.
-- **FR:core.archive** (P2): `archiveAsks` MUST check the row (`[x]`); removal of checked rows stays with `stack remove-completed`
+- **FR:core.archive** (P2): `archiveAsks` MUST delete the rows (with their lines) of `done` asks older than `days`, in one write; git history keeps them
 - **FR:core.wake** (P2): Wake files keep working (`FR:ask-queue/wake.*`)
 
 ### FR:import: One-time import
