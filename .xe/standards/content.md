@@ -55,7 +55,7 @@ Current names, recorded as they are. A conflict here is an open item, not a rena
 | Session         | One agent run in a folder, with its transcript and cost  | Session; `No agent (plain session)`            | `sessions`                       | Chat, conversation            |
 | Delegate        | Hand a task to an agent                                  | Delegate to an agent (🪄)                      | `triage --agent`                 | Assign (when no agent runs)   |
 | Pull request    | A GitHub PR on the board                                 | Pull requests                                  | `prs`                            | PR in headings, merge request |
-| Inbox           | Mail and replies to triage                               | Inbox                                          | `inbox`, `email`                 | Mail, messages                |
+| Inbox           | Mail and replies to triage                               | Inbox                                          | `inbox`, `email run`             | Mail, messages                |
 | Live review     | The live validation checklist for the one PR in the lane | `#/live` page; chip `Ready for you`            | `live`                           | QA, test pass                 |
 | QM plan         | The weekly plan for spare agent quota                    | QM plan                                        | `qm`                             | Quota-maxxing (in UI text)    |
 | Needs you state | A session or PR agent that waits on you (not an ask)     | Needs you (see open item 3)                    | n/a                              | n/a                           |
