@@ -95,13 +95,16 @@ const className = (e: unknown) => (e instanceof Error ? e.constructor.name : 'Er
 const pathOf = (req: Request) => new URL(req.url).pathname.replace(/\/+$/, '');
 const inApi = (req: Request) => { const p = pathOf(req); return p === '/api' || p.startsWith('/api/'); };
 
-/** Providers may append a slash to webhook URLs: dispatch on the canonical path. @req FR:azure-host/routes.paths */
-async function stripSlash(req: Request, path: string): Promise<Request> {
+/**
+ * Providers may append a slash to webhook URLs: dispatch on the canonical path. The body stream passes through
+ * unread, so the bot handler's 64 KiB cap still stops an unsigned upload. @req FR:azure-host/routes.paths
+ */
+function stripSlash(req: Request, path: string): Request {
   const u = new URL(req.url);
   if (u.pathname === path) return req;
   u.pathname = path;
   const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
-  return new Request(u, { method: req.method, headers: req.headers, body: hasBody ? await req.arrayBuffer() : undefined });
+  return new Request(u, { method: req.method, headers: req.headers, body: hasBody ? req.body : undefined, duplex: 'half' } as RequestInit);
 }
 
 /** @req FR:azure-host/health.shape */
@@ -165,7 +168,7 @@ export function createHost(env: Env, deps: HostDeps = {}): (req: Request) => Pro
       if (h) return h;
       const path = pathOf(req);
       if (path === '/api/mcp') return await mcp(req);
-      if (path.startsWith('/api/bots/')) return await bots(await stripSlash(req, path));
+      if (path.startsWith('/api/bots/')) return await bots(stripSlash(req, path));
       if (inApi(req)) return await api(req);
       return notFound();
     } catch (e) {

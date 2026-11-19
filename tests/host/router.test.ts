@@ -181,6 +181,19 @@ describe('azure-host path confusion and failure handling', () => {
     expect(r.status).toBe(200);
   });
 
+  /** @req FR:azure-host/routes.paths @req FR:chat-bots/webhook.shape */
+  it.each(['/api/bots/webhook/', '/api/bots/nope/'])('trailing-slash bot path %s stops reading a large body at the cap', async (p) => {
+    const h = await setup();
+    const chunk = new Uint8Array(64 * 1024);
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) { if (pulled >= 8 * 1024 * 1024) { c.close(); return; } pulled += chunk.byteLength; c.enqueue(chunk); },
+    });
+    const r = await h.host(new Request(`${BASE}${p}`, { method: 'POST', body, headers: { 'content-type': 'application/json' }, duplex: 'half' } as RequestInit));
+    expect([404, 413]).toContain(r.status);
+    expect(pulled).toBeLessThanOrEqual(512 * 1024);
+  });
+
   /** @req FR:azure-host/routes.paths @req FR:azure-host/settings.invalid */
   it('bot routes answer 503 in degraded mode, with or without trailing slash', async () => {
     const h = await setup({ ...ENV, STACK_REPO_BRANCH: 'a//b' });
