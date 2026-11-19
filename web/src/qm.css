@@ -8,8 +8,7 @@
 .qm-hint { margin-block: var(--fl-s-s) var(--fl-s-l); }
 .qm-error { color: var(--fl-danger); }
 /* Quiet icon button (shared .fl-btn.subtle); 44 px target on every screen. @req FR:qm-plan/ui.back */
-.qm .qm-back { flex: none; align-self: center; min-width: 44px; min-height: 44px; padding: 0; margin-inline-start: calc(-1 * var(--fl-s-s)); font-size: 24px; font-weight: 400; line-height: 1; text-decoration: none; }
-.qm .qm-back:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 2px; }
+.qm .qm-back { flex: none; align-self: center; min-width: 44px; min-height: 44px; padding: 0; margin-inline-start: calc(-1 * var(--fl-s-s)); font-size: var(--fl-sub2); font-weight: 400; line-height: 1; text-decoration: none; }
 .qm a:not(.fl-btn) { color: var(--fl-brand-fg); }
 .qm a:focus-visible, .qm-sort:focus-visible, .qm-scroll:focus-visible, .qm summary:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 2px; }
 /* The table scrolls sideways in its own box on a phone; the page never does. */

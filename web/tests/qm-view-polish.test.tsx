@@ -8,7 +8,7 @@ const PLAN = {
   version: 1, asOf: '2026-11-18T19:00:00Z',
   projects: [
     { project: 'Stack', agent: { name: 'stack-architect', sessionId: 'local_11aa9613-132f', url: 'https://example.com/s' }, tasks: [{ title: 'Ship QM' }], weeklyTokens: 25_000_000, preAckMin: 10, postReviewMin: 30 },
-    { project: 'FOCUS', agent: { name: 'focus-lead', sessionId: 'local_22bb' }, tasks: [], weeklyTokens: 2_000_000, preAckMin: null, postReviewMin: null },
+    { project: 'FOCUS', agent: { name: 'focus-lead', sessionId: 'local_22bb' }, tasks: [], weeklyTokens: 900_000, preAckMin: null, postReviewMin: null },
   ],
 };
 const ok = (body: unknown): typeof fetch => async () => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -28,11 +28,11 @@ describe('QM view', () => {
     const cells = [...root.querySelectorAll<HTMLElement>('tbody td.qm-agent')];
     expect(cells.map((c) => c.title).sort()).toEqual(['local_11aa9613-132f', 'local_22bb']);
   });
-  it('shows compact weekly tokens with the raw value in title; sort uses the raw number', async () => {
+  it('shows compact weekly tokens with the raw value in title; sort uses the raw number (text order of 900k/25M differs)', async () => {
     const root = await mount();
     const tok = [...root.querySelectorAll<HTMLElement>('tbody td.qm-tokens')];
-    expect(tok.map((t) => t.textContent)).toEqual(['2.0M', '25M']);
-    expect(tok.map((t) => t.title)).toEqual(['2,000,000', '25,000,000']);
+    expect(tok.map((t) => t.textContent)).toEqual(['900k', '25M']);
+    expect(tok.map((t) => t.title)).toEqual(['900,000', '25,000,000']);
     expect(root.textContent).not.toContain('25,000,000');
     const btn = [...root.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Weekly tokens'))!;
     btn.click(); await tick(); btn.click(); await tick();
