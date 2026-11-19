@@ -36,8 +36,8 @@
 .prs-note { margin: 0 16px 8px; font-size: 12px; color: var(--muted); }
 .prs-hint { margin: 0 0 12px; font-size: 12px; color: var(--muted); }
 
-.prs-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 8px; }
-.prs-chip { padding: 0 var(--fl-s-m); font-size: 13px; }
+/* The project filter: the shared FilterPills (ui/ui.css); the page sets only its place. @req FR:pr-page/flyout.filter.pills */
+.prs-fly > .ui-pills { padding: 2px 16px 12px; }
 
 .prs-tabs { display: flex; gap: 2px; overflow-x: auto; padding: 0 12px; border-bottom: 1px solid var(--line); scrollbar-width: none; }
 .prs-tab { flex: none; min-height: 40px; padding: 0 10px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ink2); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
@@ -128,7 +128,7 @@ body:has(.prs-scrim) .toasts { z-index: 70; }
 .prs-fly.page .prs-body { overflow: visible; }
 .prs-fly.page .prs-panel { padding-left: 0; padding-right: 0; }
 .prs-fly.page .pr-detail-col { padding-left: 0; padding-right: 0; }
-.prs-fly.page .prs-tabs, .prs-fly.page .prs-chips { padding-left: 0; padding-right: 0; }
+.prs-fly.page .prs-tabs, .prs-fly.page > .ui-pills { padding-left: 0; padding-right: 0; }
 .prs-fly.page .prs-foot { padding-left: 0; padding-right: 0; }
 /* Wide: the list on the left, the details pane on the right. */
 .prs-body.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
@@ -147,6 +147,6 @@ body:has(.prs-scrim) .toasts { z-index: 70; }
 .pr-d a:not(.fl-btn) { display: inline-flex; align-items: center; min-height: 24px; }
 /* Touch: 44 px targets. @req FR:pr-page/flyout.a11y */
 @media (pointer: coarse), (max-width: 719px) {
-  .prs-tab, .prs-refresh, .prs-close, .pr-num, .pr-miss-open, .prs-fly .fl-btn, .prs-chip { min-height: var(--tap); min-width: var(--tap); }
+  .prs-tab, .prs-refresh, .prs-close, .pr-num, .pr-miss-open, .prs-fly .fl-btn { min-height: var(--tap); min-width: var(--tap); }
   .pr-d a:not(.fl-btn) { display: inline-flex; align-items: center; min-height: var(--tap); }
 }

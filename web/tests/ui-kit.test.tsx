@@ -5,6 +5,7 @@ import { act } from 'preact/test-utils';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ActionBar, ActionMenu, type ActionItem } from '../src/ui/ActionMenu';
 import { DayGrid, placeItems } from '../src/ui/DayGrid';
+import { FilterPills } from '../src/ui/FilterPills';
 import { Flag } from '../src/ui/Flag';
 import { MessageBox } from '../src/ui/MessageBox';
 import { LinkList } from '../src/ui/LinkList';
@@ -185,6 +186,30 @@ describe('Tabs and SplitView', () => {
     for (const key of ['ArrowRight', 'ArrowLeft', 'End', 'Home']) act(() => { list.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })); });
     expect(picks).toEqual(['b', 'c', 'c', 'a']);
     expect(r.querySelector('.ui-tabbar-aside')?.textContent).toBe('as of 9 AM');
+  });
+  // @req FR:ui-kit/pills @req FR:ui-kit/pills.toggle @req FR:ui-kit/pills.count
+  it('FilterPills: a named group of toggles; aria-pressed; a quiet count; a check only when on; tap toggles', () => {
+    const hits: string[] = [];
+    const r = mount(<FilterPills label="Filter by project" items={[{ key: 'a', label: 'Allyte', count: 4 }, { key: 'f', label: 'FTK', count: 12 }, { key: 'x', label: 'Xerilium' }]} selected={['f']} onToggle={(k) => hits.push(k)} />);
+    const g = r.querySelector('.ui-pills')!;
+    expect([g.getAttribute('role'), g.getAttribute('aria-label')]).toEqual(['group', 'Filter by project']);
+    const pills = [...g.querySelectorAll<HTMLButtonElement>('button.ui-pill')];
+    expect(pills.map((p) => [p.type, p.textContent, p.getAttribute('aria-pressed')])).toEqual([['button', 'Allyte 4', 'false'], ['button', 'FTK 12', 'true'], ['button', 'Xerilium', 'false']]);
+    expect(pills.map((p) => p.querySelector('.ui-pill-count')?.textContent ?? null)).toEqual(['4', '12', null]);
+    // The check mark is decoration: only on, hidden from assistive tech.
+    expect(pills.map((p) => !!p.querySelector('.ui-pill-check'))).toEqual([false, true, false]);
+    expect(pills[1].querySelector('.ui-pill-check')!.getAttribute('aria-hidden')).toBe('true');
+    act(() => { pills[0].click(); pills[1].click(); });
+    expect(hits).toEqual(['a', 'f']);
+  });
+  // @req FR:ui-kit/pills.look @req FR:ui-kit/pills.wrap @req FR:ui-kit/pills.target
+  it('FilterPills styles: wrap, no fill off, accent soft on, one look, no shadow, 44 px on touch', () => {
+    const css = readFileSync('src/ui/ui.css', 'utf8');
+    expect(css).toMatch(/\.ui-pills \{[^}]*flex-wrap: wrap;/);
+    expect(css).toMatch(/\.ui-pill::before \{[^}]*border-radius: var\(--fl-r-pill\); background: transparent;/);
+    expect(css).not.toMatch(/\.ui-pill[^{]*\{[^}]*box-shadow/);
+    expect(css).toMatch(/\.ui-pill\[aria-pressed="true"\]::before \{[^}]*background: var\(--accent-soft\);[^}]*border-color: var\(--accent\);/);
+    expect(css).toMatch(/\.ui-pill \{ min-height: var\(--tap\); \}\s*\.ui-pill::before \{ inset: 6px 0; \}/);
   });
   // @req FR:ui-kit/message
   it('MessageBox: sends the text, says Sent, keeps the text on an error; off with a reason', async () => {

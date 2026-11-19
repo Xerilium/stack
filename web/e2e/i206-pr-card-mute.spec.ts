@@ -103,10 +103,10 @@ for (const scheme of ['light', 'dark'] as const) {
     await page.route('**/api/prs**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(b) }));
     await page.goto('/#/prs');
     const pg = page.getByTestId('prs-page');
-    const chip = pg.locator('.prs-chip').first();
+    const chip = pg.locator('.ui-pill').first();
     await expect(chip).toBeVisible();
     await chip.click();
-    await expect(pg.locator('.prs-chip[aria-pressed="true"]')).toHaveCount(1);
+    await expect(pg.locator('.ui-pill[aria-pressed="true"]')).toHaveCount(1);
     const axe = await new AxeBuilder({ page }).include('[data-testid="prs-page"]').withRules(['color-contrast']).analyze();
     expect(axe.violations).toEqual([]);
   });

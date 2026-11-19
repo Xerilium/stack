@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  ACTION_LABEL, actionsOf, authorText, flagText, NOT_ACTIONABLE, countOf, createPrStore, loadPrefs, moveTo, needCount, projectsOf, rowsOf, savePrefs, signInText, specText, summaryView, sweepCommand, tabsOf, TAB_LABEL, toneOf, updatedText,
+  ACTION_LABEL, actionsOf, authorText, flagText, NOT_ACTIONABLE, countOf, createPrStore, loadPrefs, moveTo, needCount, projectsOf, rowsOf, savePrefs, signInText, specText, summaryView, sweepCommand, tabsOf, TAB_LABEL, toneOf, totalOf, updatedText,
   type PrBoard, type PrRow,
 } from '../src/prs';
 
@@ -33,6 +33,14 @@ describe('tabs, counts, and filters', () => {
     expect(countOf(b, 'summary', [])).toBe(3);
     expect(countOf(b, 'summary', ['ftk'])).toBe(1);
     expect(projectsOf(b)).toEqual(['allyte', 'ftk', 'xerilium']);
+  });
+  // @req FR:pr-page/flyout.header.total @req FR:pr-page/flyout.filter.count
+  it('totalOf counts board rows under the project filter, whatever the tab; one project gives its chip count', () => {
+    expect(totalOf(b, [])).toBe(4);
+    expect(totalOf(b, ['allyte'])).toBe(1);
+    expect(totalOf(b, ['allyte', 'ftk'])).toBe(2);
+    expect(totalOf(b, ['xerilium'])).toBe(2);
+    expect(totalOf(null, [])).toBe(0);
   });
   // @req FR:pr-page/summary.layout @req FR:pr-page/summary.missing
   it('summaryView maps urls to rows under the filter and drops urls with no row', () => {

@@ -129,8 +129,11 @@ The owner needs the PR list one keystroke away on any screen so that he can act 
 - **FR:flyout.shape** (P1): Desktop: a panel on the right, 480 px wide, over the page. Phone (below 720 px, the app phone layout): full screen. It is a dialog: focus moves in, `Escape` closes, focus returns to the icon
 - **FR:flyout.tabs** (P1): Tabs, in order: `Summary` (the default), `Processing`, `Waiting on me`, `Pending`, `Paused`, `Pinned`. Each tab shows its count: Summary counts the PRs it lists; Pinned counts pinned rows; each other tab counts its group. Arrow keys move between tabs. The last tab is remembered
 - **FR:flyout.filter** (P1): Project chips filter rows (multi-select; none selected shows all). The choice is remembered in local storage. Tab counts and the Summary follow the filter
+  - **FR:flyout.filter.pills** (P1): The project chips MUST be the shared `FilterPills` (`FR:ui-kit/pills`), named `Filter by project`
+  - **FR:flyout.filter.count** (P1): Each project chip MUST show the count of board rows in that project, for example `Allyte 4`. The count does not follow the tab or the chip selection, so the chip counts add up to the header total with no filter
 - **FR:flyout.empty** (P2): An empty tab says so in one line, for example `No paused PR.`
 - **FR:flyout.header** (P1): The header has only the title `Pull requests`, the age with Refresh (`FR:pr-page/live.age`), and Close (flyout only). There is no live check button, no multi-select, and no bulk action
+  - **FR:flyout.header.total** (P1): With a board, the title MUST show the total in brackets, for example `Pull requests (12)`. The total is the count of board rows under the project filter: every PR the group tabs list, whatever tab is open. Pinned and Summary rows are already in that set. Before the board loads, the title has no count (`FR:pr-page/nav.load`)
 - **FR:flyout.a11y** (P1): Axe finds no violation at 375 px and 1280 px, light and dark. Every target is at least 44 px on touch and 24 px on desktop. No sideways scroll
 
 ### FR:summary: Summary tab
