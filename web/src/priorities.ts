@@ -5,7 +5,7 @@
  */
 export type AgentStatus = 'working' | 'pairing' | 'done' | 'idle' | 'blocked' | 'queued' | 'unknown';
 export interface Agent { name: string; link: string | null; file: string | null }
-export interface PriRow { id: string; project: string; file: string | null; agent: Agent | null; status: AgentStatus | null; action: string; gap: boolean; ref: string | null; at: string; stale: boolean }
+export interface PriRow { id: string; project: string; file: string | null; agent: Agent | null; more: number; status: AgentStatus | null; action: string; gap: boolean; ref: string | null; at: string; stale: boolean }
 export interface PriTable { at: string; stale: boolean; rows: PriRow[] }
 export interface QmTable extends PriTable { title: string; today: boolean }
 export interface PrRow { emoji: string; number: number; url: string; agent: Agent | null; action: string; minutes: number; server: string | null; details: string | null }
@@ -27,9 +27,9 @@ export function sectionsOf(v: PrioritiesView): Section[] {
   ];
 }
 
-const STATUS: Record<AgentStatus, string> = { working: '🔄 Working', pairing: '🤝 Pairing', done: '✅ Done', idle: '⏸️ Idle', blocked: '🚫 Blocked', queued: '🕓 Queued', unknown: '❓ Unknown' };
+export const STATUS: Record<AgentStatus, { icon: string; word: string }> = { working: { icon: '🔄', word: 'Working' }, pairing: { icon: '🤝', word: 'Pairing' }, done: { icon: '✅', word: 'Done' }, idle: { icon: '⏸️', word: 'Idle' }, blocked: { icon: '🚫', word: 'Blocked' }, queued: { icon: '🕓', word: 'Queued' }, unknown: { icon: '❓', word: 'Unknown' } };
 /** Icon and one word; `--` with no agent. @req FR:priorities-tables/tasks.status */
-export const statusText = (s: AgentStatus | null): string => (s ? STATUS[s] : '--');
+export const statusText = (s: AgentStatus | null): string => (s ? `${STATUS[s].icon} ${STATUS[s].word}` : '--');
 /** A gap says so first. @req FR:priorities-tables/web.table.gap */
 export const actionText = (r: Pick<PriRow, 'action' | 'gap'>): string => (r.gap ? `Gap: ${r.action}` : r.action);
 

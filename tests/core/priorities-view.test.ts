@@ -54,7 +54,7 @@ describe('project rows', () => {
       task('other', 1, 'Not a priority'),
     ];
     const [r] = view([pri('ftk', { label: 'FTK 16' })], tasks).now.rows;
-    expect(r).toEqual({ id: 'ftk', project: 'FTK 16', file: 'tasks/ftk.md', agent: { name: 'ftk-rm', link: null, file: null }, status: 'working', action: 'Today one', gap: false, ref: `tasks/ftk.md:${tasks[1].line}`, at: AT, stale: false });
+    expect(r).toEqual({ id: 'ftk', project: 'FTK 16', file: 'tasks/ftk.md', agent: { name: 'ftk-rm', link: null, file: null }, more: 0, status: 'working', action: 'Today one', gap: false, ref: `tasks/ftk.md:${tasks[1].line}`, at: AT, stale: false });
   });
   // @req FR:priorities-tables/rows.project
   it('names the project by label, else the title before the first (', () => {

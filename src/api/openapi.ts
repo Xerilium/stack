@@ -667,9 +667,9 @@ export function buildOpenApi(): J {
         },
         PriAgent: { type: 'object', nullable: true, required: ['name', 'link', 'file'], properties: { name: { type: 'string' }, link: { type: 'string', nullable: true, description: 'Session link; null when no session matches' }, file: { type: 'string', nullable: true, description: 'Agent file when no session matches' } } },
         PriRow: {
-          type: 'object', required: ['id', 'project', 'file', 'agent', 'status', 'action', 'gap', 'ref', 'at', 'stale'],
+          type: 'object', required: ['id', 'project', 'file', 'agent', 'more', 'status', 'action', 'gap', 'ref', 'at', 'stale'],
           properties: {
-            id: { type: 'string' }, project: { type: 'string' }, file: { type: 'string', nullable: true, description: 'Project task file' }, agent: ref('PriAgent'),
+            id: { type: 'string' }, project: { type: 'string' }, file: { type: 'string', nullable: true, description: 'Project task file' }, agent: ref('PriAgent'), more: { type: 'integer', description: 'More agents on the same goal' },
             status: { type: 'string', nullable: true, enum: ['working', 'pairing', 'done', 'idle', 'blocked', 'queued', 'unknown'], description: 'Agent status from the task line; null with no agent' },
             action: { type: 'string', description: 'The owner next action, at most 20 words; ⏳ first for tier 2 or 3' },
             gap: { type: 'boolean', description: 'No tiered task linked (or QM off today)' }, ref: { type: 'string', nullable: true, description: 'tasks/<file>.md:<line> of the task' },

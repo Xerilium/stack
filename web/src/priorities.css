@@ -1,45 +1,29 @@
-/* Now's priorities report: tabs over one table on desktop, PR-page style cards on a phone. Neutral surfaces, one accent
-   (brand: links, the chosen tab, focus); status is text and icon, never a fill. Fluent 2 tokens; dark through the tokens.
-   @req NFR:priorities-tables/a11y.tokens @req NFR:priorities-tables/a11y.mobile @req NFR:priorities-tables/a11y.target @req NFR:priorities-tables/a11y.color */
+/* Now's priorities report: layout on top of the shared kit (kit.css). Muted: neutral surfaces, one accent.
+   @req NFR:priorities-tables/a11y.tokens @req NFR:priorities-tables/a11y.mobile @req NFR:priorities-tables/a11y.color */
 .pri-tables { margin-top: var(--fl-s-xxl); min-width: 0; }
 @media (min-width: 1100px) { .now > .pri-tables { grid-column: 1 / -1; } }
-
-/* Tabs. @req FR:priorities-tables/web.tabs */
-.pri-tabs { display: flex; gap: var(--fl-s-xs); overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--fl-stroke2); margin-bottom: var(--fl-s-m); }
-.pri-tabs::-webkit-scrollbar { display: none; }
-.pri-tab { flex: none; min-height: 44px; padding: 0 var(--fl-s-m); border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; color: var(--fl-fg2); font: 400 var(--fl-body)/var(--fl-body-lh) var(--fl-font); cursor: pointer; white-space: nowrap; }
-.pri-tab:hover { color: var(--fl-fg1); }
-.pri-tab[aria-selected="true"] { color: var(--fl-fg1); font-weight: 600; border-bottom-color: var(--fl-brand); }
-
-.pri-stamp { margin: 0 0 var(--fl-s-s); font-size: var(--fl-caption); line-height: var(--fl-caption-lh); color: var(--fl-fg3); }
+/* The tab bar and its stamp stay in view. @req FR:priorities-tables/web.tabs.head */
+.pri-head { position: sticky; top: 0; z-index: 2; background: var(--fl-bg2); margin-bottom: var(--fl-s-m); }
 .pri-stamp.stale, .pri-stale { font-weight: 600; color: var(--fl-fg1); }
-.pri-stale { font-size: var(--fl-caption); }
-.pri-manager { margin: 0 0 var(--fl-s-s); font-size: var(--fl-caption); line-height: var(--fl-caption-lh); color: var(--fl-fg2); }
-
-/* Cards at every width, in the PR page layout, muted: line 1 project (or PR) and status (or time), small; line 2 the
-   action; line 3 the agent. @req FR:priorities-tables/web.table @req NFR:priorities-tables/a11y.mobile */
-.pri-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.pri-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "a b" "c c" "d d"; gap: 4px 8px; padding: 12px 14px 12px 16px; background: var(--fl-bg1); border: 1px solid var(--fl-stroke2); border-radius: var(--fl-r-xl); color: var(--fl-fg1); min-width: 0; }
-.pri-card.pri-only { display: block; }
-.pri-card > span { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pri-c-project, .pri-c-pr { grid-area: a; font-size: 12px; line-height: 16px; color: var(--fl-fg2); }
-.pri-c-status, .pri-c-time { grid-area: b; font-size: 12px; line-height: 16px; color: var(--fl-fg2); text-align: end; font-variant-numeric: tabular-nums; }
-.pri-c-action { grid-area: c; font-size: 15px; line-height: 21px; font-weight: 600; }
-.pri-c-agent { grid-area: d; font-size: 12px; line-height: 16px; color: var(--fl-fg2); }
-.pri-c-agent.pri-muted, .pri-c-status.pri-muted { display: none !important; }
-.pri-gap .pri-c-action { font-weight: 400; }
+.pri-stale { font-size: 12px; }
+.pri-manager { margin: 0 0 var(--fl-s-s); font-size: 12px; line-height: 16px; color: var(--fl-fg2); }
+.pri-manager a { color: var(--fl-brand-fg); text-decoration: underline; text-underline-offset: 2px; }
+.pri-only { display: block; }
 .pri-muted, .pri-nolink { color: var(--fl-fg3); }
 .pri-nolink { font-size: 12px; font-weight: 400; }
-.pri-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.pri-cards a, .pri-manager a { color: var(--fl-brand-fg); text-decoration: underline; text-underline-offset: 2px; }
-.pri-c-project a { color: inherit; }
-
-/* The action: one line cut with an ellipsis, then the toggle. @req FR:priorities-tables/web.table.line @req FR:priorities-tables/web.table.detail */
-.pri-act { display: flex; align-items: center; gap: var(--fl-s-xs); min-width: 0; }
-.pri-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pri-more { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--fl-r-md); background: none; color: var(--fl-fg3); font: 400 14px/1 var(--fl-font); cursor: pointer; }
-.pri-more:hover { color: var(--fl-fg1); background: var(--fl-bg1-hover); }
-.pri-open > span, .pri-open .pri-text { white-space: normal; overflow-wrap: anywhere; }
-.pri-tables a:focus-visible, .pri-tab:focus-visible, .pri-more:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 1px; border-radius: var(--fl-r-sm); }
+.pri-gap .kit-card-title { font-weight: 400; }
+.pri-card .kit-card-top a { color: inherit; }
+.pri-time { font-size: 12px; line-height: 16px; color: var(--fl-fg2); font-variant-numeric: tabular-nums; }
+/* The detail pane. @req FR:priorities-tables/web.detail */
+.pri-d { display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 20px; }
+.pri-d p { margin: 0; overflow-wrap: anywhere; }
+.pri-d-h { margin: 0; font-size: 18px; line-height: 24px; font-weight: 600; }
+.pri-d-h:focus { outline: none; }
+.pri-d a { color: var(--fl-brand-fg); text-decoration: underline; text-underline-offset: 2px; }
+.pri-d-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 12px; line-height: 16px; }
+.pri-d-facts dt { color: var(--fl-fg3); }
+.pri-d-facts dd { margin: 0; overflow-wrap: anywhere; }
+.pri-d-more { color: var(--fl-fg2); }
+.pri-tables a:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 1px; border-radius: var(--fl-r-sm); }
 /* 44 px targets on touch: padding grows link targets without moving the line. @req FR:ux-consolidation/one.layout */
-@media (hover: none) { .pri-cards a { display: inline-block; padding-block: 12px; margin-block: -12px; } .pri-more { width: 44px; height: 44px; margin-block: -12px; } }
+@media (hover: none) { .pri-tables .kit-card a, .pri-d a { display: inline-block; padding-block: 12px; margin-block: -12px; } }

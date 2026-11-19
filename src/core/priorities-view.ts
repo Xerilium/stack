@@ -24,7 +24,7 @@ export interface ViewInput {
 
 /** `link`: the session; `file`: the agent file when no session matches. */
 export interface Agent { name: string; link: string | null; file: string | null }
-export interface PriRow { id: string; project: string; /** The project task file. */ file: string | null; agent: Agent | null; status: AgentStatus | null; action: string; gap: boolean; ref: string | null; at: string; stale: boolean }
+export interface PriRow { id: string; project: string; /** The project task file. */ file: string | null; agent: Agent | null; /** More agents on the same goal (`+N` in the task). @req FR:priorities-tables/rows.cols.more */ more: number; status: AgentStatus | null; action: string; gap: boolean; ref: string | null; at: string; stale: boolean }
 export interface PriTable { at: string; stale: boolean; rows: PriRow[] }
 export interface QmTable extends PriTable { title: string; /** QM is a priority today (its day order and windows keep it in). @req FR:priorities-tables/qm.today */ today: boolean }
 export interface PrRow { emoji: string; number: number; url: string; agent: Agent | null; action: string; minutes: number; server: string | null; details: string | null }
@@ -131,7 +131,7 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
   /** The agent: its session, else its agent file. @req FR:priorities-tables/agent.link @req FR:priorities-tables/agent.file @req FR:priorities-tables/agent.plain */
   const slug = (s: string) => s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
   const agentOf = (name: string, s?: { link: string }): Agent => ({ name: cut(name), link: s?.link ?? null, file: s ? null : input.agents?.find((a) => (a.split('/').pop() ?? '').replace(/\.md$/, '') === slug(name)) ?? null });
-  const gapRow = (p: Pri, action: string, project = projectOf(p)): PriRow => ({ id: p.id, project, file: fileOf(p), agent: null, status: null, action, gap: true, ref: null, ...stamp(now, []) });
+  const gapRow = (p: Pri, action: string, project = projectOf(p)): PriRow => ({ id: p.id, project, file: fileOf(p), agent: null, more: 0, status: null, action, gap: true, ref: null, ...stamp(now, []) });
   /**
    * @req FR:priorities-tables/rows.cols @req FR:priorities-tables/rows.cols.action @req FR:priorities-tables/rows.cols.later @req FR:priorities-tables/rows.cols.more
    * @req FR:priorities-tables/rows.gap @req FR:priorities-tables/fresh.row
@@ -141,7 +141,7 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
     const s = t.agent ? sessionOf(t.agent, p) : undefined;
     const agent = t.agent ? agentOf(t.agent, s) : null;
     const action = cut(`${when}${t.tier > 1 ? '⏳ ' : ''}${p.action ?? t.text}${t.more ? ` + ${t.more} more` : ''}`);
-    return { id: p.id, project, file: t.path, agent, status: t.status, action, gap: false, ref: `${t.path}:${t.line}`, ...stamp(now, s ? [Date.parse(sessions!.at)] : []) };
+    return { id: p.id, project, file: t.path, agent, more: t.more, status: t.status, action, gap: false, ref: `${t.path}:${t.line}`, ...stamp(now, s ? [Date.parse(sessions!.at)] : []) };
   };
   /** @req FR:priorities-tables/fresh.table */
   const table = (rows: PriRow[]): PriTable => ({ ...stamp(now, rows.map((r) => Date.parse(r.at))), rows });
