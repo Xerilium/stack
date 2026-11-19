@@ -3,7 +3,7 @@ id: pr-page
 title: PR Page
 author: flanakin
 description: "One PR page: a Summary of what needs the owner, one card per PR with one next action, a details pane, and a Pinned order."
-dependencies: [github-pr-status, connector-github, session-inventory, pr-priority, pr-review-lane, web-shell, ask-queue, cli, auth-security]
+dependencies: [ui-kit, github-pr-status, connector-github, session-inventory, pr-priority, pr-review-lane, web-shell, ask-queue, cli, auth-security]
 ---
 
 <!-- markdownlint-disable single-title -->
@@ -146,7 +146,7 @@ The owner needs the few PRs that need him, in clear sections, so that he acts wi
 
 The owner needs one card shape everywhere so that he reads each PR the same way, with one next action.
 
-- **FR:card.fields** (P1): A card shows only: the repo, the PR number as a link to the PR (new tab), the title, the author (`My Autopilot` for my Autopilot PR, `You` for my other PRs, else the login), the next action flag (`FR:pr-page/card.flag`; none when null), the spec lines changed (small, muted; only when known), the Pin toggle (`FR:pr-page/pin.toggle`), and the quick actions button (`FR:pr-page/menu.shape`). It has no other detail and no other control
+- **FR:card.fields** (P1): A card is the shared `SelectCard` (`FR:ui-kit/card`). It shows only: the repo, the PR number as a link to the PR (new tab), the title, the author (`My Autopilot` for my Autopilot PR, `You` for my other PRs, else the login), the next action flag (`FR:pr-page/card.flag`; none when null), the spec lines changed (small, muted; only when known), the Pin toggle (`FR:pr-page/pin.toggle`), and the quick actions button (`FR:pr-page/menu.shape`). It has no other detail and no other control
 - **FR:card.action** (P1): `nextActionOf(row, ctx)` is pure. The first match wins:
   1. `validate` (`Validate`): the row is the Live PR
   2. `signoff` (`Sign off`): the row has a sign-off thread
@@ -154,7 +154,7 @@ The owner needs one card shape everywhere so that he reads each PR the same way,
   4. `approve` (`Approve`): the row is `waiting`, not a draft, CI is `passing` or `none`, no merge conflict, and my latest review is not `APPROVED`
   5. `autopilot` (`Enable Autopilot`): I am the author, no Autopilot label, no Paused label, not a draft, and either every thread is resolved or exactly one unresolved thread waits for me (its last comment is not a human comment of mine; an agent note under my login waits for me)
   6. Else null
-- **FR:card.flag** (P1): The next action is a flag, not a control: a small icon and the action word in muted text. No fill, no pill, no border, no hover state, and the default cursor. It is not focusable and has no role of a button. Choice: the owner read the old filled chip as a button
+- **FR:card.flag** (P1): The next action is the shared `Flag` (`FR:ui-kit/flag`), not a control: a small icon and the action word in muted text. No fill, no pill, no border, no hover state, and the default cursor. It is not focusable and has no role of a button. Choice: the owner read the old filled chip as a button
 - **FR:card.color** (P1): The card background shows the owner: my Autopilot PR, my other PR, or someone else's PR. Each has two strengths: strong when the card has a next action, subdued when not. Text on every background meets WCAG AA (4.5:1), light and dark. The color is never the only signal: the author text says the same
 - **FR:card.space** (P1): Cards have at least 12 px between them and 12 px padding inside
 - **FR:card.select** (P1): A tap or click on the card (not on the PR link or Pin) selects it and shows its details (`FR:pr-page/detail.*`). Enter or Space on the focused card does the same. The card ends in a chevron (`›`). The selected card shows a selected state (`aria-current`)
@@ -184,8 +184,8 @@ The owner needs the few routine moves for a PR one tap away so that he does not 
   5. `copy` (`Copy sweep command`): copies `/catalyst:pr-sweep <n> update` for my row, else `/catalyst:pr-sweep <n> review` (the Catalyst `pr-sweep` skill; run it in a checkout of the repo). Always shown
 
   No action sets `Status: ✅ Ready`: the Autopilot workflow sets and clears it (`.github/scripts/autopilot-core.cjs`), so a hand-set Ready does not last
-- **FR:menu.shape** (P1): Each card ends its tools with one icon button `⋯` (name `Actions for <repo>#<n>`, `aria-haspopup="menu"`, `aria-expanded`). It opens a menu (`role=menu`) under the button, or above it when the screen bottom or the phone tab bar leaves no room, with one `menuitem` per action. Focus moves to the first item. ArrowUp and ArrowDown move, Home and End jump, Enter or Space runs, Escape or a tap outside closes and returns focus to the button. One menu is open at a time. The button is quiet: no fill until hover or open
-- **FR:menu.detail** (P1): The details pane ends with a `Quick actions` heading and the same actions as plain buttons and links, in the same order
+- **FR:menu.shape** (P1): The shared `ActionMenu` (`FR:ui-kit/menu`). Each card ends its tools with one icon button `⋯` (name `Actions for <repo>#<n>`, `aria-haspopup="menu"`, `aria-expanded`). It opens a menu (`role=menu`) under the button, or above it when the screen bottom or the phone tab bar leaves no room, with one `menuitem` per action. Focus moves to the first item. ArrowUp and ArrowDown move, Home and End jump, Enter or Space runs, Escape or a tap outside closes and returns focus to the button. One menu is open at a time. The button is quiet: no fill until hover or open
+- **FR:menu.detail** (P1): The shared `ActionBar` (`FR:ui-kit/bar`). The details pane ends with a `Quick actions` heading and the same actions as plain buttons and links, in the same order
 - **FR:menu.run** (P1): A label change or a queue move runs, then shows a toast and reloads the board. `Enable Autopilot` and `Remove Autopilot` toasts have Undo (the other op). `Sweep next` says `<repo>#<n> is next for the Sweep Manager`. `Copy sweep command` says `Copied`; when the clipboard fails, it shows the command in the toast. A failure shows the host message. Only the owner sees the menu (`FR:pr-page/act.owner`)
 
 ### FR:check: Live check file

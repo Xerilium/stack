@@ -15,6 +15,9 @@ import {
 } from './prs';
 import type { Toast } from './parts';
 import { store } from './day';
+import { ActionBar, ActionMenu, type ActionItem } from './ui/ActionMenu';
+import { Flag } from './ui/Flag';
+import { SelectCard } from './ui/SelectCard';
 import './prs.css';
 
 type Client = ReturnType<typeof createClient>;
@@ -40,10 +43,6 @@ function RefreshIcon() {
 }
 function PinIcon({ on }: { on: boolean }) {
   return <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6Zm3 11v7" fill={on ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" /></svg>;
-}
-
-function FlagIcon() {
-  return <svg class="pr-flag-ic" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3.5 14V2.5m0 0h8l-1.8 3 1.8 3h-8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>;
 }
 
 /** The board phase for the nav: the PR entry is absent only where the host has no board. @req FR:pr-page/icon.absent @req FR:pr-page/nav.badge */
@@ -160,102 +159,32 @@ function useWide(page: boolean): boolean {
 
 interface Ctx { board: PrBoard; selected: string | null; select: (r: PrRow) => void; pin: (r: PrRow) => void; quick: (r: PrRow, a: QuickAction) => void; busy: boolean }
 
-/** The ⋯ menu on a card: only the actions that fit the PR. Arrow keys, Home, End; Escape or a tap outside closes. @req FR:pr-page/menu.shape */
-function QuickMenu({ r, c }: { r: PrRow; c: Ctx }) {
-  const [open, setOpen] = useState(false);
-  const [up, setUp] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-  const btn = useRef<HTMLButtonElement>(null);
-  const list = actionsOf(r, c.board);
-  const items = () => [...(box.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? [])];
-  const close = (back: boolean) => { setOpen(false); if (back) btn.current?.focus(); };
-  useLayoutEffect(() => {
-    if (!open) { setUp(false); return; }
-    // Open upward when the menu would run under the bottom of the screen (or the phone tab bar) and there is room above.
-    const m = box.current?.querySelector<HTMLElement>('[role="menu"]');
-    const b = btn.current?.getBoundingClientRect();
-    const bar = document.querySelector<HTMLElement>('.tabbar');
-    const floor = Math.min(window.innerHeight, bar?.getBoundingClientRect().top || Infinity) - 8;
-    if (m && b && b.bottom + m.offsetHeight + 4 > floor && b.top - m.offsetHeight - 4 > 0) setUp(true);
-    items()[0]?.focus();
-  }, [open]);
-  useLayoutEffect(() => {
-    if (!open) return;
-    const key = (e: KeyboardEvent) => {
-      // Escape closes the menu only, not the flyout under it.
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(true); return; }
-      if (e.key === 'Tab') { close(false); return; }
-      const all = items(); const at = all.indexOf(document.activeElement as HTMLElement);
-      const go = (i: number) => { e.preventDefault(); e.stopPropagation(); all[(i + all.length) % all.length]?.focus(); };
-      if (e.key === 'ArrowDown') go(at + 1); else if (e.key === 'ArrowUp') go(at - 1); else if (e.key === 'Home') go(0); else if (e.key === 'End') go(all.length - 1);
-    };
-    const down = (e: Event) => { if (!box.current?.contains(e.target as Node)) close(false); };
-    document.addEventListener('keydown', key, true); document.addEventListener('pointerdown', down, true);
-    return () => { document.removeEventListener('keydown', key, true); document.removeEventListener('pointerdown', down, true); };
-  }, [open]);
-  const name = `Actions for ${refOf(r)}`;
-  return (
-    <div class="pr-more" ref={box}>
-      <button type="button" ref={btn} class="pr-more-btn" aria-haspopup="menu" aria-expanded={open} aria-label={name} title="Actions" onClick={() => setOpen((o) => !o)}>
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 12h.01M12 12h.01M18 12h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round" /></svg>
-      </button>
-      {open && (
-        <div class={`menu pr-menu${up ? ' up' : ''}`} role="menu" aria-label={name}>
-          {list.map((a) => a.href
-            ? <a key={a.id} role="menuitem" class="menu-item" href={a.href} target="_blank" rel="noopener noreferrer" title={a.title} onClick={() => close(false)}>{a.label}</a>
-            : <button key={a.id} type="button" role="menuitem" class="menu-item" title={a.title} disabled={c.busy && a.id !== 'copy'} onClick={() => { close(true); c.quick(r, a); }}>{a.label}</button>)}
-        </div>
-      )}
-    </div>
-  );
-}
+/** The quick actions of a row as shared action items. @req FR:pr-page/menu.@function @req FR:pr-page/menu.run */
+const itemsOf = (r: PrRow, c: Ctx): ActionItem[] => actionsOf(r, c.board).map((a) => ({ id: a.id, label: a.label, title: a.title, ...(a.href ? { href: a.href } : { disabled: c.busy && a.id !== 'copy', onSelect: () => c.quick(r, a) }) }));
 
-/** The same quick actions at the end of the details pane. @req FR:pr-page/menu.detail */
-function QuickBar({ r, c }: { r: PrRow; c: Ctx }) {
-  return (
-    <section class="pr-qa" aria-label="Quick actions">
-      <h4 class="pr-d-sub">Quick actions</h4>
-      <div class="prs-row-actions">
-        {actionsOf(r, c.board).map((a) => a.href
-          ? <a key={a.id} class="fl-btn" href={a.href} target="_blank" rel="noopener noreferrer" title={a.title}>{a.label}</a>
-          : <button key={a.id} type="button" class="fl-btn" title={a.title} disabled={c.busy && a.id !== 'copy'} onClick={() => c.quick(r, a)}>{a.label}</button>)}
-      </div>
-    </section>
-  );
-}
-
-/** One card everywhere: repo, # link, title, author, one next action, spec lines, Pin. @req FR:pr-page/card.fields @req FR:pr-page/card.color @req FR:pr-page/card.select */
+/** One card everywhere: repo, # link, title, author, one next action flag, spec lines, Pin, and the actions menu. Built on the shared SelectCard.
+ * @req FR:pr-page/card.fields @req FR:pr-page/card.color @req FR:pr-page/card.select @req FR:pr-page/card.flag @req FR:pr-page/menu.shape */
 function Card({ r, c, sort }: { r: PrRow; c: Ctx; sort?: { onDown: (e: PointerEvent) => void; onKey: (e: KeyboardEvent) => void; dragging: boolean } }) {
   const spec = specText(r);
   return (
-    <li class={`pr-card tone-${toneOf(r)}${sort?.dragging ? ' dragging' : ''}`} data-number={r.number} data-url={r.url} data-selected={c.selected === r.url ? 'true' : undefined}>
-      <div class="pr-card-top">
-        <span class="pr-repo">{r.repo}</span>
-        <a class="pr-num" href={r.url} target="_blank" rel="noopener noreferrer">#{r.number}</a>
-        {/* A flag, not a control. @req FR:pr-page/card.flag */}
-        {r.nextAction && <span class="pr-flag" aria-hidden="true"><FlagIcon />{flagText(r)}</span>}
-      </div>
-      <button type="button" class="pr-open" aria-current={c.selected === r.url ? 'true' : undefined} onClick={() => c.select(r)}>
-        <span class="pr-title">{clip(r.title, 120)}</span>
-        {r.nextAction && <span class="sr-only">, next: {flagText(r)}</span>}
-        <span class="pr-sub"><span class="pr-author">{authorText(r)}</span>{spec && <span class="pr-spec">{spec}</span>}</span>
-        <span class="pr-chev" aria-hidden="true">›</span>
-      </button>
-      <div class="pr-card-tools">
-        <QuickMenu r={r} c={c} />
+    <SelectCard class={`pr-card tone-${toneOf(r)}${sort?.dragging ? ' dragging' : ''}`} data={{ number: r.number, url: r.url }} selected={c.selected === r.url} onSelect={() => c.select(r)}
+      top={<><span class="pr-repo">{r.repo}</span><a class="pr-num" href={r.url} target="_blank" rel="noopener noreferrer">#{r.number}</a>{r.nextAction && <Flag text={flagText(r)} hidden />}</>}
+      title={clip(r.title, 120)} {...(r.nextAction ? { sr: `, next: ${flagText(r)}` } : {})}
+      sub={<><span class="pr-author">{authorText(r)}</span>{spec && <span class="pr-spec">{spec}</span>}</>}
+      tools={<>
+        <ActionMenu name={`Actions for ${refOf(r)}`} items={itemsOf(r, c)} />
         {c.board.queue && (
-          <button type="button" class="pr-pin" aria-pressed={r.pinned} aria-label={`${r.pinned ? 'Unpin' : 'Pin'} ${refOf(r)}`} title={r.pinned ? 'Unpin: drop it from the Pinned order' : 'Pin: the Sweep Manager works pinned PRs first'} disabled={c.busy} onClick={() => c.pin(r)}>
+          <button type="button" class="ui-tool pr-pin" aria-pressed={r.pinned} aria-label={`${r.pinned ? 'Unpin' : 'Pin'} ${refOf(r)}`} title={r.pinned ? 'Unpin: drop it from the Pinned order' : 'Pin: the Sweep Manager works pinned PRs first'} disabled={c.busy} onClick={() => c.pin(r)}>
             <PinIcon on={r.pinned} />
           </button>
         )}
         {sort && (
-          <button type="button" class="pr-grip" aria-label={`Reorder ${refOf(r)}`} aria-describedby="prs-sort-help" title="Drag to reorder, or press Space then the arrow keys"
+          <button type="button" class="ui-tool pr-grip" aria-label={`Reorder ${refOf(r)}`} aria-describedby="prs-sort-help" title="Drag to reorder, or press Space then the arrow keys"
             onPointerDown={(e) => sort.onDown(e as unknown as PointerEvent)} onKeyDown={(e) => sort.onKey(e as unknown as KeyboardEvent)}>
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke="currentColor" stroke-width="3" stroke-linecap="round" /></svg>
           </button>
         )}
-      </div>
-    </li>
+      </>} />
   );
 }
 
@@ -333,7 +262,7 @@ function Pinned({ rows, c, onMove }: { rows: PrRow[]; c: Ctx; onMove: (r: PrRow,
     <>
       <p id="prs-sort-help" class="prs-hint">Drag a handle to set the order. Keyboard: Space to pick up, arrow keys to move, Space to drop, Escape to cancel.</p>
       <p class="sr-only" role="status" aria-live="polite" data-testid="prs-sort-status">{say}</p>
-      <ul ref={listRef} class="pr-cards" aria-label="Pinned, in order">{shown.map((u) => by.get(u)).filter((r): r is PrRow => !!r).map((r) => <Card key={r.url} r={r} c={c} sort={{ onDown: onDown(r), onKey: onKey(r), dragging: held === r.url }} />)}</ul>
+      <ul ref={listRef} class="ui-cards" aria-label="Pinned, in order">{shown.map((u) => by.get(u)).filter((r): r is PrRow => !!r).map((r) => <Card key={r.url} r={r} c={c} sort={{ onDown: onDown(r), onKey: onKey(r), dragging: held === r.url }} />)}</ul>
     </>
   );
 }
@@ -556,7 +485,7 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
   const back = () => {
     const u = selected;
     setSelected(null);
-    setTimeout(() => { const q = CSS.escape(u ?? ''); (ref.current?.querySelector<HTMLElement>(`.pr-card[data-url="${q}"] .pr-open`) ?? ref.current?.querySelector<HTMLElement>(`.pr-miss-open[data-url="${q}"]`))?.focus(); }, 0);
+    setTimeout(() => { const q = CSS.escape(u ?? ''); (ref.current?.querySelector<HTMLElement>(`.pr-card[data-url="${q}"] .ui-card-open`) ?? ref.current?.querySelector<HTMLElement>(`.pr-miss-open[data-url="${q}"]`))?.focus(); }, 0);
   };
   const c: Ctx | null = board ? { board, selected, select, pin, quick, busy } : null;
 
@@ -569,7 +498,7 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
     setTimeout(() => ref.current?.querySelector<HTMLElement>(`#${px}-tab-${next}`)?.focus(), 0);
   };
 
-  const cards = (list: PrRow[], label: string) => <ul class="pr-cards" aria-label={label}>{list.map((r) => <Card key={r.url} r={r} c={c!} />)}</ul>;
+  const cards = (list: PrRow[], label: string) => <ul class="ui-cards" aria-label={label}>{list.map((r) => <Card key={r.url} r={r} c={c!} />)}</ul>;
   const section = (title: string, list: PrRow[]) => (
     <section class="pr-sec" aria-label={title}>
       <h3 class="pr-sec-h">{title}</h3>
@@ -645,7 +574,7 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
           </div>
           {(wide || showDetail) && (
             <aside class="pr-detail-col" data-testid="prs-detail" aria-label="PR details">
-              {row && c ? <><Detail r={row} busy={busy} onResolve={resolve} onCopy={copyText} {...(wide ? {} : { back })} /><QuickBar r={row} c={c} /></> : <p class="prs-empty">Select a PR to see its next step.</p>}
+              {row && c ? <><Detail r={row} busy={busy} onResolve={resolve} onCopy={copyText} {...(wide ? {} : { back })} /><ActionBar heading="Quick actions" items={itemsOf(row, c)} /></> : <p class="prs-empty">Select a PR to see its next step.</p>}
             </aside>
           )}
         </div>
