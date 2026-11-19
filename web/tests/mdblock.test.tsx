@@ -3,10 +3,10 @@
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, describe, expect, it } from 'vitest';
-import { mdBlocks, MdBlock } from '../src/parts';
+import { mdBlocks, MdBlock, setRefProjects } from '../src/parts';
 
-const mount = (text: string) => { const root = document.createElement('div'); document.body.append(root); act(() => render(<MdBlock text={text} />, root)); return root.firstElementChild as HTMLElement; };
-afterEach(() => { document.body.innerHTML = ''; });
+const mount = (text: string, project?: string) => { const root = document.createElement('div'); document.body.append(root); act(() => render(<MdBlock text={text} project={project} />, root)); return root.firstElementChild as HTMLElement; };
+afterEach(() => { document.body.innerHTML = ''; setRefProjects([]); });
 
 // @req FR:agent-sessions/web.drawer.md
 describe('MdBlock', () => {
@@ -47,5 +47,13 @@ describe('MdBlock', () => {
     expect(mdBlocks('Run ```pnpm test``` now\nnext')).toEqual([{ t: 'p', text: 'Run ```pnpm test``` now\nnext' }]);
     expect(mdBlocks('```pnpm test```')).toEqual([{ t: 'p', text: '```pnpm test```' }]);
     expect(mount('3. c').querySelector('ol')!.getAttribute('start')).toBe('3');
+  });
+
+  it('links PR and issue refs against the given project', () => {
+    setRefProjects([{ name: 'stack', metadata: { Repository: '[Xerilium/stack](https://github.com/Xerilium/stack)' } }]);
+    expect(mount('See PR 184 and #12').querySelectorAll('a')).toHaveLength(0);
+    document.body.innerHTML = '';
+    const links = [...mount('See PR 184 and #12', 'stack').querySelectorAll('a')].map((a) => a.getAttribute('href'));
+    expect(links).toEqual(['https://github.com/Xerilium/stack/pull/184', 'https://github.com/Xerilium/stack/issues/12']);
   });
 });

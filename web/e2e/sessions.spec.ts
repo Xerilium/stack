@@ -105,6 +105,28 @@ test.describe('Sessions', () => {
     await expect(d.locator('.drawer-note.done')).toHaveText('Done · 300 tokens · 3 turns');
   });
 
+  // @req FR:agent-sessions/web.drawer.md
+  test('a transcript turn renders block markdown: bold heading, list, link, rule; no raw markers', async ({ page }) => {
+    const m = await open(page);
+    m.sessionTurns[id(2)] = [
+      { at: iso(9), role: 'user', text: 'Run the **sweep**' },
+      { at: iso(8), role: 'assistant', text: '---\n## Running\n- a\n- b\n[PR 184](https://github.com/o/r/pull/184)\n```\npnpm test\n```' },
+    ];
+    await page.locator('.sess-row').nth(1).click();
+    const d = drawer(page);
+    await expect(d.locator('.turns .tl')).toHaveCount(2);
+    const a = d.locator('.turns .tl.assistant');
+    await expect(a.locator('.md-h b')).toHaveText('Running');
+    await expect(a.locator('ul > li')).toHaveText(['a', 'b']);
+    await expect(a.getByRole('link', { name: 'PR 184' })).toHaveAttribute('href', 'https://github.com/o/r/pull/184');
+    await expect(a.locator('hr')).toHaveCount(1);
+    await expect(a.locator('pre code')).toHaveText('pnpm test');
+    await expect(a.locator('h1, h2, h3')).toHaveCount(0);
+    await expect(a).not.toContainText('##');
+    await expect(d.locator('.turns .tl.user b')).toHaveText('sweep');
+    await expect(d.locator('.turns .tl.user')).toHaveText('Run the sweep');
+  });
+
   test('sending: Enter posts the prompt, the user line appears, Stop cancels; 409 shows inline', async ({ page }) => {
     const m = await open(page);
     await showAll(page);
