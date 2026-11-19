@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
+
 export class ConfigError extends Error {}
 
 /** @req FR:config/$time-block */
@@ -277,4 +280,19 @@ export function getTimeBlock(config: StackConfig, at: Date): TimeBlock | undefin
     }
   }
   return undefined;
+}
+
+/**
+ * Reads `<dir>/.xe/config/stack.json`: defaults when missing, a leading BOM ignored, and a `ConfigError` that names the file on bad JSON.
+ * @req FR:config/load.file @req FR:config/load.file.missing @req FR:config/load.file.bom @req FR:config/load.file.invalid
+ */
+export function loadConfig(dir: string): StackConfig {
+  const p = join(dir, '.xe/config/stack.json');
+  if (!existsSync(p)) return getDefaults();
+  try {
+    return parseConfig(JSON.parse(readFileSync(p, 'utf8').replace(/^\uFEFF/, '')));
+  } catch (e) {
+    if (e instanceof ConfigError) throw e;
+    throw new ConfigError(`${p}: ${(e as Error).message}`);
+  }
 }

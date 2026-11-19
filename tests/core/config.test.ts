@@ -1,4 +1,9 @@
-import { getDefaults, parseConfig, getTimeBlock, ConfigError } from '../../src/core/config';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join, resolve } from 'path';
+import { getDefaults, parseConfig, getTimeBlock, ConfigError, loadConfig } from '../../src/core/config';
+
+const SRC = resolve(__dirname, '../../src');
 
 // @req FR:config/$stack-config @req FR:config/$time-block
 describe('parseConfig', () => {
@@ -169,5 +174,45 @@ describe('range and overlap', () => {
     expect(parseConfig({ agents: { scanRoots: ['~/dev', '/src'] } }).agents).toEqual({ scanRoots: ['~/dev', '/src'] });
     expect(() => parseConfig({ agents: { scanRoots: 'x' } })).toThrow(/agents.scanRoots/);
     expect(() => parseConfig({ agents: { scanRoots: ['rel'] } })).toThrow(/agents.scanRoots\[0\]/);
+  });
+});
+
+describe('loadConfig', () => {
+  const dirWith = (content?: string) => {
+    const d = mkdtempSync(join(tmpdir(), 'stack-config-'));
+    if (content !== undefined) { mkdirSync(join(d, '.xe/config'), { recursive: true }); writeFileSync(join(d, '.xe/config/stack.json'), content); }
+    return d;
+  };
+
+  // @req FR:config/load.file @req FR:config/load.file.missing
+  it('gives the defaults when the file is missing', () => {
+    expect(loadConfig(dirWith())).toEqual(getDefaults());
+  });
+
+  // @req FR:config/load.file @req FR:config/load.file.bom
+  it('parses a file with a BOM', () => {
+    expect(loadConfig(dirWith('\uFEFF{"startOfDay":"06:00"}')).startOfDay).toBe('06:00');
+  });
+
+  // @req FR:config/load.file @req FR:config/load.file.invalid
+  it('names the file when the JSON is invalid', () => {
+    const d = dirWith('{"startOfDay":"06:00",}');
+    const p = join(d, '.xe/config/stack.json');
+    expect(() => loadConfig(d)).toThrow(ConfigError);
+    expect(() => loadConfig(d)).toThrow(new RegExp(`^${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}: `));
+  });
+
+  // @req FR:config/load.file
+  it('is the only stack.json file parse in src', () => {
+    const hits: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (p.endsWith('.ts') && p !== join(SRC, 'core/config.ts') && readFileSync(p, 'utf8').includes('parseConfig(JSON.parse(readFileSync')) hits.push(p);
+      }
+    };
+    walk(SRC);
+    expect(hits).toEqual([]);
   });
 });

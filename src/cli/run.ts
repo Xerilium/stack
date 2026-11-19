@@ -7,7 +7,7 @@
 import { execFileSync } from 'child_process';
 import { existsSync, realpathSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { basename, dirname, join, resolve } from 'path';
-import { getDefaults, parseConfig, ConfigError, StackConfig } from '../core/config';
+import { getDefaults, loadConfig } from '../core/config';
 import {
   addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
   dailyGoal, dayPris, explainAutopri, explainStack, priLinkCounts, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
@@ -162,17 +162,6 @@ function helpText(): string {
   lines.push('', 'global: --dir <path> --json --no-commit --remote <name> --branch <name> --now <ISO>');
   lines.push('refs: tasks/<file>.md:<line> (1-based). exit: 0 ok, 1 failure, 2 usage, 3 conflict, 4 nothing to do');
   return lines.join('\n');
-}
-
-function loadConfig(dir: string): StackConfig {
-  const p = join(dir, '.xe/config/stack.json');
-  if (!existsSync(p)) return getDefaults();
-  try {
-    return parseConfig(JSON.parse(readFileSync(p, 'utf8').replace(/^﻿/, '')));
-  } catch (e) {
-    if (e instanceof ConfigError) throw e;
-    throw new ConfigError(`${p}: ${(e as Error).message}`);
-  }
 }
 
 const git = (dir: string, ...args: string[]): string =>

@@ -36,7 +36,7 @@ import { AccountHealth, createConnect, readClientId, type Connect } from '../gra
 import { createAccountsCalendar } from '../calendar/accounts';
 import { cachedProbe } from '../inbox/probe';
 import type { SourceProbe } from '../inbox/sources';
-import { getDefaults, parseConfig } from '../core/config';
+import { loadConfig } from '../core/config';
 import type { Storage } from '../core/storage';
 import { GitStorage } from '../core/storage-git';
 import { ALL_KINDS, watchRepo, type WatchOptions } from './watch';
@@ -261,8 +261,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   if (bind === 'tailnet' && !addrs.length) throw new Error(NO_TAILSCALE);
   const remoteAuth = bind === 'tailnet' ? (o.auth ?? fileAuth(stackHome())) : undefined;
   const peerOf = o.peer ?? ((r: IncomingMessage) => r.socket.remoteAddress);
-  const cfgPath = join(o.dir, '.xe/config/stack.json');
-  const config = existsSync(cfgPath) ? parseConfig(JSON.parse(readFileSync(cfgPath, 'utf8').replace(/^﻿/, ''))) : getDefaults();
+  const config = loadConfig(o.dir); // @req FR:config/load.file
   // @req FR:github-pr-status/wire.token @req FR:github-pr-status/repos.invalid @req FR:pr-page/auth.token: the token is GITHUB_TOKEN, else the gh sign-in,
   // read when needed, so a Dock-launched app (no shell environment) and a later sign-in both work. A bad repo list leaves PR status off.
   const ghAuth = o.githubAuth ?? createGitHubAuth({ env: process.env });

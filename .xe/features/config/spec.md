@@ -32,6 +32,10 @@ Stack needs to turn a user's `stack.json` into a complete, validated configurati
   - **FR:load.validate.shift-weekends** (P2): `parseConfig` MUST reject a non-boolean `shiftWeekends`
   - **FR:load.validate.inbox** (P2): `parseConfig` MUST reject an `inbox` that is not an object, a `freshMinutes` that is not a positive integer, `accounts` that is not an array of mailbox addresses, a `delivery` other than `claude` or `off`, a `deliveryTimeoutSeconds` outside 30-1800, a `deliveryMaxUsd` outside 0.01-10, a `deliveryDailyCapUsd` outside 0.01-1000, and a `reposRoot` that is not an absolute path
 - **FR:load.output** (P1): StackConfig (@req FR:config/$stack-config)
+- **FR:load.file** (P1): `loadConfig(dir: string): StackConfig` MUST be the one reader of `<dir>/.xe/config/stack.json` for the CLI, `stack web`, the desktop host, and `stack-mcp`
+  - **FR:load.file.missing** (P1): A missing file MUST give the defaults
+  - **FR:load.file.bom** (P2): A leading BOM MUST be ignored
+  - **FR:load.file.invalid** (P1): Invalid JSON MUST throw `ConfigError` whose message starts with the file path
 
 ### FR:time-block: Resolve active time block
 
