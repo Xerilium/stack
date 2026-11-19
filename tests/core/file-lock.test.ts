@@ -11,7 +11,7 @@ describe('readJsonFile', () => {
     const d = dir();
     const body = JSON.stringify({ a: 1, b: ['x'] });
     writeFileSync(join(d, 'plain.json'), body);
-    writeFileSync(join(d, 'bom.json'), `﻿${body}`);
+    writeFileSync(join(d, 'bom.json'), `\uFEFF${body}`);
     expect(readJsonFile(join(d, 'bom.json'))).toEqual({ a: 1, b: ['x'] });
     expect(readJsonFile(join(d, 'bom.json'))).toEqual(readJsonFile(join(d, 'plain.json')));
   });
@@ -20,7 +20,7 @@ describe('readJsonFile', () => {
   it('keeps the error paths: a missing or broken file throws', () => {
     const d = dir();
     expect(() => readJsonFile(join(d, 'none.json'))).toThrow();
-    writeFileSync(join(d, 'bad.json'), '﻿{bad');
+    writeFileSync(join(d, 'bad.json'), '\uFEFF{bad');
     expect(() => readJsonFile(join(d, 'bad.json'))).toThrow();
   });
 });
