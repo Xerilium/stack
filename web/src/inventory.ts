@@ -16,11 +16,9 @@ export interface SessionItem {
 export interface Inventory { at: string; total: number; counts: Partial<Record<SessionState, number>>; needsYou: SessionItem[]; archive: SessionItem[]; sessions: SessionItem[] }
 
 export const PROJECT_LABEL: Record<SessionProject, string> = { allyte: 'Allyte', ftk: 'FTK', focus: 'FOCUS', f4: 'F4', xerilium: 'Xerilium', other: 'Other' };
-/** Sentence-case words for the state chip; other ids are sentence-cased. @req FR:pris-sessions-ui/sessions.row */
-const STATE_WORD: Partial<Record<SessionState, string>> = { waiting: 'Waiting', stuck: 'Stuck', idle: 'Idle', running: 'Running', done: 'Done', pinned: 'Pinned' };
 const sentence = (id: string): string => { const s = id.replace(/[-_]+/g, ' ').trim(); return s.charAt(0).toUpperCase() + s.slice(1); };
 /** The state chip: a sentence-case word; only stuck uses the warn tone. @req FR:pris-sessions-ui/sessions.row @req FR:pris-sessions-ui/pris.status */
-export const stateChip = (state: SessionState): { word: string; tone: ChipTone } => ({ word: STATE_WORD[state] ?? sentence(state), tone: state === 'stuck' ? 'warn' : 'neutral' });
+export const stateChip = (state: SessionState): { word: string; tone: ChipTone } => ({ word: sentence(state), tone: state === 'stuck' ? 'warn' : 'neutral' });
 const REASON: Partial<Record<SessionReason, string>> = {
   question: 'Asked a question', permission: 'Waiting for permission', 'needs-user': 'Needs you', blocked: 'Blocked', error: 'Error',
   'cut-short': 'Cut short', 'api-error': 'API error', 'dead-turn': 'No activity for 30 min', 'pr-merged': 'PR merged', superseded: 'Newer run exists',
