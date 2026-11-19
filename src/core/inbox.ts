@@ -9,11 +9,11 @@ import { parseProject, type Task } from './parser';
 import { ConflictError, NotFoundError } from './storage';
 import { logName, md, redact } from './triage';
 
-/** `instruction`: work the owner asks of the agent on a row. @req FR:agent-inbox/inbox.kinds */
-export type InboxKind = 'reply' | 'decision' | 'instruction';
+/** `instruction`: work the owner asks of the agent on a row. `enrich`: add the missing context to the row (always to the agent). @req FR:agent-inbox/inbox.kinds @req FR:product-reset/quality.enrich */
+export type InboxKind = 'reply' | 'decision' | 'instruction' | 'enrich';
 export type InboxTo = 'agent' | 'human' | 'none';
 export type InboxState = 'open' | 'handled';
-export const INBOX_KINDS = ['reply', 'decision', 'instruction'] as const;
+export const INBOX_KINDS = ['reply', 'decision', 'instruction', 'enrich'] as const;
 export const INBOX_STATES = ['open', 'handled', 'all'] as const;
 
 export type InboxFrom = 'owner' | 'agent';
@@ -241,7 +241,7 @@ async function appendEntry(ctx: LifecycleContext, ref: TaskRef, text: string, ki
     const agentSide = who.from === 'agent';
     const done = handled ? { handled: `${now.toISOString()} by ${/^[A-Za-z0-9._:-]{1,64}$/.test(handled.actor) ? handled.actor : 'api'}`, ...(handled.note?.trim() ? { note: field(handled.note).slice(0, MAX_NOTE) } : {}) } : {};
     const entry = formatEntry({
-      id, at: now.toISOString(), state: agentSide || handled ? 'handled' : 'open', kind, to: agentSide ? 'human' : toOf(row.text), ...(agentSide ? { from: 'agent' as const, agent: who.agent } : who.agent ? { agent: who.agent } : {}), ref: `${ref.path}:${ref.line + 1}`,
+      id, at: now.toISOString(), state: agentSide || handled ? 'handled' : 'open', kind, to: agentSide ? 'human' : kind === 'enrich' ? 'agent' : toOf(row.text), ...(agentSide ? { from: 'agent' as const, agent: who.agent } : who.agent ? { agent: who.agent } : {}), ref: `${ref.path}:${ref.line + 1}`,
       task: inboxTitle(row.text), ...(parent ? { parent: inboxTitle(parent.text) } : {}), text: field(t), ...done, extra: [],
     });
     const head = cur ? makeRoom(cur.content, entry.length + 1).replace(/\n*$/, '\n\n') : INBOX_HEADER(field(project.title || baseName(ref.path)));

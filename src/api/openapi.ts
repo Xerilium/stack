@@ -458,6 +458,10 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { agent: 'Agent slug; default: the active agent', note: 'The owner\'s note, added to the assign prompt (at most 1000 characters)' },
     responses: ok('Assigned', { type: 'object', properties: { runId: { type: 'string' }, sessionId: { type: 'string', nullable: true }, agent: { type: 'string' }, title: { type: 'string' }, claimed: { type: 'boolean' } } }, '202'),
   },
+  'tasks.enrich': {
+    operationId: 'enrichTask', summary: 'Ask the task agent to fill in a row that fails the quality gate (docs/task-rubric.md): one open enrich message on the row, delivered even on a 🙋 row. Owner session only; returns the open message when one exists; 409 when the row already scores 4',
+    responses: ok('Sent', { type: 'object', properties: { id: { type: 'string' }, agent: { type: 'string' }, missing: { type: 'array', items: { type: 'string', enum: ['next', 'doneWhen', 'context', 'single'] } } } }, '202'),
+  },
   'team.list': {
     operationId: 'listTeam', summary: 'The team: tasks/agents/<slug>.md, .claude/agents/<slug>.md and project Agents lines, each with who it reports to; with project, the agents that cover it, the roll-up first',
     desc: { project: 'Project name: only the agents whose scope covers it, the roll-up first then most specific first', section: 'Section heading, for section-scoped agents' },

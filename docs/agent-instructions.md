@@ -15,6 +15,7 @@ Paste this into the scheduled agent's prompt. Replace `<project>` and `<agent>`.
    - Skip an item whose `agent` names another agent: the owner picked that agent.
    - The task is at `row` (where the row is now). Use `ref` only when `row` is missing (the row is gone: handle it with a note that says so).
    - Do what `text` asks (kind `instruction`; `reply` and `decision` entries are answers to your asks). Line breaks were folded to ` / `.
+   - Kind `enrich`: fill in the row per [task-rubric.md](task-rubric.md) (`Next:`, `Done when:`, `Context:`, `Links:`, `Owner:`) until `stack check <row>` scores 4. Edit the row only; do not do the work. It comes on `🙋` rows too.
    - Reply on the task in one line so the owner sees it in the task thread:
      `stack inbox reply <row> --from <agent> --text "<what you did, or what you need>"`
    - Close the entry:

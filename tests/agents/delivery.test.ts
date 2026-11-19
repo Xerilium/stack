@@ -74,6 +74,19 @@ describe('pendingDeliveries', () => {
   });
 });
 
+describe('enrich on a 🙋 row', () => {
+  /** @req FR:agent-delivery/pick.entries @req FR:product-reset/quality.enrich @req FR:agent-inbox/inbox.kinds */
+  it('is to the agent and delivered; an instruction on the same row is not', async () => {
+    const { ctx, d, prompts } = await mk();
+    await sendToInbox(ctx, ref(7), 'I will sign', 'instruction');
+    const e = await sendToInbox(ctx, ref(7), 'Fill in this task: doneWhen, context', 'enrich');
+    expect((await pendingDeliveries(ctx)).map((x) => x.id)).toEqual([e.id]);
+    const r = await runDeliveryPass(d);
+    expect(r.items).toEqual([{ id: e.id, state: 'delivered', agent: 'cid' }]);
+    expect(prompts()[0].stdin).toContain('Sign the contract');
+  });
+});
+
 describe('runDeliveryPass', () => {
   /** @req FR:agent-delivery/run.reply @req FR:agent-delivery/run.prompt @req FR:agent-delivery/safe.log @req FR:agent-delivery/safe.prefix */
   it('runs the agent, posts its reply as the agent, and handles the entry', async () => {

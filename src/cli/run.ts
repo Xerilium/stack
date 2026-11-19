@@ -12,6 +12,8 @@ import {
   addProject, addTask, completeTask, LifecycleContext, LifecycleError, LifecycleResult, nextTask,
   explainAutopri, explainStack, priLinkCounts, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask, sweep, tagTask, TaskProps,
 } from '../core/lifecycle';
+import { parseProject } from '../core/parser';
+import { checkTask } from '../core/quality';
 import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, handleAsk, listAsks, putAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
 import { runInventory } from '../core/session-inventory';
@@ -88,6 +90,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string }>
   suspend: { flags: ['days', 'hours', 'expect', 'queries', 'no-update'], usage: 'suspend [ref] [--days n | --hours n] [--expect t] [--queries] [--no-update]', help: 'hide until later' },
   set: { flags: ['status', 'priority', 'effort', 'impact', 'checkbox', 'suspend', 'remove-emojis', 'expect'], usage: 'set <ref> [--status e] [--priority e] [--effort e] [--impact e] [--checkbox complete|incomplete] [--suspend v] [--remove-emojis] [--expect t]', help: 'set emojis and checkbox' },
   retitle: { flags: ['text', 'expect', 'no-update'], usage: 'retitle <ref> --text t [--expect t] [--no-update]', help: 'edit a task row text in place (checkbox, indent, children, notes, and marks stay)' },
+  check: { flags: [], usage: 'check <ref> [--json]', help: 'the task quality gate: score 0-4 and the missing checks (next, doneWhen, context, single); exit 0 at 4, else 1; read-only (docs/task-rubric.md)' },
   note: { flags: ['text', 'expect'], usage: 'note add <ref> --text t [--expect t]', help: 'append a nested note bullet under a task (children stay)' },
   tag: { flags: ['unblocker', 'due', 'expect'], usage: 'tag <ref> [--unblocker yes|no] [--due "MMM d"|none] [--expect t]', help: 'set the 🔓 unblocker and 📅 due tags the autopri engine reads' },
   rank: { flags: ['engine', 'explain', 'truth', 'top'], usage: 'rank [--engine autopri|pris|stack] [--top n] [--explain [--truth file]]', help: 'ranked tasks the owner must do (agent rows are left out); pris boosts tasks linked to ~/.stack/pris.json by priority order; --explain shows why each task has its place (stack: due tier, stale; autopri, pris: score parts and the priority served); --truth lists ground-truth items to tag or add' },
@@ -648,6 +651,15 @@ async function dispatchOne(cmd: string, p: ReturnType<typeof parseArgs>, dir: st
     case 'set': {
       if (p.positionals.length !== 1) throw new UsageError('set needs exactly one <ref>');
       return describe(cmd, await setProperties(ctx, { ...parseRef(p.positionals[0]), text: flag(f, 'expect') }, props(f)));
+    }
+    // @req FR:product-reset/cli.check
+    case 'check': {
+      if (p.positionals.length !== 1) throw new UsageError('check needs exactly one <ref>');
+      const r = parseRef(p.positionals[0]);
+      const q = checkTask(parseProject((await storage.read(r.path)).content), r.line);
+      if (!q) throw new LifecycleError('Task not found');
+      const at = formatRef(r);
+      return { json: { ok: true, ref: at, ...q }, text: `${at} ${q.score}/4 ${q.actionable ? 'actionable' : `missing: ${q.missing.join(', ')}`}`, code: q.actionable ? EXIT.ok : EXIT.failure };
     }
     // @req FR:cli/cmd.retitle
     case 'retitle': {
