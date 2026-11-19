@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { findOneOffs, ownsOf, say, usesOf } from '../src/ui/guard';
+import { badOwns, findOneOffs, ownsOf, say, usesOf } from '../src/ui/guard';
 
 const SRC = new URL('../src/', import.meta.url);
 const read = (rel: string) => readFileSync(new URL(rel, SRC), 'utf8');
@@ -13,6 +13,13 @@ describe('reuse guard', () => {
   // @req FR:ui-kit/guard.owns
   it.each(kit)('%s names what it owns', (f) => {
     expect(ownsOf(f, read(f)).length, `${f}: add an @owns tag (class:… or role:…)`).toBeGreaterThan(0);
+    expect(badOwns(read(f)), `${f}: fix the @owns tag (class:name or role:name, then legacy: File.tsx=N)`).toEqual([]);
+  });
+
+  // @req FR:ui-kit/guard.owns
+  it('flags an @owns line that does not parse in full', () => {
+    expect(badOwns(' * @owns role:tablist legacy: A.tsx=1 b/C.tsx=2\n * @owns class:ui-tab */')).toEqual([]);
+    expect(badOwns(' * @owns clas:ui-x\n * @owns role:menu legacy: A.tsx = 1\n * @owns role:tab legacy:')).toHaveLength(3);
   });
 
   // @req FR:ui-kit/guard.fail
@@ -26,6 +33,11 @@ describe('reuse guard', () => {
     expect(usesOf({ kind: 'class', name: 'ui-chip' }, src)).toBe(3);
     expect(usesOf({ kind: 'role', name: 'tablist' }, src)).toBe(1);
     expect(usesOf({ kind: 'role', name: 'tab' }, src)).toBe(0);
+    expect(usesOf({ kind: 'class', name: 'ui-card' }, `<li class={on ? 'ui-card on' : "ui-card"} />`)).toBe(1);
+    expect(usesOf({ kind: 'class', name: 'ui-card' }, `<li class={\`x \${on ? 'ui-card' : ''}\`} />`)).toBe(1);
+    expect(usesOf({ kind: 'class', name: 'ui-chip' }, '<i class={"ui-chip"} />')).toBe(1);
+    expect(usesOf({ kind: 'role', name: 'menu' }, "<ul role={open ? 'menu' : undefined} />")).toBe(1);
+    expect(usesOf({ kind: 'role', name: 'menu' }, '<ul role={"menuitem"} />')).toBe(0);
   });
 
   // @req FR:ui-kit/guard.fail.legacy

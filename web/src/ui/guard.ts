@@ -14,14 +14,23 @@ export function ownsOf(owner: string, source: string): Owned[] {
   }));
 }
 
-const noComments = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-const CLASS = /\sclass=(?:"([^"]*)"|\{`([^`]*)`\}|\{'([^']*)'\})/g;
+const TAG = /@owns[ \t]+(class|role):[\w-]+(?:[ \t]+legacy:(?:[ \t]+[\w./-]+\.tsx=\d+)+)?[ \t]*(?:\*\/)?[ \t]*$/;
 
-/** How many times a view's markup writes the owned class or role. Comments and selector strings do not count. */
+/** Each `@owns` line that does not parse in full (a typo would drop the tag or a legacy entry with no error). @req FR:ui-kit/guard.owns */
+export const badOwns = (source: string): string[] => source.split('\n').filter((l) => /@owns\b/.test(l) && !TAG.test(l)).map((l) => l.trim());
+
+const noComments = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+/** A `class` or `role` attribute: a quoted value, or a braced expression (one level of nested braces, as in `${…}`). */
+const attr = (name: string) => new RegExp(`\\s${name}=(?:"([^"]*)"|\\{((?:[^{}]|\\{[^{}]*\\})*)\\})`, 'g');
+const ATTR = { class: attr('class'), role: attr('role') };
+const STR = /"([^"]*)"|'([^']*)'|`([^`]*)`/g;
+
+/** How many times a view's markup writes the owned class or role. Reads every string in an attribute expression (ternaries, templates). Comments and selector strings do not count. */
 export function usesOf(o: Pick<Owned, 'kind' | 'name'>, source: string): number {
-  const text = noComments(source);
-  if (o.kind === 'role') return [...text.matchAll(/\srole="([\w-]+)"/g)].filter((m) => m[1] === o.name).length;
-  return [...text.matchAll(CLASS)].filter((m) => (m[1] ?? m[2] ?? m[3]).split(/[^\w-]+/).includes(o.name)).length;
+  return [...noComments(source).matchAll(ATTR[o.kind])].filter((m) => {
+    const values = m[1] !== undefined ? [m[1]] : [...m[2].matchAll(STR)].map((x) => x[1] ?? x[2] ?? x[3]);
+    return values.some((v) => (o.kind === 'role' ? v === o.name : v.split(/[^\w-]+/).includes(o.name)));
+  }).length;
 }
 
 /**

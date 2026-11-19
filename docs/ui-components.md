@@ -29,27 +29,18 @@ Every view builds on the components in `web/src/ui/`. Read this page before you 
 
 ## The reuse guard
 
-`web/tests/ui-reuse.test.ts` fails when a view writes a class or role that a component owns.
+`web/tests/ui-reuse.test.ts` fails when a view writes a class or role that a component owns. The guard logic is `web/src/ui/guard.ts` (test code, not a component).
 
-- A component owns markup with a tag: `@owns class:ui-chip` or `@owns role:tablist`.
+- A component owns markup with a tag: `@owns class:ui-chip` or `@owns role:tablist`. The test fails on a tag that does not parse in full.
 - A view that still has a copy is on the tag: `@owns role:tablist legacy: PrsPanel.tsx=1`. The number is the count the view can keep.
 - When you move a view to the component, delete its `legacy:` entry.
 - Never add a `legacy:` entry for new code. Use the component, or change the component for every view.
 
 ## Copies to remove
 
-These views still build markup that a shared component does, or that more than one view repeats. Each row is one small change with the same output.
+Each copy is a help-wanted issue ([open list](https://github.com/Xerilium/stack/issues?q=is%3Aopen+label%3A%22Help+wanted+%E2%9C%A8%22+%22%28ui-kit%29%22)). Each is one small change with the same output. The `legacy:` tags name the views that still copy a component.
 
-| Markup | Views with a copy | Component |
-| --- | --- | --- |
-| Tab bar (`role="tablist"`) | `PrsPanel`, `SessionsView` | `Tabs` |
-| Menu (`role="menu"`) and its arrow keys | `views` (More), `InboxView`, `ConnectAccounts`, `Composer` | `ActionMenu` |
-| Card class by hand (`ui-card`) | `PrioritiesTables` | `SelectCard` |
-| Empty state, dialog, toasts (shared, but in `parts.tsx`) | every view | move to `web/src/ui/` |
-| Loading rows (`sk`) | `App`, `AsksView`, `PrsPanel`, `SessionsView` | new `Skeleton` |
-| Load error with `Retry` | `AsksView`, `SessionsView`, `PrsPanel`, `views` | new `LoadError` |
-| Count badge (`badge`) | `App`, `PrsPanel` | new `CountBadge` |
-| `Show N more` button | `AsksView`, `SessionsView`, `PrisSessions` | new `MoreButton` |
-| One-line loading, error and empty notes | `InboxView`, `LivePanel`, `QmView`, `PrisSessions`, `SettingsView`, `ConnectAccounts` | `EmptyState` or a new note |
-| Dialog by hand (`role="dialog"`) | `FeedbackPanel`, `TaskDetail`, `NowChat` | `Dialog` |
-| Link in a new tab (`target="_blank"`) | 12 files | new `ExtLink` |
+- Tab bar, menu and card copies: [274](https://github.com/Xerilium/stack/issues/274), [275](https://github.com/Xerilium/stack/issues/275), [276](https://github.com/Xerilium/stack/issues/276).
+- Move `EmptyState`, `Dialog` and `Toasts` from `parts.tsx` to `web/src/ui/`: [277](https://github.com/Xerilium/stack/issues/277).
+- New components: `Skeleton` [278](https://github.com/Xerilium/stack/issues/278), `LoadError` [279](https://github.com/Xerilium/stack/issues/279), `CountBadge` [280](https://github.com/Xerilium/stack/issues/280), `MoreButton` [281](https://github.com/Xerilium/stack/issues/281), `ExtLink` [283](https://github.com/Xerilium/stack/issues/283).
+- One-line loading, error and empty notes: [282](https://github.com/Xerilium/stack/issues/282).
