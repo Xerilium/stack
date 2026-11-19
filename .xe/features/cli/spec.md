@@ -24,6 +24,7 @@ Owner needs one `stack` binary that finds the task repo and commits what it chan
 - **FR:run.@function** (P1): Interface: `run(argv: string[], io?: { out(s): void; err(s): void }): Promise<number>`
   - Returns the exit code and never calls `process.exit`
 - **FR:run.dir** (P1): `--dir <path>` MUST set the repo root (optional override)
+- **FR:run.flagvalue** (P2): A value flag followed by another `--flag` MUST fail with exit 2 and `--<name> has no value. Use --<name>=<value>, or check the flag name.`
   - Task files are `<dir>/tasks/*.md`; config is `<dir>/.xe/config/stack.json` (defaults when missing)
     > - @req FR:config/load.@function
 - **FR:run.discover** (P1): Without `--dir`, `run` MUST find the repo by walking up from the current directory to a folder with `.xe/config/stack.json` or `tasks/*.md`, then `$STACK_DIR`, then `dir` in `~/.config/stack/config.json`, else the current directory
@@ -76,7 +77,6 @@ Owner needs a short, stable way to name a task so that a command acts on exactly
 - **FR:ref.default** (P1): `start`, `complete`, `skip`, `suspend`, and `resume` MUST accept an optional ref and act on the top task when it is omitted (`resume`: first parked task), as in legacy
 - **FR:ref.expect** (P1): Commands that take a ref MUST accept `--expect <text>` and fail with exit 3, changing nothing, when the task text on that line differs
 - **FR:ref.invalid** (P1): A malformed ref MUST be a usage error (exit 2)
-- **FR:run.flag.value** (P2): A value flag followed by another `--flag` MUST fail with exit 2 and `--<name> has no value. Use --<name>=<value>, or check the flag name.`
 
 ### FR:cmd: Commands
 

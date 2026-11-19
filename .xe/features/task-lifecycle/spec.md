@@ -26,7 +26,9 @@ Legacy parity target: `Start/Complete/Skip/Suspend/Resume-StackTask`, `Remove-St
 - **FR:doc.noop** (P2): An operation that produces identical content MUST NOT write
 - **FR:doc.target** (P1): Operations that act on "the current task" take an optional `TaskRef`; when omitted they act on the result of `nextTask`. A ref that is not a task line MUST throw `LifecycleError`
 - **FR:doc.guard** (P1): `TaskRef` has an optional `text` (the task text after the checkbox). When present, an operation MUST throw `ConflictError` if the row at `line` no longer has that text (whitespace-collapsed compare), changing nothing. `nextTask`, `addTask`, and edit results fill `ref.text`
-- **FR:doc.errors** (P2): Error messages MUST show a ref as `<path>:<line>` with the 1-based line the user typed, and say what to do next
+- **FR:doc.errors** (P2): Error messages that name a task line MUST help the user act on the right row
+  - **FR:doc.errors.line** (P2): The line number MUST be 1-based, the same number the user typed
+  - **FR:doc.errors.next** (P2): The message MUST end with the next step
 - **FR:doc.result** (P1): Operations MUST return `{ changed, ref?, before?, after?, message? }`; when nothing applies (no tasks, already in state) they return `changed: false` with a message and MUST NOT throw
 - **FR:doc.json** (P1): A surface that prints a lifecycle result as JSON (`--json`) MUST add `command` (canonical name: `park` is `skip`), `project` (base name of `ref.path` without `.md`), and `text` (task text after the checkbox, from `after`) to the `FR:doc.result` fields, and `ref.line` MUST be 1-based. A no-op keeps `command` and `project` when a ref exists
 

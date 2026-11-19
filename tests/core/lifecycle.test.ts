@@ -893,13 +893,13 @@ describe('TaskRef text guard', () => {
 });
 
 describe('error refs', () => {
-  // @req FR:task-lifecycle/doc.errors
+  // @req FR:task-lifecycle/doc.errors @req FR:task-lifecycle/doc.errors.line @req FR:task-lifecycle/doc.errors.next
   it('shows the 1-based line the user typed and a next step', async () => {
     const s = await mem({ 'tasks/alpha.md': ALPHA });
     await expect(startTask(ctx(s), { path: 'tasks/alpha.md', line: 98 })).rejects.toThrow('Line 99 of tasks/alpha.md is not a task. Run stack next to see refs.');
     await expect(completeTask(ctx(s), { path: 'tasks/alpha.md', line: 9, text: 'wrong' })).rejects.toThrow('tasks/alpha.md:10 no longer reads "wrong". Run stack next to get a fresh ref.');
     await expect(startTask(ctx(s), { path: 'tasks/alpha.md', line: 9, chain: ['x'] })).rejects.toThrow('tasks/alpha.md:10 has different parents. Run stack next to get a fresh ref.');
-    await expect(skipTask(ctx(s), { path: 'tasks/alpha.md', line: 10 })).rejects.toThrow('Only unchecked tasks can be parked: tasks/alpha.md:11');
-    await expect(resumeTask(ctx(s), { path: 'tasks/alpha.md', line: 10 })).rejects.toThrow('Only unchecked tasks can be resumed: tasks/alpha.md:11');
+    await expect(skipTask(ctx(s), { path: 'tasks/alpha.md', line: 10 })).rejects.toThrow('Only unchecked tasks can be parked: tasks/alpha.md:11. Run stack next to see open tasks.');
+    await expect(resumeTask(ctx(s), { path: 'tasks/alpha.md', line: 10 })).rejects.toThrow('Only unchecked tasks can be resumed: tasks/alpha.md:11. Run stack next to see open tasks.');
   });
 });

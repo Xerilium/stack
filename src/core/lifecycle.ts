@@ -471,10 +471,10 @@ function ancestorTexts(lines: string[], line: number): string[] {
   return out;
 }
 
-/** A ref as the user types it: `<path>:<line>`, 1-based. @req FR:task-lifecycle/doc.errors */
+/** A ref as the user types it: `<path>:<line>`, 1-based. @req FR:task-lifecycle/doc.errors.line */
 export const formatRef = (r: TaskRef): string => `${r.path}:${r.line + 1}`;
 
-/** @req FR:task-lifecycle/doc.guard @req FR:task-lifecycle/doc.errors */
+/** @req FR:task-lifecycle/doc.guard @req FR:task-lifecycle/doc.errors.line @req FR:task-lifecycle/doc.errors.next */
 function rowAt(doc: Doc, ref: TaskRef): RegExpExecArray {
   const raw = doc.project.lines[ref.line];
   const m = raw === undefined ? null : ROW.exec(stripBom(bare(raw)));
@@ -586,7 +586,7 @@ export async function skipTask(ctx: LifecycleContext, ref?: TaskRef): Promise<Li
   if (has(t.row[3], '🅿️')) return noop(t.ref, 'Task is already parked');
   const line = stripBom(bare(t.doc.project.lines[t.ref.line]));
   const m = /^(\s*- \[ \] )(.+)$/.exec(line);
-  if (!m) throw new LifecycleError(`Only unchecked tasks can be parked: ${formatRef(t.ref)}`);
+  if (!m) throw new LifecycleError(`Only unchecked tasks can be parked: ${formatRef(t.ref)}. Run stack next to see open tasks.`);
   return editLine(ctx, t, `${m[1]}🅿️ ${m[2]}`, `Park: ${brief(t.row[3])}`);
 }
 
@@ -611,7 +611,7 @@ export async function resumeTask(ctx: LifecycleContext, ref?: TaskRef): Promise<
   if (!t) return { changed: false, message: 'No parked tasks available to resume' };
   const line = stripBom(bare(t.doc.project.lines[t.ref.line]));
   const m = /^(\s*- \[ \] )(.+)$/.exec(line);
-  if (!m) throw new LifecycleError(`Only unchecked tasks can be resumed: ${formatRef(t.ref)}`);
+  if (!m) throw new LifecycleError(`Only unchecked tasks can be resumed: ${formatRef(t.ref)}. Run stack next to see open tasks.`);
   const r = /^🅿️\s*(.+)$/.exec(m[2]);
   if (!r) return noop(t.ref, 'Parking emoji is not at the start of the task');
   return editLine(ctx, t, `${m[1]}${r[1]}`, `Resume: ${brief(r[1])}`);

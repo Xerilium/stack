@@ -18,7 +18,7 @@ describe('cli args', () => {
     expect(() => parseArgs(['add', '--section'])).toThrow(UsageError);
   });
 
-  // @req FR:cli/run.flag.value
+  // @req FR:cli/run.flagvalue
   it('says a value flag followed by another flag has no value', () => {
     expect(() => parseArgs(['start', '--bogus', '--dir', 'x'])).toThrow('--bogus has no value. Use --bogus=<value>, or check the flag name.');
   });
