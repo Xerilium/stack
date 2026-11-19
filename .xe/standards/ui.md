@@ -14,4 +14,4 @@ Applies to every view in `web/`. See also `docs/design-system.md`.
 
 - Muted Fluent 2: neutral surfaces, one accent (brand: links, the chosen tab, focus).
 - State is a `StatusChip`: a dot and one word on a light tint.
-- A card selects as a whole (`SelectCard`); links on it stay links. The agent link lives in the detail pane.
+- A card selects as a whole (`SelectCard`); links on it stay links. The project and agent links live in the detail pane.
