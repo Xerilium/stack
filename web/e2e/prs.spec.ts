@@ -236,6 +236,10 @@ test('one card: repo, # link, title, author, one action flag, spec lines, Pin, A
   const flag = await c.locator('.ui-flag').evaluate((e) => { const cs = getComputedStyle(e); return { bg: cs.backgroundColor, border: cs.borderTopWidth, cursor: cs.cursor, tab: (e as HTMLElement).tabIndex, role: e.getAttribute('role'), tag: e.tagName, icon: !!e.querySelector('svg') }; });
   expect(flag).toEqual({ bg: 'rgba(0, 0, 0, 0)', border: '0px', cursor: 'default', tab: -1, role: null, tag: 'SPAN', icon: true });
   await expect(c.locator('.pr-spec')).toHaveText('8 spec lines');
+  // The chevron: its 44 px column spans the card height at the right edge; the tools stay clear of it. @req FR:ui-kit/card
+  const [box, chev, tools] = [(await c.boundingBox())!, (await c.locator('.ui-card-chev').boundingBox())!, (await c.locator('.ui-card-tools').boundingBox())!];
+  expect(Math.abs((chev.y + chev.height / 2) - (box.y + box.height / 2))).toBeLessThanOrEqual(1);
+  expect([chev.width >= 44, box.x + box.width - (chev.x + chev.width) <= 1, tools.x + tools.width <= chev.x + 1]).toEqual([true, true, true]);
   await expect(c.getByRole('button')).toHaveCount(3); // select + Pin + Actions
   await expect(c.getByRole('button', { name: 'Actions for allytehq/finops-hubs#1105' })).toHaveAttribute('aria-haspopup', 'menu');
   await expect(c.getByRole('button', { name: 'Pin allytehq/finops-hubs#1105' })).toHaveAttribute('aria-pressed', 'false');
