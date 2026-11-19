@@ -24,6 +24,8 @@ import type { Inventory } from '../core/session-inventory';
 import { PrisInvalid, type PriStore } from '../core/pris';
 import { blockedText, DECISIONS, MOVE_TO, QUEUE_OPS, type PrPriorityStore, type QueueOp } from '../core/pr-priority';
 import { LABELS, sameLabel, type PrRow } from '../core/pr-board';
+import { boardInput, prioritiesView, type BoardInput, type SessionsInput } from '../core/priorities-view';
+import { readTaskFiles } from '../core/tiered-tasks';
 import type { PrBoardService } from './pr-board-service';
 import type { PrAuth } from './pr-page';
 import { AI_PREFIX, GitHubWriteDenied, type GitHubWrites } from './github-write';
@@ -133,6 +135,8 @@ interface Route {
   run: (c: Ctx) => Promise<Response>;
 }
 
+/** How long GET /priorities waits for the PR board. */
+const BOARD_WAIT_MS = 2000;
 const ACTIONS = ['start', 'complete', 'skip', 'resume', 'suspend', 'set'] as const;
 const PROPS: Record<string, Spec> = {
   status: { t: 'enum', values: ENUMS.status }, priority: { t: 'enum', values: ENUMS.priority },
@@ -880,6 +884,23 @@ export const ROUTES: Route[] = [
       ownerOnly(c, 'Only the owner can read priorities');
       if (!c.deps.pris) throw new ApiError('not_found', 'No priorities store on this host');
       return json(200, c.deps.pris.read());
+    },
+  },
+  {
+    // The priorities report, live: the store, the task files, the inventory and the PR board. @req FR:priorities-tables/api.@api @req FR:priorities-tables/api.read @req FR:priorities-tables/api.read.none
+    method: 'GET', doc: '/priorities', name: 'priorities.get',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can read priorities');
+      if (!c.deps.pris) throw new ApiError('not_found', 'No priorities store on this host');
+      let sessions: SessionsInput | undefined;
+      try { const i = c.deps.inventory?.(); if (i) sessions = { at: i.at, sessions: i.sessions }; } catch { sessions = undefined; }
+      let board: BoardInput | undefined;
+      // A first GitHub poll can take long: wait at most 2 s, then show the tables with the PR table stale. @req FR:priorities-tables/pr.live.none
+      try { if (c.deps.prBoard && (!c.deps.prAuth || await c.deps.prAuth.ready())) { const b = await Promise.race([c.deps.prBoard.get(), new Promise<undefined>((ok) => { setTimeout(() => ok(undefined), BOARD_WAIT_MS).unref?.(); })]); if (b) board = boardInput(b); } } catch { board = undefined; }
+      const now = (c.deps.now ?? (() => new Date()))();
+      const files = await readTaskFiles(c.deps.storage);
+      return json(200, prioritiesView({ pris: c.deps.pris.read().pris, ...files, now, timeZone: c.deps.config?.timezone, ...(sessions ? { sessions } : {}), ...(board ? { board } : {}) }));
     },
   },
   {

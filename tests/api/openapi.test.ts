@@ -380,6 +380,8 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('pris.put', 'POST', '/pris', { rev: 0, pris: [{ id: 'p1', title: 'One', status: 'active', items: [], backlog: [], weekly: [{ week: '2026-W46', text: 'Done' }] }] }, 200);
     await go('pris.put', 'POST', '/pris', { rev: 0, pris: [] }, 409);
     await go('pris.put', 'POST', '/pris', { rev: 1, pris: [{ id: 'X' }] }, 400);
+    // @req FR:priorities-tables/api.@api
+    await go('priorities.get', 'GET', '/priorities', undefined, 200);
     // @req FR:pr-priority/api.get @req FR:pr-priority/api.put @req FR:pr-priority/api.recommend @req FR:pr-priority/api.decisions @req FR:pr-priority/api.decide
     await go('qm.get', 'GET', '/qm', undefined, 200);
     await go('prPriority.get', 'GET', '/pr-priority', undefined, 200);

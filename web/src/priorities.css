@@ -1,0 +1,34 @@
+/* Now's priorities report: layout on top of the shared components (ui/ui.css). Muted: neutral surfaces, one accent.
+   @req NFR:priorities-tables/a11y.tokens @req NFR:priorities-tables/a11y.mobile @req NFR:priorities-tables/a11y.color */
+.pri-tables { margin-top: var(--fl-s-xxl); min-width: 0; }
+@media (min-width: 1100px) { .now > .pri-tables { grid-column: 1 / -1; } }
+/* The tab bar and its stamp stay in view. @req FR:priorities-tables/web.tabs.head */
+.pri-head { position: sticky; top: 0; z-index: 2; background: var(--fl-bg2); margin-bottom: var(--fl-s-m); }
+.pri-stamp.stale, .pri-stale { font-weight: 600; color: var(--fl-fg1); }
+.pri-stale { font-size: 12px; }
+.pri-manager { margin: 0 0 var(--fl-s-s); font-size: 12px; line-height: 16px; color: var(--fl-fg2); }
+.pri-manager a { color: var(--fl-brand-fg); text-decoration: underline; text-underline-offset: 2px; }
+.pri-only { display: block; }
+/* Muted cards: the plain surface, a quiet edge; one line per field. @req FR:priorities-tables/web.table.line */
+.pri-card { --ui-soft: var(--fl-bg1); --ui-edge: var(--fl-stroke2); --ui-ink: var(--fl-fg1); --ui-ink2: var(--fl-fg2); }
+.pri-card .ui-card-top, .pri-card .ui-card-title, .pri-card .ui-card-sub { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pri-card .ui-card-top { display: block; }
+.pri-card .ui-card-sub { display: block; }
+.pri-muted, .pri-nolink { color: var(--fl-fg3); }
+.pri-nolink { font-size: 12px; font-weight: 400; }
+.pri-gap .ui-card-title { font-weight: 400; }
+.pri-card .ui-card-top a { color: inherit; }
+.pri-time { font-size: 12px; line-height: 16px; color: var(--fl-fg2); font-variant-numeric: tabular-nums; }
+/* The detail pane. @req FR:priorities-tables/web.detail */
+.pri-d { display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 20px; }
+.pri-d p { margin: 0; overflow-wrap: anywhere; }
+.pri-d-h { margin: 0; font-size: 18px; line-height: 24px; font-weight: 600; }
+.pri-d-h:focus { outline: none; }
+.pri-d a { color: var(--fl-brand-fg); text-decoration: underline; text-underline-offset: 2px; }
+.pri-d-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 12px; line-height: 16px; }
+.pri-d-facts dt { color: var(--fl-fg3); }
+.pri-d-facts dd { margin: 0; overflow-wrap: anywhere; }
+.pri-d-more { color: var(--fl-fg2); }
+.pri-tables a:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 1px; border-radius: var(--fl-r-sm); }
+/* 44 px targets on touch: padding grows link targets without moving the line. @req FR:ux-consolidation/one.layout */
+@media (hover: none) { .pri-tables .ui-card a, .pri-d a { display: inline-block; padding-block: 12px; margin-block: -12px; } }

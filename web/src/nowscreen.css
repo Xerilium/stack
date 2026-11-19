@@ -111,53 +111,6 @@
 .now-cmd code, .now-connect-note code { font-size: var(--fs-caption); overflow-wrap: anywhere; }
 .now-cmd code { flex: 1; min-width: 0; padding: var(--s-8); border-radius: var(--r-chip); background: var(--bg); border: 1px solid var(--line2); }
 
-/* Waiting on you: cards with room to breathe; the body expands in place. @req FR:ux-consolidation/one.messages @req FR:ux-consolidation/one.expand */
-.now-asks { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-12); }
-.now-ask { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--card-bg); transition: background var(--t-feedback) var(--ease), border-color var(--t-feedback) var(--ease), box-shadow var(--t-feedback) var(--ease); }
-.now-ask:hover { border-color: var(--line); box-shadow: var(--shadow); }
-/* Hover and focus change the card background. @req FR:product-reset/ui.taskcard */
-.now-ask:not(.open):hover, .now-ask:not(.open):focus-within { background: var(--card-hover); }
-.now-ask.open { box-shadow: var(--shadow); }
-.now-ask-head { display: flex; align-items: flex-start; gap: var(--s-12); padding: var(--s-16); }
-.now-ask-head .now-mini { margin-top: 2px; }
-.now-ask-body { flex: 1; min-width: 0; min-height: var(--tap); display: grid; gap: var(--s-8); margin: calc(-1 * var(--s-4)); padding: var(--s-4); background: none; border: 0; border-radius: var(--r-row); color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.now-ask-title { font-size: var(--fs-body); line-height: 1.35; font-weight: 500; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.now-ask.open .now-ask-title { -webkit-line-clamp: unset; display: block; }
-.now-ask-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-4) var(--s-8); font-size: var(--fs-caption); color: var(--ink2); }
-.now-ask-meta .avatar { flex: none; }
-.now-ask-dl { font-variant-numeric: tabular-nums; }
-.now-ask-dl.soon, .now-ask-dl.late { color: var(--warn); font-weight: 600; }
-.now-ask-more { display: grid; gap: var(--s-12); padding: 0 var(--s-16) var(--s-16); animation: now-in var(--t-enter) var(--ease) both; }
-.now-ask-why { margin: 0; font-size: var(--fs-secondary); line-height: 1.45; color: var(--ink); }
-.now-ask-facts { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: var(--s-4) var(--s-12); font-size: var(--fs-secondary); }
-.now-ask-facts > div { display: contents; }
-.now-ask-facts dt { color: var(--muted); }
-.now-ask-facts dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
-.now-ask-facts .waits dd { color: var(--ink2); }
-.now-ask-who { display: inline-flex; align-items: center; gap: var(--s-8); }
-.now-ask-links { display: flex; flex-wrap: wrap; gap: var(--s-4) var(--s-12); }
-.now-ask-links a { display: inline-flex; align-items: center; min-height: var(--tap); color: var(--accent); font-weight: 600; text-underline-offset: 2px; }
-.now-ask-acts, .now-ask-defer { display: flex; flex-wrap: wrap; gap: var(--s-8); }
-.now-act { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-4); min-height: var(--tap); padding: 0 var(--s-16); border-radius: var(--r-row); border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; font-size: var(--fs-secondary); font-weight: 600; text-decoration: none; cursor: pointer; transition: background var(--t-feedback) var(--ease); }
-.now-act:hover:not(:disabled) { background: var(--hover); }
-.now-act:disabled { opacity: .5; cursor: default; }
-.now-act.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.now-act.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
-.now-act.quiet { background: none; color: var(--ink2); }
-.now-act[aria-expanded="true"] { background: var(--accent-soft); color: var(--ink); border-color: transparent; }
-.now-ask-reply { display: grid; grid-template-columns: 1fr auto; gap: var(--s-8); }
-.now-ask-reply input { min-width: 0; min-height: var(--tap); box-sizing: border-box; padding: 0 var(--s-12); border-radius: var(--r-row); border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: inherit; font-size: var(--fs-body); }
-.now-ask-hint { grid-column: 1 / -1; margin: 0; font-size: var(--fs-caption); color: var(--muted); }
-.now-ask-needs { justify-self: start; min-height: var(--tap); padding: 0; background: none; border: 0; color: var(--accent); font: inherit; font-size: var(--fs-secondary); font-weight: 600; cursor: pointer; }
-.now-ask-needs:hover { text-decoration: underline; }
-@media (hover: hover) and (pointer: fine) {
-  .now-ask-body { min-height: 0; }
-  .now-act { min-height: 34px; padding: 0 var(--s-12); }
-  .now-ask-reply input, .now-connect-row input { min-height: 36px; }
-  .now-ask-needs { min-height: 0; padding: var(--s-4) 0; }
-  .now-ask-links a { min-height: 0; }
-}
-@media (prefers-reduced-motion: reduce) { .now-ask-more { animation: none; } }
 
 /* Agent delivery: working and not-delivered notes under the newest message. @req FR:agent-delivery/state.bubble */
 .now-working .now-bubble-text { color: var(--muted); font-style: italic; }

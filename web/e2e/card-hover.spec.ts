@@ -40,18 +40,6 @@ for (const scheme of ['light', 'dark'] as const) {
     test.skip(({ isMobile }) => isMobile, 'hover is a pointer state');
     test.beforeEach(async ({ page }) => { await page.emulateMedia({ colorScheme: scheme }); await ten(page); });
 
-    // @req FR:product-reset/ui.taskcard
-    test('Now: a Waiting on you card', async ({ page }) => {
-      const m = await mockApi(page);
-      m.asks = [ask('a1')];
-      await page.goto('/#/now');
-      const card = page.locator('.now-ask').first();
-      const rest = await reacts(page, card, card.locator('.now-ask-body'));
-      // dark: the card rests a shade below the panel, so hover can lift it
-      if (scheme === 'dark') expect(rest).toBe('rgb(22, 22, 24)');
-      expect((await new AxeBuilder({ page }).include('[data-testid="now-asks"]').analyze()).violations).toEqual([]);
-    });
-
     test('Needs you: the ask card', async ({ page }) => {
       const m = await mockApi(page);
       m.asks = [ask('a1')];

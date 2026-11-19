@@ -7,6 +7,7 @@ import type { RankItem } from './home';
 import type { NeedItem } from './needs';
 import type { Pri, PrisFile } from './pris';
 import type { Inventory } from './inventory';
+import type { PrioritiesView } from './priorities';
 import type { PrAuthState, PrBoard, SignInSession } from './prs';
 import type { ReviewItem, TeamAgent } from './team';
 import type { Thread } from './thread';
@@ -64,6 +65,8 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     pris: () => call<PrisFile>('/pris'),
     /** Replaces the priorities when `rev` is current; 409 when not. @req FR:pris-sessions-ui/pris.save */
     putPris: (rev: number, pris: Pri[]) => call<PrisFile>('/pris', { rev, pris }),
+    /** The priorities report (QM, Now, PRs, Today, Next 3 days). @req FR:priorities-tables/web.live */
+    priorities: () => call<PrioritiesView>('/priorities'),
     /** The Claude app session inventory. @req FR:pris-sessions-ui/sessions.list */
     inventory: () => call<Inventory>('/session-inventory'),
     /** The PR board; 404 where the host has no GitHub token. `fresh` polls GitHub first (Refresh). @req FR:pr-page/api.get */

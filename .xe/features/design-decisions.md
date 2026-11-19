@@ -295,3 +295,13 @@
 **Why**: The owner saw `No meetings left today.` with a meeting 10 minutes away: no calendar was connected, so the page lied. The ask rows had one button and no context, and the page left most of a desktop screen empty. Specs: `.xe/features/ux-consolidation/spec.md` (`FR:cal.*`, `FR:one.expand`), `.xe/features/now-screen/spec.md` (`FR:now.layout`, `FR:now.compose`).
 
 **Trade-offs**: Connect reuses the first-run restart (the host restarts on the same port) instead of a hot swap of the calendar provider: one code path, a few seconds of wait. The source shape matches the inbox source status planned in `xe/inbox-connect` (`{kind, account, state, lastSyncAt}`) so the two can merge into one `sources[]` list later. Rejected: a right column below 1100 px (the task column gets too narrow beside the rail).
+
+## Now: priorities tables replace the ask cards
+
+**Decision**: Now shows the priorities report (QM, Now top 3, PRs, Today, Next 3 days) in place of Waiting on you. Project rows come only from tiered tasks in `tasks/*.md` (one store; the report only reads); a priority with none shows a gap. Asks stay in Needs you. Time windows, labels, fixed actions and `perProject` live in `pris.json`.
+
+**Date**: 2026-11-18
+
+**Why**: The owner multitasks across projects and wants one plain view of what each project needs from him, and which PRs he can promote in a short review. Spec: `.xe/features/priorities-tables/spec.md`.
+
+**Rejected**: Cards, a ledger or a rail item (PR 182 mockups): too much chrome.

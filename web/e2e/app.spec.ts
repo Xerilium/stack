@@ -52,7 +52,10 @@ test.describe('shell and security', () => {
     const errs: string[] = [];
     page.on('console', (m) => { if (m.type() === 'error' || /Content Security Policy/i.test(m.text())) errs.push(m.text()); });
     page.on('pageerror', (e) => errs.push(String(e)));
-    await mockApi(page);
+    const m = await mockApi(page);
+    // A host with a priority store (a 404 logs a console error). @req FR:priorities-tables/web.live
+    const t = { at: new Date().toISOString(), stale: false, rows: [] };
+    m.priorities = { at: t.at, qm: null, now: t, prs: { ...t, verified: true, manager: null }, today: t, next: t };
     await page.goto('/#/list');
     await expect(rows(page).first()).toBeVisible();
     await page.goto('/#/projects');

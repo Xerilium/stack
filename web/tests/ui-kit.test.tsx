@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ActionBar, ActionMenu, type ActionItem } from '../src/ui/ActionMenu';
 import { Flag } from '../src/ui/Flag';
 import { SelectCard } from '../src/ui/SelectCard';
+import { SplitView } from '../src/ui/SplitView';
 import { StatusChip } from '../src/ui/StatusChip';
+import { Tabs } from '../src/ui/Tabs';
 
 const mount = (node: preact.ComponentChild) => { const root = document.createElement('div'); document.body.append(root); act(() => render(node, root)); return root; };
 afterEach(() => { document.body.innerHTML = ''; });
@@ -42,6 +44,17 @@ describe('StatusChip', () => {
 
 // @req FR:ui-kit/card
 describe('SelectCard', () => {
+  it('with label: links in the title and sub line stay outside the button; the chevron button is named label', () => {
+    let n = 0;
+    const r = mount(<ul><SelectCard label="Details: FH" selected={false} onSelect={() => n++} title={<>Ship <a href="#pr">430</a></>} sub={<a href="#agent">fh-pm</a>} /></ul>);
+    const b = r.querySelector<HTMLButtonElement>('button.ui-card-open')!;
+    expect(b.getAttribute('aria-label')).toBe('Details: FH');
+    expect(b.textContent).toBe('›');
+    expect(b.querySelector('a')).toBeNull();
+    expect([...r.querySelectorAll('.ui-card-body a')].map((a) => a.getAttribute('href'))).toEqual(['#pr', '#agent']);
+    act(() => { b.click(); });
+    expect(n).toBe(1);
+  });
   it('one select target for the whole card; top and tools sit outside it; selected state', () => {
     let n = 0;
     const r = mount(<ul><SelectCard class="pr-card tone-auto" data={{ number: 7, url: 'u', gone: undefined }} selected onSelect={() => n++} top={<a href="#x">#7</a>} title="Fix it" sr=", next: Sign off" sub={<span>You</span>} tools={<button type="button">Pin</button>} /></ul>);
@@ -120,5 +133,32 @@ describe('ActionMenu and ActionBar', () => {
     expect(r.querySelector<HTMLButtonElement>('button:disabled')!.textContent).toBe('Busy');
     r.querySelector<HTMLButtonElement>('button')!.click();
     expect(ran).toEqual(['a']);
+  });
+});
+
+describe('Tabs and SplitView', () => {
+  // @req FR:ui-kit/tabs
+  it('Tabs: one selected tab; arrows, Home and End pick; an aside at the end', () => {
+    const picks: string[] = [];
+    const r = mount(<Tabs items={[{ key: 'a', label: 'A (1)' }, { key: 'b', label: 'B (2)' }, { key: 'c', label: 'C (0)' }]} current="a" onPick={(k) => picks.push(k)} label="T" idPrefix="t" aside={<span>as of 9 AM</span>} />);
+    const tabs = [...r.querySelectorAll<HTMLButtonElement>('[role=tab]')];
+    expect(tabs.map((t) => [t.textContent, t.getAttribute('aria-selected'), t.tabIndex])).toEqual([['A (1)', 'true', 0], ['B (2)', 'false', -1], ['C (0)', 'false', -1]]);
+    const list = r.querySelector('[role=tablist]')!;
+    for (const key of ['ArrowRight', 'ArrowLeft', 'End', 'Home']) act(() => { list.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })); });
+    expect(picks).toEqual(['b', 'c', 'c', 'a']);
+    expect(r.querySelector('.ui-tabbar-aside')?.textContent).toBe('as of 9 AM');
+  });
+  // @req FR:ui-kit/split
+  it('SplitView: side by side when wide; when narrow the detail replaces the list, with Back', () => {
+    let backs = 0;
+    const wide = mount(<SplitView wide open={false} list={<p>L</p>} detail={<p>D</p>} label="X" empty="Pick one" onBack={() => { backs++; }} />);
+    expect(wide.querySelector('.ui-split-list')?.hasAttribute('hidden')).toBe(false);
+    expect(wide.querySelector('.ui-split-detail')?.textContent).toBe('Pick one');
+    const narrow = mount(<SplitView wide={false} open list={<p>L</p>} detail={<h3>D</h3>} label="X" empty="Pick one" onBack={() => { backs++; }} />);
+    expect(narrow.querySelector('.ui-split-list')?.hasAttribute('hidden')).toBe(true);
+    act(() => { narrow.querySelector<HTMLButtonElement>('.ui-back')!.click(); });
+    expect(backs).toBe(1);
+    const closed = mount(<SplitView wide={false} open={false} list={<p>L</p>} detail={<h3>D</h3>} label="X" empty="Pick one" onBack={() => {}} />);
+    expect(closed.querySelector('.ui-split-detail')).toBeNull();
   });
 });
