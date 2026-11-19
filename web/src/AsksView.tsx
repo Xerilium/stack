@@ -14,6 +14,7 @@ import { Md } from './parts';
 import { parseRow } from './row';
 import { changeText, flowOf } from './triage';
 import type { Asks } from './useAsks';
+import { Skeleton as LoadingRows } from './ui/Skeleton';
 import type { ComponentChildren } from 'preact';
 import { feedbackActive } from './FeedbackPanel';
 import './asks.css';
@@ -190,7 +191,7 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
 }
 
 function Skeleton() {
-  return <ol class="asks" aria-busy="true" aria-label="Loading asks"><li class="sk big" /><li class="sk" /><li class="sk" /></ol>;
+  return <LoadingRows as="ol" class="asks" label="Loading asks" rows={['big', '', '']} />;
 }
 
 export interface NotifyCtl { supported: boolean; on: boolean; blocked: boolean; toggle: () => void }

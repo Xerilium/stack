@@ -19,6 +19,7 @@ import { groupByProject, orderWithPins, type Pins } from './pins';
 import { barWidths, dayLabel, fmtTokens, groupTurns, localDay, orderSessions, priceLine, rowOf, scopeSessions, splitSessions, usageStrip, type Line, type SessionItem } from './sessions';
 import { local, matchAgent, nameKey, rollupOf, type TeamAgent } from './team';
 import type { Sessions } from './useSessions';
+import { Skeleton } from './ui/Skeleton';
 import { feedbackActive } from './FeedbackPanel';
 import { MdBlock } from './parts';
 import './sessions.css';
@@ -202,7 +203,7 @@ export function Drawer({ s, item, cursorItem, team = [], onClose, defaultAgent, 
         <Fragment>
           <div class="drawer-body">
             {s.turnsError && <p class="drawer-note err">{s.turnsError}</p>}
-            {s.turnsLoading && s.turns.length === 0 && <div class="turns" aria-busy="true"><p class="sk" /><p class="sk short" /><p class="sk" /></div>}
+            {s.turnsLoading && s.turns.length === 0 && <Skeleton as="lines" class="turns" rows={['', 'short', '']} />}
             <div class="turns">
               {groupTurns(s.turns).map((t, i) => (t.kind === 'tools' ? <p key={i} class="tl tools" title={t.titles.join('\n')}><span class="mark" aria-hidden="true">⚙</span><span class="count">{t.count} tool {t.count === 1 ? 'call' : 'calls'}</span><span class="tools-list"> · {t.summary}</span></p> : <Bubble key={i} role={t.role} text={t.text} project={item?.owner ?? undefined} />))}
             </div>

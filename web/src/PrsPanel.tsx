@@ -19,6 +19,7 @@ import { store } from './day';
 import { ActionBar, ActionMenu, type ActionItem } from './ui/ActionMenu';
 import { Flag } from './ui/Flag';
 import { SelectCard } from './ui/SelectCard';
+import { Skeleton } from './ui/Skeleton';
 import { useWide } from './ui/useWide';
 import './prs.css';
 
@@ -539,7 +540,7 @@ function Board({ api, s, toast, onClose, page = false }: { api: Client; s: PrSto
       {!board || !c ? (phase === 'signin' && auth ? <SignIn api={api} auth={auth} onDone={reload} />
         : phase === 'off' ? <div class="prs-signin" data-testid="prs-off"><p class="prs-signin-title">This host has no PR board.</p><p class="prs-note">Set GITHUB_TOKEN on the host, and check STACK_GITHUB_REPOS is a valid list.</p></div>
         : phase === 'error' ? <div class="prs-signin" role="alert"><p class="prs-signin-title">Could not load your PRs.</p><button type="button" class="fl-btn primary" onClick={reload}>Retry</button></div>
-        : <div class="skeleton prs-sk" role="status" aria-busy="true" aria-label="Loading pull requests" data-testid="prs-skeleton"><div class="sk" /><div class="sk" /><div class="sk" /><div class="sk" /></div>) : <>
+        : <Skeleton class="prs-sk" status label="Loading pull requests" rows={4} testId="prs-skeleton" />) : <>
         {board.error && board.at && <p class="prs-note" role="status">{board.error}. Showing the last good copy.</p>}
         {board.truncated && <p class="prs-note">Some PRs may be missing: a search hit its 50-PR limit.</p>}
         {projects.length > 1 && (

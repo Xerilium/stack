@@ -41,6 +41,13 @@ The owner needs every list view to look and act the same so that he reads a PR, 
 
 - **FR:bar** (P1): `ActionBar` shows the same items as `ActionMenu` as plain buttons and links, in the same order, under a heading, for a details pane
 
+### FR:skeleton: Loading rows
+
+Owner needs every view to show the same placeholder while it loads so that he knows the content is on its way.
+
+- **FR:skeleton** (P2): `Skeleton` MUST show placeholder rows in a busy box (`aria-busy`), named `label`, and a status when `status` is set
+  - **FR:skeleton.shape** (P3): `Skeleton` MUST take the shape of the content it stands for: rows, a list (`ol`), or lines of text
+
 ### FR:tabs: Tabs
 
 - **FR:tabs** (P1): `Tabs` is a tab bar (ARIA tabs pattern: one selected tab with `tabIndex` 0, arrow keys, Home and End pick and focus). An optional `aside` sits small at the right end of the bar

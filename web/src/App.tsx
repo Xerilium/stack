@@ -35,6 +35,7 @@ import { Drawer, SessionsView } from './SessionsView';
 import { usePins } from './pins';
 import { useUnsaved } from './unsaved';
 import { useUpdates } from './update';
+import { Skeleton } from './ui/Skeleton';
 import { UpdatesDialog } from './UpdatesView';
 import type { RankItem } from './home';
 import { useSessions } from './useSessions';
@@ -1027,7 +1028,7 @@ export function App() {
       <main class="main" title={offline ? 'Offline' : undefined}>
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
         <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}{updateChip}<FeedbackButton compact /><PrsButton api={api} where="phone" /></div>
-        {phase === 'loading' && view !== 'asks' && view !== 'inventory' && view !== 'inbox' && view !== 'sessions' && view !== 'prs' && view !== 'settings' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
+        {phase === 'loading' && view !== 'asks' && view !== 'inventory' && view !== 'inbox' && view !== 'sessions' && view !== 'prs' && view !== 'settings' && <Skeleton status label="Loading" rows={['big', '', '', '']} />}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} />}
         {/* Pages with one h1 and a labelled region each. @req FR:notifications/pris.route @req FR:notifications/sessions.route @req NFR:notifications/a11y.axe */}
         {view === 'inventory' && <section class="page-view" aria-labelledby="page-h"><h1 class="h1" id="page-h">{LABEL.inventory}</h1><PageNote phase={prisSessions.sessions.phase} what="Sessions" /><SessionsBlock ctl={prisSessions.sessions} toast={toast} label="Waiting on you" /></section>}
