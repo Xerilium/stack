@@ -3,6 +3,7 @@
  * @req FR:cli/web.serve @req FR:cli/web.demo
  */
 import { createHash } from 'crypto';
+import { gzipSync } from 'zlib';
 import { ReportStore, stackHome } from '../core/reports';
 import { runInventory, type Inventory } from '../core/session-inventory';
 import { scanAgents } from '../core/agent-scan';
@@ -172,6 +173,26 @@ const TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
   '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json',
 };
+
+/** Text types worth compressing; event streams, images and other binary types never are. @req FR:perf/serve.gzip.skip */
+const GZIP_TYPE = /^(text\/(html|javascript|css)|application\/(json|manifest\+json)|image\/svg\+xml)\b/;
+const GZIP_MIN = 1024;
+
+/** True when `Accept-Encoding` lists gzip with a nonzero q. */
+const acceptsGzip = (h: string | string[] | undefined): boolean =>
+  String(h ?? '').split(',').some((part) => { const [name, ...params] = part.trim().toLowerCase().split(';').map((x) => x.trim()); const q = params.find((p) => p.startsWith('q=')); return name === 'gzip' && (!q || Number(q.slice(2)) > 0); });
+
+/**
+ * The body to send and the headers that go with it: gzip (level 6) for a text body over 1 KB when the client accepts it.
+ * `cache` keeps the gzip of an immutable file so it is made once. @req FR:perf/serve.gzip @req FR:perf/serve.gzip.cache
+ */
+function encode(accept: string | string[] | undefined, type: string, body: Buffer, cache?: { map: Map<string, Buffer>; key: string }): { body: Buffer; headers: Record<string, string> } {
+  if (!GZIP_TYPE.test(type) || body.length <= GZIP_MIN) return { body, headers: {} };
+  if (!acceptsGzip(accept)) return { body, headers: { vary: 'accept-encoding' } };
+  let z = cache?.map.get(cache.key);
+  if (!z) { z = gzipSync(body, { level: 6 }); cache?.map.set(cache.key, z); }
+  return { body: z, headers: { 'content-encoding': 'gzip', vary: 'accept-encoding' } };
+}
 
 function headersFrom(webDir: string): Record<string, string> {
   try { return (JSON.parse(readFileSync(join(webDir, 'staticwebapp.config.json'), 'utf8')) as { globalHeaders?: Record<string, string> }).globalHeaders ?? {}; } catch { return {}; }
@@ -403,11 +424,14 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
     return { token: token!, device: d, secure };
   }
 
+  // Hashed /assets/ files never change, so each one is gzipped once. @req FR:perf/serve.gzip.cache
+  const gzipCache = new Map<string, Buffer>();
   const handler = (req: IncomingMessage, res: import('http').ServerResponse) => {
     void (async () => {
-      const send = (status: number, body: string | Buffer, type: string, h: Record<string, string> = {}) => {
-        res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store', ...extra, ...h });
-        res.end(body);
+      const send = (status: number, body: string | Buffer, type: string, h: Record<string, string> = {}, cacheKey?: string) => {
+        const e = encode(req.headers['accept-encoding'], type, Buffer.isBuffer(body) ? body : Buffer.from(body), cacheKey ? { map: gzipCache, key: cacheKey } : undefined);
+        res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store', ...extra, ...h, ...e.headers });
+        res.end(e.body);
       };
       try {
         const peer = peerOf(req);
@@ -488,8 +512,9 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
           const r = await work;
           const h: Record<string, string> = {};
           r.headers.forEach((v, k) => { h[k] = v; });
-          res.writeHead(r.status, { ...extra, ...h });
-          return void res.end(Buffer.from(await r.arrayBuffer()));
+          const e = h['content-encoding'] ? { body: Buffer.from(await r.arrayBuffer()), headers: {} } : encode(req.headers['accept-encoding'], h['content-type'] ?? '', Buffer.from(await r.arrayBuffer()));
+          res.writeHead(r.status, { ...extra, ...h, ...e.headers });
+          return void res.end(e.body);
         }
         const root = realpathSync(o.webDir);
         let file = join(root, 'index.html');
@@ -501,7 +526,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
         const hashed = file.startsWith(join(root, 'assets') + sep);
         // The page learns it needs setup from a meta tag, so a normal start pays no extra round trip. @req FR:first-run-onboarding/web.gate
         const body = o.setup && file === join(root, 'index.html') && o.setup.status().needed ? withSetupMeta(readFileSync(file)) : readFileSync(file);
-        send(200, body, TYPES[extname(file)] ?? 'application/octet-stream', hashed ? { 'cache-control': 'public, max-age=31536000, immutable' } : {});
+        send(200, body, TYPES[extname(file)] ?? 'application/octet-stream', hashed ? { 'cache-control': 'public, max-age=31536000, immutable' } : {}, hashed ? file : undefined);
       } catch (e) {
         console.error(e);
         if (!res.headersSent) send(500, 'internal error', 'text/plain'); else res.end();
