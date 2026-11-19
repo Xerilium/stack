@@ -26,7 +26,7 @@ Stack opens like a Mac app: own window, Dock icon, starts at login, taps you for
 - **FR:install.prompt** (P1): When the browser offers install (`beforeinstallprompt`) and Stack is not installed, the command palette MUST list `Install Stack as an app`. Running it MUST show the browser install dialog once; the saved event MUST then be dropped
   - **FR:install.prompt.done** (P1): After `appinstalled`, or in standalone display, the command MUST NOT show
   - **FR:install.prompt.none** (P1): Browsers without the event (Safari, Firefox) MUST show no command and raise no error
-- **FR:install.shortcuts** (P1): The manifest MUST list `shortcuts` for `Needs you` (`/#/asks`) and `My day` (`/#/today`), each with the 192 px icon, and `categories` `productivity`
+- **FR:install.shortcuts** (P1): The manifest MUST list `shortcuts` for `Notifications` (`/#/notifications`) and `My day` (`/#/today`), each with the 192 px icon, and `categories` `productivity`
   > - @req FR:pwa/install.manifest
 
 ### FR:host: Local host at login (P2)

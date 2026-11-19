@@ -106,6 +106,14 @@ test.describe('Priorities and Sessions', () => {
     await expect(page.getByText('No sessions wait on you.')).toBeVisible();
   });
 
+  // @req FR:notifications/pris.states
+  test('a failed read says so on the page', async ({ page }) => {
+    await setup(page);
+    await page.route('**/api/session-inventory', (r) => r.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: { code: 'internal', message: 'boom' } }) }));
+    await page.goto('/#/inventory');
+    await expect(page.getByTestId('page-note')).toHaveText('Cannot load sessions. It tries again by itself.');
+  });
+
   test('rail order on desktop; tab bar on phone', async ({ page }, info) => {
     await setup(page);
     await page.goto('/#/now');

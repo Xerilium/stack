@@ -25,7 +25,7 @@ export interface InventoryCtl { phase: Phase; inv: Inventory | null; announce: s
 
 const isAbsent = (e: unknown) => e instanceof ApiFailure && e.status === 404;
 
-/** `active`: Needs you is on screen; nothing is read while it is not. */
+/** `active`: the Priorities or Sessions page is on screen; nothing is read while it is not. */
 export function usePrisSessions(api: Client, toast: ToastFn, liveTick: number, active = true): { pris: PrisCtl; sessions: InventoryCtl } {
   const toastRef = useRef(toast); toastRef.current = toast;
 
@@ -65,7 +65,7 @@ export function usePrisSessions(api: Client, toast: ToastFn, liveTick: number, a
   const absent = useRef({ inv: false, pris: false });
   absent.current = { inv: invPhase === 'absent', pris: prisPhase === 'absent' };
   const both = useCallback(() => { if (!absent.current.inv) void loadInv(); if (!absent.current.pris) void loadPris(); }, [loadInv, loadPris]);
-  // every live change, and each time Needs you opens
+  // every live change, and each time the page opens
   useEffect(() => { if (active) both(); }, [liveTick, both, active]);
   // the session store has no watcher: re-read every 15 s while visible, and when the page is shown again
   useEffect(() => {
