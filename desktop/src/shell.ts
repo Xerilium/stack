@@ -132,8 +132,8 @@ export function createShell(deps: ShellDeps): Shell {
     { label: 'Quit Stack', click: () => app.quit() },
   ];
 
-  /** `Stack > Updates…`: the window on the updates page (same origin). @req FR:devops-installer/notice.menu */
-  const openUpdates = () => { if (!host) return; show(); void window().loadURL(`${host.url}/#/updates`); };
+  /** `Stack > Updates…`: the window on the updates page (same origin). @req FR:devops-installer/notice.menu @req FR:desktop-shell/quit.build */
+  const openUpdates = () => { if (!host || stopping) return; show(); void window().loadURL(`${host.url}/#/updates`); };
 
   /** @req FR:desktop-shell/tray.appmenu */
   const appMenu = (): MenuItemTemplate[] => [

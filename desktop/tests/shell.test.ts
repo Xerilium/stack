@@ -271,6 +271,16 @@ describe('quit', () => {
     expect(e.windows).toHaveLength(0);
   });
   // @req FR:desktop-shell/quit.build
+  it('Updates… during a quit loads no page', async () => {
+    const { e, shell, win } = setup({ startHost: async () => ({ url: URL_, close: () => new Promise<void>(() => { /* never */ }) }), closeTimeoutMs: 20 });
+    await shell.start();
+    e.app.quit();
+    item(e.appMenu?.find((m) => m.label === 'Stack')?.submenu, 'Updates…').click?.();
+    await shell.stopped();
+    expect(e.windows).toHaveLength(1);
+    expect(win().loaded).toEqual([URL_]);
+  });
+  // @req FR:desktop-shell/quit.build
   it('a quit before the app is ready starts no host', async () => {
     let calls = 0;
     const { e, shell } = setup({ startHost: async () => { calls++; return { url: URL_, close: async () => {} }; } });
