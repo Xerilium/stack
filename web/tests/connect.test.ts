@@ -3,7 +3,7 @@
  * @req FR:connect-accounts/web.panel @req FR:connect-accounts/web.setup @req FR:connect-accounts/web.signin @req FR:connect-accounts/web.nocmd
  */
 import { describe, expect, it } from 'vitest';
-import { DRAFTS_TEXT, needsFix, readsText, sessionText, SETUP_RESULT, typeText, waitFor, type ConnectSession } from '../src/connect';
+import { DRAFTS_TEXT, needsFix, readsText, sessionText, SETUP_RESULT, SETUP_TEXT, typeText, waitFor, type ConnectSession } from '../src/connect';
 
 const row = { account: 'me@outlook.com', type: 'personal' as const, mail: true, calendar: true, drafts: false, state: 'connected' as const };
 
@@ -18,6 +18,10 @@ describe('connect words', () => {
     expect(needsFix(row)).toBe(false);
     // Microsoft not responding: signing in again does not help.
     expect(needsFix({ ...row, state: 'down' })).toBe(false);
+  });
+  it('setup text does not repeat the bold "One-time setup" lead-in', () => {
+    expect(SETUP_TEXT).not.toMatch(/^one-time setup/i);
+    expect(SETUP_TEXT).toMatch(/once for all your accounts/);
   });
   it('setup results name the single human step, no command box', () => {
     expect(SETUP_RESULT['needs-azure-signin']).toBe('Sign in to Azure once: open PowerShell, run Connect-AzAccount, then click Run setup again.');

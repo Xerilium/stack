@@ -36,7 +36,7 @@ export const LEARN_TEXT = [
   'Reply drafts is off by default. Turn it on for an account and Stack saves reply drafts in that mailbox for you to review.',
   'Stack never sends mail and never changes your calendar.',
 ] as const;
-export const SETUP_TEXT = 'One-time setup: Stack registers its own sign-in app in your Azure account. You do this once for all your accounts.';
+export const SETUP_TEXT = 'Stack registers its own sign-in app in your Azure account. You do this once for all your accounts.';
 
 /** @req FR:connect-accounts/web.setup */
 export const SETUP_RESULT: Record<SetupState, string> = {
