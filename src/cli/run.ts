@@ -35,7 +35,7 @@ import { ConflictError, FsStorage, NotFoundError, PathError, Storage, StorageErr
 import { PRIORITIES_PATH } from '../core/priorities';
 import { GitStorage } from '../core/storage-git';
 import { generateSummaries } from '../core/summaries';
-import { projectId } from '../core/task-paths';
+import { isReadme, projectId, projectPath } from '../core/task-paths'; // @req FR:task-structure/tree.readme
 import { formatRef, parseArgs, parseRef, UsageError } from './args';
 import { inboxSourcesCmd } from './inbox-sources';
 import { inboxRunCmd } from './delivery';
@@ -132,7 +132,7 @@ interface Outcome { json: Record<string, unknown>; text: string; code?: number; 
  * @req FR:task-lint/cli.lint.unknown
  */
 async function lintFiles(storage: Storage, project?: string): Promise<LintIssue[]> {
-  const paths = (await storage.list()).filter((p) => project === undefined || p === `tasks/${project}.md`);
+  const paths = (await storage.list()).filter((p) => !isReadme(p) && (project === undefined || p === projectPath(project)));
   if (project !== undefined && !paths.length) throw new UsageError(`Project not found: ${project}`);
   const out: LintIssue[] = [];
   for (const p of paths) out.push(...lintProject(p, (await storage.read(p)).content));
@@ -306,7 +306,7 @@ async function update(ctx: LifecycleContext, storage: Storage, opts: { sweep: bo
   const swept = opts.sweep ? await sweep(ctx) : undefined;
   const readOpt = async (p: string) => { try { return await storage.read(p); } catch (e) { if (e instanceof NotFoundError) return null; throw e; } };
   const projects = [];
-  for (const p of await storage.list()) projects.push({ fileName: p.replace(/^tasks\//, ''), content: (await storage.read(p)).content });
+  for (const p of (await storage.list()).filter((x) => !isReadme(x))) projects.push({ fileName: p.replace(/^tasks\//, ''), content: (await storage.read(p)).content });
   const strip = (s?: string | null) => s?.replace(/^﻿/, '');
   // @req FR:cli/cmd.update.engine
   // The default is the engine `nextTask` uses, so the README top is the row a no-ref start/complete/skip acts on.

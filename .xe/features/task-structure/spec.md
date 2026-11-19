@@ -34,6 +34,8 @@ The owner groups goals by company and product in folders (`tasks/xerilium/stack/
 ### FR:id: Project IDs
 
 - **FR:id.project** (P1): A project ID MUST be its path relative to `tasks/` without `.md` (`tasks/xerilium/stack/goal.md` is `xerilium/stack/goal`; `tasks/alpha.md` stays `alpha`)
+  - **FR:id.project.repos** (P3): A project's repo folder names MUST start with its file name, then its folder name (`goal`, `stack`)
+  - **FR:id.project.review** (P3): Review ask keys MUST keep nested IDs apart (`a/b` and `a-b` never share a key)
 - **FR:id.ref** (P1): An API ref `<project-id>:<line>` MUST accept a nested ID; a ref whose last segment is `README` (any case) is invalid
 - **FR:id.scope** (P2): An agent scope MUST accept a nested ID. Scope `a/b` covers project `a/b`, every project under folder `a/b/`, and section `b` of project `a`. Most specific first: project section, project, folder, `*`
 

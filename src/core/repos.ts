@@ -37,7 +37,8 @@ export async function projectRepos(ctx: Pick<LifecycleContext, 'storage'>): Prom
     const name = projectId(path);
     if (isReadme(path)) continue;
     const p = parseProject((await ctx.storage.read(path)).content);
-    const names = [baseName(path)];
+    // @req FR:task-structure/id.project.repos: the file name, then its folder (`tasks/x/stack/goal.md` names `goal` and `stack`).
+    const names = [...new Set([baseName(path), ...(path.split('/').length > 2 ? [path.split('/').slice(-2, -1)[0]] : [])])];
     const add = (v: string) => { const f = folderOf(v); if (f && !names.includes(f)) names.push(f); };
     (p.metadata['Aliases'] ?? '').split(',').forEach(add);
     if (p.metadata['Repository']) add(p.metadata['Repository']);

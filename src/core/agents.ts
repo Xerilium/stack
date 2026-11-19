@@ -86,7 +86,7 @@ export function slugOf(name: string): string {
 
 const oneLine = (v: string): string => redact(v.replace(CONTROL, ' ')).replace(/\s+/g, ' ').trim();
 /** `*`, or a folder, project ID, or project ID plus section, joined by `/`. @req FR:task-structure/id.scope */
-const scopeOk = (s: string) => s === '*' || /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[^/\\\0.][^/\\\0]*)*$/.test(s);
+const scopeOk = (s: string) => s === '*' || /^[^/\\\0.,\s][^/\\\0,]*(?:\/[^/\\\0.,][^/\\\0,]*)*$/.test(s);
 
 /** The agent as markdown (v1). */
 export function formatAgent(a: AgentDef): string {
@@ -342,8 +342,9 @@ export function agentFor(team: TeamAgent[], project: string, section?: string): 
 export interface Review { at: string; verdict: 'can' | 'partial' | 'cannot'; plan: string; estimate?: string; agent: string; needs: string[] }
 const VERDICT: Record<string, Review['verdict']> = { done: 'can', partial: 'partial', blocked: 'cannot' };
 
-/** The ask key prefix of a row's review needs: `rev-<slug>-<line>-` (the slug is cut to 40 so `rev-<slug>-<line>-<stamp>-<n>` fits an 80-character key). @req FR:agent-team/review.needs */
-export const reviewPrefix = (ref: TaskRef): string => `rev-${logName({ path: projectId(ref.path).replace(/\//g, '-') }).toLowerCase().slice(0, 40)}-${ref.line + 1}-`;
+/** The ask key prefix of a row's review needs: `rev-<slug>-<line>-` (folders joined by `.`; the slug is cut to 40 so `rev-<slug>-<line>-<stamp>-<n>` fits an 80-character key). @req FR:agent-team/review.needs */
+// @req FR:task-structure/id.project.review
+export const reviewPrefix = (ref: TaskRef): string => `rev-${projectId(ref.path).split('/').map((s) => logName({ path: s })).join('.').toLowerCase().slice(0, 40)}-${ref.line + 1}-`;
 
 /** The newest review entry per row (0-based line) in a project's log files, one pass. @req FR:agent-team/review.read */
 export async function reviewsIn(ctx: LifecycleContext, path: string): Promise<Map<number, Review>> {

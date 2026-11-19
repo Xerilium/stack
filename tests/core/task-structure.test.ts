@@ -4,7 +4,9 @@ import { join } from 'path';
 import { FsStorage, MemoryStorage, PathError, validatePath } from '../../src/core/storage';
 import { isReadme, logFile, projectId, projectPath, systemDir } from '../../src/core/task-paths';
 import { archiveAsks, listAsks, putAsk, readAsk } from '../../src/core/asks';
-import { putAgent, agentFor, listTeam } from '../../src/core/agents';
+import { putAgent, agentFor, listTeam, reviewPrefix } from '../../src/core/agents';
+import { GitHubStorage } from '../../src/host/github-storage';
+import { FakeGitHub } from '../host/fake-github';
 import { listInbox, sendToInbox } from '../../src/core/inbox';
 import { wakePath } from '../../src/core/ask-wake';
 import { formatRef, parseRef } from '../../src/api/validate';
@@ -13,6 +15,7 @@ import { classify } from '../../src/cli/watch';
 import { walkStackDir } from '../../src/cli/discover';
 import { rankStack } from '../../src/core/lifecycle';
 import { createApiHandler } from '../../src/api/handler';
+import { projectRepos } from '../../src/core/repos';
 
 const dirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'stack-ts-')); dirs.push(d); return d; };
@@ -89,6 +92,14 @@ describe('project IDs', () => {
     expect(projectPath('xerilium/stack/goal')).toBe('tasks/xerilium/stack/goal.md');
   });
 
+  // @req FR:task-structure/id.project.repos
+  it('maps a nested project to its file and folder names for sessions', async () => {
+    const s = new MemoryStorage();
+    s.seed('tasks/xerilium/stack/goal.md', PROJECT);
+    s.seed('tasks/alpha.md', PROJECT);
+    expect(await projectRepos({ storage: s })).toEqual([{ project: 'alpha', names: ['alpha'] }, { project: 'xerilium/stack/goal', names: ['goal', 'stack'] }]);
+  });
+
   it('names nested projects by ID in the inbox list', async () => {
     const s = new MemoryStorage();
     s.seed('tasks/a/goal.md', PROJECT);
@@ -143,6 +154,18 @@ describe('agent scopes with nested IDs', () => {
     expect(agentFor(team, 'x/stack/goal', '🔥 Active').map((a) => a.slug)).toEqual(['proj', 'folder']);
     expect(agentFor(team, 'y').map((a) => a.slug)).toEqual([]);
   });
+
+  // @req FR:task-structure/id.project.review
+  it('accepts any project ID as a scope and keeps review keys apart', async () => {
+    const s = new MemoryStorage();
+    s.seed('tasks/My Co/goal.md', PROJECT);
+    const ctx = { storage: s, now: () => NOW };
+    await putAgent(ctx, 'co', { name: 'Co', scope: ['My Co'] });
+    expect((await listTeam(ctx)).find((a) => a.slug === 'co')!.projects).toEqual(['My Co/goal']);
+    await expect(putAgent(ctx, 'bad', { name: 'Bad', scope: ['x/../y'] })).rejects.toThrow(/Bad scope/);
+    expect(reviewPrefix({ path: 'tasks/a/b.md', line: 2 })).not.toBe(reviewPrefix({ path: 'tasks/a-b.md', line: 2 }));
+    expect(reviewPrefix({ path: 'tasks/alpha.md', line: 2 })).toBe('rev-alpha-3-');
+  });
 });
 
 // @req FR:task-structure/system.path
@@ -162,11 +185,15 @@ describe('system paths', () => {
 
 // @req FR:task-structure/system.list
 describe('system lists', () => {
-  it('lists asks and agents from every level (fs and memory)', async () => {
+  it('lists asks and agents from every level (fs, memory, GitHub)', async () => {
     const d = tmp();
     const s = new MemoryStorage();
-    for (const p of ['tasks/.stack/asks/a.md', 'tasks/x/.stack/asks/b.md', 'tasks/x/y/.stack/asks/c.md', 'tasks/x/.stack/asks/archive/z.md', 'tasks/.stack/agents/r.md', 'tasks/x/.stack/agents/q.md']) { put(d, p); s.seed(p, '# T\n'); }
-    for (const st of [new FsStorage(d), s]) {
+    const gh = new FakeGitHub();
+    const paths = ['tasks/.stack/asks/a.md', 'tasks/x/.stack/asks/b.md', 'tasks/x/y/.stack/asks/c.md', 'tasks/x/.stack/asks/archive/z.md', 'tasks/.stack/agents/r.md', 'tasks/x/.stack/agents/q.md'];
+    for (const p of paths) { put(d, p); s.seed(p, '# T\n'); }
+    const g = new GitHubStorage({ owner: 'acme', repo: 'tasks', branch: 'main', token: 't', fetch: gh.fetch });
+    await g.writeMany(paths.map((path) => ({ path, content: '# T\n' })));
+    for (const st of [new FsStorage(d), s, g]) {
       expect(await st.listAsks!()).toEqual(['tasks/.stack/asks/a.md', 'tasks/x/.stack/asks/b.md', 'tasks/x/y/.stack/asks/c.md']);
       expect(await st.listAgents!()).toEqual(['tasks/.stack/agents/r.md', 'tasks/x/.stack/agents/q.md']);
     }

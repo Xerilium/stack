@@ -37,14 +37,23 @@ Spec: `.xe/features/task-structure/spec.md`. This is a breaking change. Stack ha
 
    Also move the rolled logs (`stack.2.md` to `goal.2.md`, and so on).
 
-5. Fix the refs that name the old path or ID (see below). Then commit and start `stack web`.
+5. Fix the refs to the moved file. Logs, inboxes, and asks store `tasks/<file>.md:<line>`; asks and agents also hold `<project>:<line>`:
+
+   ```sh
+   grep -rlE 'tasks/stack\.md:|(^|[^/])\bstack:[0-9]' tasks --include='*.md' | xargs sed -i '' -E 's#tasks/stack\.md:#tasks/xerilium/stack/goal.md:#g; s#(^- ref: )stack:([0-9])#\1xerilium/stack/goal:\2#'
+   ```
+
+   Check the result with `git diff` before you commit.
+
+6. Commit, then start `stack web`.
 
 `stack ids assign` is not in this release. It comes with `#id` task refs, which wait for an owner decision.
 
 ## What breaks
 
 - An old folder that you do not move (`tasks/asks/` and the others) becomes a task folder. Its files show as projects.
-- Refs to a moved file break: `ref: tasks/stack.md:12` lines in asks and inbox entries, and `project:line` refs that agents hold.
+- Refs to a moved file break until step 5: `ref:` lines in logs, inboxes, and asks, and `project:line` refs that agents hold. Without the log fix, reviews and activity for the project are lost.
+- Session-to-project mapping uses the file name and its folder name (`goal`, `stack`). Add `Aliases` or `Repository` when the repo folder has another name.
 - Agent `scope` and project `Agents` lines that name the old ID. Use the new ID (`xerilium/stack/goal`) or a folder (`xerilium`).
 - `--project` arguments and `GET /projects/{name}` use the new ID. In a URL, encode `/` as `%2F`.
 - Review ask keys (`rev-<project>-<line>-...`) change for nested projects. Open review asks for a moved project are not matched again; close them by hand.

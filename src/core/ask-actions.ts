@@ -5,7 +5,7 @@
 import { completeTask, EFFORT, IMPACT, LifecycleError, PRIORITY, resumeTask, setProperties, skipTask, startTask, STATUS, suspendTask, type LifecycleContext, type LifecycleResult, type TaskProps, type TaskRef } from './lifecycle';
 import { ConflictError, NotFoundError } from './storage';
 import { rowKey } from './inbox';
-import { isReadme, PROJECT_ID } from './task-paths';
+import { isReadme, PROJECT_ID, projectPath } from './task-paths';
 
 export type Action =
   | { kind: 'set'; props: TaskProps }
@@ -25,7 +25,7 @@ const PROPS: Record<string, readonly string[]> = { priority: PRIORITY, status: S
 export function parseTaskRef(v: unknown): TaskRef {
   const m = typeof v === 'string' ? REF.exec(v) : null;
   if (!m || isReadme(m[1])) throw new LifecycleError(`ref must look like project:line: ${String(v)}`);
-  return { path: `tasks/${m[1]}.md`, line: Number(m[2]) };
+  return { path: projectPath(m[1]), line: Number(m[2]) };
 }
 
 /** One action line; `-` means none (null). Anything outside the vocabulary throws. @req FR:quick-triage/flow.actions */
