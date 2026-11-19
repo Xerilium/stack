@@ -81,7 +81,7 @@ The owner needs a shape that cannot grow into giant lists so that "what is next"
 - **FR:model.area** (P1): An area MUST NOT finish. It has a weekday weight. Every project MUST belong to one area.
 - **FR:model.subproject** (P1): A project MAY have one parent project. A sub-project MUST NOT have a sub-project.
 - **FR:model.task** (P1): A task MUST have one project. A task MUST NOT have child tasks. A write that gives a task a task parent MUST throw `ShapeError`.
-- **FR:model.steps** (P1): A task MAY hold `steps`: a flat list of `{text, done}`. Steps have no owner, date or rank.
+- **FR:model.steps** (P1): A task MAY hold `steps`: a flat list of `{id, text, done}`. A step ID is unique in its task. Steps have no owner, date or rank.
 - **FR:model.body** (P1): Every area, project and task MAY hold `body`: markdown, any depth of nested lists, at most 64 KB. `body` is reference text. The store MUST NOT parse tasks, dates or owners from it.
 - **FR:model.links** (P1): A PR, issue, email or URL MUST be a link on the item, never a child row.
 - **FR:model.sequential** (P2): A project MUST be `sequential` or `parallel`. In a sequential project only the first open task is available.
@@ -98,7 +98,7 @@ The owner needs only clear actions in the queue so that every task can be done a
   | ---------- | ------------------------------------------------------------------------ |
   | `title`    | One line, 1-80 characters                                                |
   | `doneWhen` | Not empty, one line                                                      |
-  | `owner`    | `me` or a known agent ID                                                 |
+  | `owner`    | `me` or an agent ID in config `agents`                                   |
   | `parentId` | An existing project (not an area, not a task)                            |
   | `links`    | At least one when `external` is true (the action happens in another app) |
 
@@ -112,21 +112,21 @@ The owner needs only clear actions in the queue so that every task can be done a
 Agents and the owner need IDs that survive edits and moves so that refs never break.
 
 - **FR:id.form** (P1): An ID MUST be kebab-case `[a-z0-9-]`, at most 60 characters, unique in the store. It MUST NOT hold the project, so a move never changes it.
-- **FR:id.make** (P1): `add` MUST make the ID from the first 6 words of the title. On a clash it MUST add `-2`, `-3`, and so on.
+- **FR:id.make** (P1): `add` MUST make the ID from the first 6 words of the title. On a clash it MUST add `-2`, `-3`, and so on. A title with no `[a-z0-9]` word MUST get `item-{base36 time}`.
 - **FR:id.stable** (P1): A title edit or a move MUST NOT change the ID.
 - **FR:id.reserve** (P1): A deleted item's ID MUST stay reserved for 90 days (`FR:done.tombstone`), so `add` never reuses it for a new item while old refs may exist.
-- **FR:id.client** (P1): A create MAY give its own ID. A create that hits an existing item with the same ID and the same `title` MUST return that item, not an error. This makes retries and queued captures idempotent.
+- **FR:id.client** (P1): A create MAY give its own ID. A create that hits an existing item with the same ID and the same `title` MUST return that item, not an error. A create that hits a tombstone with the same ID MUST return `{clarified: true}` and write nothing. This makes retries and queued captures idempotent.
 - **FR:id.ref** (P1): A lookup MUST accept the ID, `{project}/{id}`, or a prefix that matches one item. Zero or many matches MUST throw `NotFoundError` or `AmbiguousError` with the candidates.
 
 ### FR:store: Store contract
 
 Every surface needs one store contract so that the app, CLI, MCP and agents agree.
 
-- **FR:store.@type** (P1): Interface: `TaskStore { list(q?): Item[]; get(id): Item; add(input): Item; update(id, patch, opts): Item; remove(id, opts): void; clarify(inboxId, outcome): Item?; tree(projectId?): Node[]; changes(since): Change[] }`
+- **FR:store.@type** (P1): Interface: `TaskStore { list(q?): Item[]; get(id): Item; add(input): Item; update(id, patch, {rev, base}): Item; remove(id, opts): void; clarify(inboxId, outcome): Item?; tree(projectId?): Node[]; changes(since): Change[] }`
 - **FR:store.adapters** (P1): The store MUST have an in-memory adapter (tests) and a Cosmos DB adapter. Both MUST pass one contract suite.
-- **FR:store.container** (P1): The Cosmos adapter MUST use one container with partition key `/ownerId`. All of one owner's items share one logical partition, so a move or cascade runs as one transactional batch [C3].
-- **FR:store.atomic** (P1): Each call that changes at most 100 items MUST be atomic: one transactional batch (limit: 100 operations [C3]). A failed call changes nothing.
-- **FR:store.bulk** (P1): A call that changes more than 100 items (restore, import, a large cascade) MUST run under the store lock (`FR:store.lock`) in chunks of 100. On failure the lock stays set, and the same command run again MUST resume from the last done chunk.
+- **FR:store.container** (P1): The Cosmos adapter MUST use one container with partition key `/ownerId`. The container MUST set `defaultTtl: -1`, so per-item TTL works and items without `ttl` never expire. All of one owner's items share one logical partition, so a move or cascade runs as one transactional batch [C3].
+- **FR:store.atomic** (P1): Each call that fits one transactional batch MUST be atomic (limits: 100 operations and 2 MB [C3]). A failed call changes nothing.
+- **FR:store.bulk** (P1): A call that does not fit one batch (restore, import, a large cascade) MUST run under the store lock (`FR:store.lock`) in chunks of at most 100 operations and 1.5 MB. It MUST save progress in `meta.bulk` (`{op, chunk}`). On failure the lock stays set, and the same command run again MUST resume from `meta.bulk.chunk`.
 - **FR:store.lock** (P1): The store MUST hold one `meta` item with `readOnly` (bool) and `reason`. Every write MUST read it first and throw `ReadOnlyError` when set. A bulk call MUST set it, wait 10 seconds for in-flight writes to drain, run, then clear it.
 - **FR:store.schema** (P1): Each item MUST hold `schemaVersion`. The adapter MUST upgrade older items on read and write. An unknown newer version MUST throw `StoreError`.
 
@@ -139,23 +139,23 @@ Many writers need a safe write path so that no writer loses another's edit.
 - **FR:write.rev** (P1): Each item MUST carry `rev`, the Cosmos `_etag`.
 - **FR:write.expect** (P1): Every update and remove MUST send `If-Match: rev`. A mismatch MUST throw `ConflictError` with the current item. The caller reads again and retries.
 - **FR:write.patch** (P1): `update` MUST change only the fields in the patch. `links` and `steps` change by ops (`add`, `remove`, `set` by index or target), never by whole-array replace.
-- **FR:write.retry** (P1): After `ConflictError` the store MAY reapply the patch to the fresh item, at most 3 times, only when every patched field still has the value the caller read (three-way check). Ops on `links` and `steps` pass this check when their target is unchanged. A patch to `body` MUST NOT retry. Any other case MUST throw `ConflictError` to the caller.
+- **FR:write.retry** (P1): After `ConflictError` the store MAY reapply the patch to the fresh item, at most 3 times, only when every patched field still equals the value the caller read (three-way check). The caller MUST send those values as `base`. Ops on `links` and `steps` target an ID, so they pass when that ID is unchanged. A patch to `body` MUST NOT retry. Any other case MUST throw `ConflictError` to the caller.
 - **FR:write.actor** (P1): Each write MUST record `updatedBy`: the API token's owner, else `STACK_ACTOR`, else `me`.
 - **FR:write.throttle** (P1): A `429` MUST retry with the server's back-off. It MUST NOT surface to the owner unless it fails for 30 seconds.
 - **FR:write.keys** (P1): A phone or browser MUST NOT hold a Cosmos credential. The phone and web write through the Azure host or the Mac host.
-- **FR:write.auth** (P1): The Mac CLI, Mac host and backup job MUST use Entra ID data-plane roles. The Azure host runs on SWA managed Functions, which have no managed identity, so it MUST use a key from app settings. When `azure-host` moves to a linked Function App, it MUST switch to a managed identity.
+- **FR:write.auth** (P1): The Mac CLI, Mac host and backup job MUST use Entra ID data-plane roles. Cloud agents and connectors MUST write through the Azure host API with a paired API token (`auth-security`); they hold no Cosmos credential. The Azure host runs on SWA managed Functions, which have no managed identity, so it MUST use a key from app settings. When `azure-host` moves to a linked Function App, it MUST switch to a managed identity.
 
 ### FR:done: Complete and remove
 
 The owner needs done work to leave so that the store holds only what is next.
 
-- **FR:done.delete** (P1): `complete` MUST delete the task, remove `blocks` links that point to it, and add 1 to today's `dayplan` done count for its area, in one batch.
-- **FR:done.tombstone** (P1): A delete MUST write a tombstone: the item keeps only `id`, `type`, `deleted: true` and a 90-day TTL. Reads MUST skip tombstones. The change feed shows them, so caches and live views drop the item.
+- **FR:done.delete** (P1): `complete` MUST delete the task, remove `blocks` links that point to it, and add 1 to today's `dayplan` done count for its area with a patch `incr` (no conflict between writers), in one batch.
+- **FR:done.tombstone** (P1): A delete MUST write a tombstone: the item keeps only `id`, `ownerId`, `type`, `deleted: true` and `ttl` of 90 days. Reads MUST skip tombstones. The change feed shows them, so caches and live views drop the item.
 - **FR:done.recurring** (P1): `complete` on a recurring task MUST roll its dates and keep the task.
 - **FR:done.project** (P1): `complete` on a project with open tasks MUST throw `LifecycleError`, unless `--cascade` is given. `--cascade` deletes the tasks in the same batch.
 - **FR:done.dangling** (P1): A `blocks` link to a missing ID MUST count as resolved.
 - **FR:done.output** (P1): `complete --json` MUST give the deleted item, so an agent can report it.
-- **FR:done.dayplan** (P1): "Today" MUST use the owner's time zone in config. A `dayplan` item MUST carry a 2-day TTL, so the store holds today and yesterday only with no cleanup job.
+- **FR:done.dayplan** (P1): "Today" MUST use the owner's time zone in config. A `dayplan` item MUST carry a 2-day TTL, so Cosmos drops it 2 days after its last write with no cleanup job. Reads MUST use only today and yesterday.
 
 ### FR:rank: What is next
 
@@ -197,14 +197,14 @@ The owner needs the store to cost $0 forever so that it never becomes a bill.
 
 The owner needs a copy outside Azure so that a lost account or a bad write recovers in minutes.
 
-- **FR:backup.snap** (P1): A scheduled GitHub Actions job in the `backup.remote` repo MUST export the partition as one JSON file every hour, with Entra ID through OIDC and a read-only data role. It MUST skip the commit when nothing changed. (SWA managed Functions cannot run timers.)
+- **FR:backup.snap** (P1): A scheduled GitHub Actions job in the `backup.remote` repo MUST export the partition as one JSON file every hour, with Entra ID through OIDC and a read-only data role. About 720 runs a month fits the 2,000 free Actions minutes for private repos. It MUST skip the commit when nothing changed. (SWA managed Functions cannot run timers.)
 - **FR:backup.mac** (P2): When awake, the Mac host MUST also export 15 minutes after the last write (debounced).
 - **FR:backup.remote** (P1): Each export MUST be a commit of `stack.json` on branch `snapshots` of the private repo in config `backup.remote` (default `{owner}/stack-data`). Commits accrue; the file is text, so git keeps it small.
 - **FR:backup.private** (P1): The export MUST refuse to push when the repo is public.
 - **FR:backup.fail** (P2): A failed push MUST retry on the next export and show `Backup failed at h:mm` in the app.
 - **FR:backup.restore** (P1): `stack restore [--at <commit|time>]` MUST, in order: set the store lock (`FR:store.lock`), export the current state to `stack.before-restore.json`, replace the partition with the snapshot (`FR:store.bulk`), and clear the lock. No argument means the latest snapshot.
 - **FR:backup.pitr** (P2): For damage inside 7 days that the snapshot missed, the owner MAY use Cosmos point-in-time restore [C6]. It makes a new account with no free tier, so the runbook (`docs/restore.md`) MUST copy the data back with `stack restore` and delete the new account the same day.
-- **FR:backup.new** (P1): On a new Cosmos account, `stack setup --restore` MUST load the latest snapshot. A lost account recovers this way.
+- **FR:backup.new** (P1): `stack setup --restore [--container name]` MUST load the latest snapshot into an empty container. A lost account or container recovers this way.
 
 ### FR:import: One-time md import
 
@@ -216,8 +216,10 @@ The owner needs current tasks moved once so that nothing is lost at cutover.
   - A row with child rows becomes a project. Its children become tasks; deeper rows become steps or `body`.
   - A row that fails the gate becomes an inbox item, with the original text and path.
   - Notes, `>` quotes and status prose go to `body`.
+  - `updatedAt` MUST come from the row's `git blame` date, so ranking on activity matches md (`G1`).
+- **FR:import.ids** (P1): Import MUST make the same ID for the same md row on every run (file, then slug from title, clash order by line).
 - **FR:import.report** (P1): Import MUST print counts per project, rows sent to inbox, and renamed IDs. `--dry-run` writes nothing.
-- **FR:import.once** (P1): Import into a store that holds items MUST refuse, unless `--replace` is given. `--replace` is for the shadow stage only.
+- **FR:import.once** (P1): Import into a store that holds items MUST refuse, unless `--replace` is given. `--replace` MUST hard-delete every item and tombstone first (no ID reserve), then import. It is for the shadow stage and the final import only.
 - **FR:import.done** (P1): Import MUST skip done rows (`- [x]`).
 
 ### FR:export: md on demand
@@ -246,20 +248,20 @@ The owner needs the app to be good enough before md stops so that he never loses
 - **FR:cutover.flag** (P1): One config key `store: "md" | "shadow" | "cosmos"` MUST pick the stage. Changing it back MUST work at any time. A change from `cosmos` to `md` MUST run `FR:rollback.md` first, or refuse.
 - **FR:cutover.gates** (P1): Stage 2 starts only when all of these pass:
 
-  | Gate           | Passes when                                                                                                         |
-  | -------------- | ------------------------------------------------------------------------------------------------------------------- |
-  | `G1 next`      | Now shows the one next task. It equals `stack next` on md for 5 work days in a row.                                 |
-  | `G2 do`        | The owner can add, edit, start, complete and reorder a task in the app on Mac and phone, with no md edit (sandbox). |
-  | `G3 find`      | The app shows all tasks by area and project with search, so the owner never opens md to find a task.                |
-  | `G4 agents`    | Every CoS and worker agent file uses CLI or MCP with `--json`. A scan of agent files finds no `tasks/*.md` path.    |
-  | `G5 roundtrip` | `export md` then `import md` on the live data gives the same items (`FR:export.roundtrip`).                         |
-  | `G6 restore`   | A restore drill (`stack restore` and `stack setup --restore` on a new account) works in under 5 minutes.            |
-  | `G7 writers`   | A test with 10 writers on one task for 1 minute loses no write; each loser gets `ConflictError` and retries.        |
-  | `G8 cost`      | `stack store check` passes and the bill shows $0 for 30 days of shadow and sandbox traffic.                         |
-  | `G9 inbox`     | The import inbox (rows that failed the gate) holds 25 items or fewer after a clarify pass.                          |
-  | `G10 owner`    | The owner says go.                                                                                                  |
+  | Gate           | Passes when                                                                                                                                                                                                |
+  | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `G1 next`      | Now shows the one next task. It equals `stack next` on md for 5 work days in a row.                                                                                                                        |
+  | `G2 do`        | The owner can add, edit, start, complete and reorder a task in the app on Mac and phone, with no md edit (sandbox).                                                                                        |
+  | `G3 find`      | The app shows all tasks by area and project with search, so the owner never opens md to find a task.                                                                                                       |
+  | `G4 agents`    | Every CoS and worker agent file uses CLI or MCP with `--json`. A scan of agent files finds no `tasks/*.md` path.                                                                                           |
+  | `G5 roundtrip` | `export md` then `import md` on the live data gives the same items (`FR:export.roundtrip`).                                                                                                                |
+  | `G6 restore`   | A restore drill (`stack restore` into `sandbox`, and `stack setup --restore --container drill` in the same account, then delete `drill`) works in under 5 minutes. No new account, so the free tier holds. |
+  | `G7 writers`   | A test with 10 writers on one task for 1 minute loses no write; each loser gets `ConflictError` and retries.                                                                                               |
+  | `G8 cost`      | `stack store check` passes and the bill shows $0 for 30 days of shadow and sandbox traffic.                                                                                                                |
+  | `G9 inbox`     | The import inbox (rows that failed the gate) holds 25 items or fewer after a clarify pass.                                                                                                                 |
+  | `G10 owner`    | The owner says go.                                                                                                                                                                                         |
 
-- **FR:cutover.final** (P1): Stage 2 MUST start with one final `import md`, a snapshot, and the md read-only check, in that order.
+- **FR:cutover.final** (P1): Stage 2 MUST start with one final `import md --replace`, a snapshot, and the md read-only check, in that order.
 - **FR:cutover.retire** (P1): Stage 3 starts after 10 work days in Stage 2 with no rollback.
 
 ### FR:rollback: Rollback
@@ -293,13 +295,13 @@ The owner needs a fast undo so that a bad change or a bad cutover is cheap.
   - `deadline` ({date, hard}?), `planned` (IsoDate?), `availableAt` (IsoDateTime?), `waitingOn` ({ref, followUp}?), `reviewBy` (IsoDate; default: `deadline`, else created + 14 days)
   - `external` (bool): the action happens in another app (`FR:gate.fields`)
   - `effort` (minutes?), `priority`, `impact` (number?), `recurrence` (Recurrence?), `autonomy` (Autonomy)
-  - `steps` ({text, done}[])
+  - `steps` ({id, text, done}[])
 - **FR:$project** (P1): **`Project`** extends `Item`: `doneWhen` (string), `mode` (`sequential` | `parallel`), `aliases`, `repos` (string[]), `reviewEvery` (days).
 - **FR:$area** (P1): **`Area`** extends `Item`: `weekdays` (weight per weekday).
 - **FR:$inbox** (P1): **`InboxItem`** extends `Item`: `source` (`email` | `pr` | `calendar` | `agent` | `capture` | `import`), `capturedAt`.
 - **FR:$dayplan** (P1): **`DayPlan`** extends `Item`: `date`, `picks` (task ID[]), `doneByArea` (map), `note` (string?), `ttl` (2 days).
 - **FR:$priority** (P1): **`Priority`** extends `Item`: one item per ranked focus, with `rank`, `slot` and `days` as defined in [179](https://github.com/Xerilium/stack/pull/179). `parentId` is the area or project it ranks.
-- **FR:$meta** (P1): **`Meta`**: one item, ID `meta`, with `readOnly`, `reason`, `schemaVersion`. Not an `Item` subtype; never listed.
+- **FR:$meta** (P1): **`Meta`**: one item, ID `meta`, with `readOnly`, `reason`, `bulk` ({op, chunk}?), `schemaVersion`. Not an `Item` subtype; never listed.
 - **FR:$tombstone** (P1): **`Tombstone`**: `id`, `type`, `deleted: true`, `ttl` (90 days).
 - **FR:$link** (P1): **`Link`**: `{kind, target}`.
   - `kind` (`blocks` | `pr` | `issue` | `email` | `req` | `url`)

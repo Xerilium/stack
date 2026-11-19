@@ -6,7 +6,7 @@ Evidence for `spec.md`. Inputs: `product-reset` ([159](https://github.com/Xerili
 
 - The owner needs one answer: the next action. Big lists fail him. The model must make a big list impossible, not only hidden.
 - Three decisions:
-  1. **Fixed shape**: Area > Project > Task > Step. Max depth 2 under a project. Only a leaf task can be "next". Deeper trees become a new project.
+  1. **Fixed shape**: Area > Project > (sub-project) > Task > Step. Only a leaf task can be "next". Deeper trees become a new project; free text goes to a markdown `body`.
   2. **Inbox is not the task list**: email, PRs, calendar and agents write inbox items. Nothing becomes a task until it passes clarify (one action, done-when, link, owner).
   3. **Day plan is the only "history"**: one row per day holds the plan and done-today per project. It is deleted after the next day closes. Done tasks are deleted.
 - Store: the data is tiny (~1,100 rows). The hard need is many writers while the Mac is off. That rules out Mac-hosted SQLite. Always-on agent traffic rules out the Azure SQL free offer (monthly vCore quota). Pick: Cosmos DB free tier.
@@ -100,7 +100,7 @@ Required to enter the queue (the quality gate from [159](https://github.com/Xeri
 
 | Field      | Type             | Rule                                                                |
 | ---------- | ---------------- | ------------------------------------------------------------------- |
-| `id`       | `project/slug`   | Stable ([180](https://github.com/Xerilium/stack/pull/180) `FR:id`)  |
+| `id`       | kebab slug       | Stable; no project part (`spec.md` `FR:id`)                         |
 | `title`    | text ≤ 80 chars  | Verb first, one action. No status prose.                            |
 | `doneWhen` | text             | One check anyone can make. Default from a single linked PR: merged. |
 | `owner`    | `me` \| agent id | Never mixed. Human step under agent work = its own task.            |
@@ -120,21 +120,21 @@ Optional:
 | `energy`                        | `deep` \| `light`                         | Day plan fills deep slots first. Optional; skip if unused after 30 days.        |
 | `recurrence`                    | rule                                      | Done rolls dates; the task stays.                                               |
 | `reviewBy`                      | date                                      | Default: created + 14 days, or deadline. Past it, the task is stale.            |
-| `notes`                         | markdown                                  | Reference only.                                                                 |
+| `body`                          | markdown                                  | Reference only.                                                                 |
 | `rev`, `updatedAt`, `updatedBy` |                                           | Concurrency ([180](https://github.com/Xerilium/stack/pull/180) `FR:write`).     |
 
 ### 4.4 States
 
-| State      | In next pool | Exit                                                                                  |
-| ---------- | ------------ | ------------------------------------------------------------------------------------- |
-| `draft`    | No           | Passes the gate > `ready`. Agent enriches; owner only gives missing facts.            |
-| `ready`    | Yes          | Start, defer, wait, someday, done, drop                                               |
-| `active`   | Yes (pinned) | Done, wait, back to ready. Max 1 human task active.                                   |
-| `deferred` | No           | `availableAt` passes > `ready`                                                        |
-| `waiting`  | No           | Blocker resolves or `followUp` passes > `ready`                                       |
-| `someday`  | No           | Weekly review promotes > `draft` or `ready`; else drops after 90 days with no promote |
-| done       | Deleted      | Counts once in today's day plan, then is gone                                         |
-| dropped    | Deleted      | No count                                                                              |
+| State      | In next pool | Exit                                                                            |
+| ---------- | ------------ | ------------------------------------------------------------------------------- |
+| inbox      | No           | Not a task state: the item stays in inbox until it passes the gate (`FR:gate`). |
+| `ready`    | Yes          | Start, defer, wait, someday, done, drop                                         |
+| `active`   | Yes (pinned) | Done, wait, back to ready. Max 1 human task active.                             |
+| `deferred` | No           | `availableAt` passes > `ready`                                                  |
+| `waiting`  | No           | Blocker resolves or `followUp` passes > `ready`                                 |
+| `someday`  | No           | Weekly review promotes > `ready`; else drops after 90 days with no promote      |
+| done       | Deleted      | Counts once in today's day plan, then is gone                                   |
+| dropped    | Deleted      | No count                                                                        |
 
 Agent-owned tasks use the same states. The agent run carries the work status. When an agent needs the owner, it does not edit its own task. It creates a human task (owner `me`) that blocks its task. This keeps "agent work never goes to the owner" structural.
 
@@ -170,15 +170,15 @@ Facts first; the pick is in 6.3.
 
 ### 6.1 Load and writers
 
-| Fact           | Value                                                                                                                                                                                    |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Size           | ~1,100 tasks, ~100 projects, few KB each. Under 10 MB total. Any store fits.                                                                                                             |
-| Writers        | Owner on Mac, web and phone; many local agent sessions at once; cloud agents; source connectors (email, PR, calendar) on a timer.                                                        |
-| Off-Mac need   | Phone capture and cloud agents must write when the Mac sleeps. [180](https://github.com/Xerilium/stack/pull/180) R1 accepts read-only. The loop above needs capture and clarify all day. |
-| Conflict shape | Mostly one writer per task (owner field). Hot rows: day plan, project order. Optimistic `rev` is enough.                                                                                 |
-| Queries        | Small set: next (filter + rank), inbox, project view, review. Rank runs in app code over < 2k rows.                                                                                      |
-| Live push      | Views refresh on change (SSE today).                                                                                                                                                     |
-| History        | Not wanted. Day plan keeps 2 days. No event log.                                                                                                                                         |
+| Fact           | Value                                                                                                                                                       |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Size           | ~1,100 tasks, ~100 projects, few KB each. Under 10 MB total. Any store fits.                                                                                |
+| Writers        | Owner on Mac, web and phone; many local agent sessions at once; cloud agents; source connectors (email, PR, calendar) on a timer.                           |
+| Off-Mac need   | Phone capture and cloud agents must write when the Mac sleeps. The first SQLite draft accepted read-only. The loop above needs capture and clarify all day. |
+| Conflict shape | Mostly one writer per task (owner field). Hot rows: day plan, project order. Optimistic `rev` is enough.                                                    |
+| Queries        | Small set: next (filter + rank), inbox, project view, review. Rank runs in app code over < 2k rows.                                                         |
+| Live push      | Views refresh on change (SSE today).                                                                                                                        |
+| History        | Not wanted. Day plan keeps 2 days. No event log.                                                                                                            |
 
 ### 6.2 Options
 

@@ -12,13 +12,14 @@ One PR per group. Tests first in each PR. `@req FR:task-store/...` on every test
   - stale `rev` throws `ConflictError` with the current item; patch retry; actor (`FR:write.*`)
   - complete deletes and counts; recurring rolls; project with open tasks refuses without `--cascade`; dangling `blocks` resolves; dayplan keeps 2 days (`FR:done.*`)
   - three-way retry: scalar retries; `body` never retries; link and step ops merge (`FR:write.retry`)
-  - tombstone on delete; ID reserved 90 days; inbound `blocks` removed; client ID create is idempotent (`FR:done.tombstone`, `FR:id.reserve`, `FR:id.client`)
+  - tombstone on delete; ID reserved 90 days; inbound `blocks` removed; client ID create is idempotent; tombstone hit returns `{clarified: true}`; container `defaultTtl: -1` (`FR:done.tombstone`, `FR:id.reserve`, `FR:id.client`)
   - lock set: every write throws `ReadOnlyError`; bulk resumes after a failed chunk (`FR:store.lock`, `FR:store.bulk`)
   - human ask: agent creates an owner `me` task that blocks its own (`FR:gate.human`)
 - Writer test: 10 writers on one task for 1 minute; no lost write (`G7`, `FR:write.expect`).
 - Schema test: older `schemaVersion` upgrades; newer throws (`FR:store.schema`).
 - Round-trip test: fixtures `import md` then `export md` then `import md` give equal items (`FR:export.roundtrip`).
 - Import map test: parent row becomes project; gate fail becomes inbox; quotes go to `body` (`FR:import.map`).
+- Import ID test: two imports of the same md give the same IDs; `--replace` clears tombstones; `updatedAt` from `git blame` (`FR:import.ids`, `FR:import.once`).
 - Parity test: same fixture ranks the same on md and on the store (`FR:rank.parity`).
 - Restore test: snapshot, bad write, restore, data equals snapshot (`FR:backup.restore`).
 - Remote test on a local bare repo: exports commit `stack.json`; `setup --restore` on an empty store gives the same items (`FR:backup.remote`, `FR:backup.new`).
@@ -28,7 +29,8 @@ One PR per group. Tests first in each PR. `@req FR:task-store/...` on every test
 - Flag test: `cosmos` to `md` without export refuses; rollback export restores md (`FR:cutover.flag`, `FR:rollback.md`).
 - Sandbox test: a sandbox write never reaches md or the shadow container (`FR:cutover.sandbox`).
 - Privacy test: logs from every write path hold no task title or body (`NFR:privacy`).
-- Perf and RU test: 2,000 tasks; read under target; full read under 100 RU (`NFR:perf.*`, `NFR:ru`).
+- Perf test in CI: 2,000 tasks; read under target (`NFR:perf.*`).
+- RU test: nightly job on the real account (the emulator does not meter RU); full read under 100 RU (`NFR:ru`).
 
 ## 1: store-contract
 
@@ -45,7 +47,7 @@ One PR per group. Tests first in each PR. `@req FR:task-store/...` on every test
 ## 3: store-infra
 
 - [ ] Free tier account, throughput limit, 7-day backup, budget alert (`FR:cost.*`)
-- [ ] Entra data-plane role for the Mac; key in Azure host settings (`FR:write.keys`)
+- [ ] Entra data-plane role for the Mac; key in Azure host settings (`FR:write.keys`, `FR:write.auth`)
 - [ ] `stack store check` (`FR:cost.check`)
 
 ## 4: store-io
