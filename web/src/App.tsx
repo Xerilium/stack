@@ -433,7 +433,7 @@ export function App() {
   }, []);
   // The priorities tables on Now: read while Now is open. @req FR:priorities-tables/web.live
   // Settings draws the context links from the same report; nothing is read on other views. @req FR:settings/priorities.live
-  const pri = usePriorities(api, asks.liveTick, view === 'now' || view === 'settings');
+  const pri = usePriorities(api, asks.liveTick, !qm && (view === 'now' || view === 'settings'));
   /** A message from the priorities report resumes the agent session. @req FR:priorities-tables/web.message */
   const sendToSession = useCallback(async (session: string, text: string) => { await api.promptSession(session, text); }, [api]);
   const briefBusy = useMemo(() => {
@@ -856,8 +856,8 @@ export function App() {
   const allCommands = [...commands, ...goTo, ...projectCmds];
 
   // ---- keyboard (reads latest state through a ref)
-  const latest = useRef({ positions, rows, cursor, view, selected, editing, open, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft, tomorrowOn: !!tmr });
-  latest.current = { positions, rows, cursor, view, selected, editing, open, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft, tomorrowOn: !!tmr };
+  const latest = useRef({ positions, rows, cursor, view, qm, selected, editing, open, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft, tomorrowOn: !!tmr });
+  latest.current = { positions, rows, cursor, view, qm, selected, editing, open, commands: allCommands, picker, palette, help, focusRef, deferRefs, captureOpen, budget: budget.minutes, busyTime, events, minutesLeft, tomorrowOn: !!tmr };
   const doMoveLatest = useRef(doMove); doMoveLatest.current = doMove;
   const teamRef = useRef(team); teamRef.current = team;
   const act = useRef({ doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget, notNow, delegate, setHave }); act.current = { doAct, openDefer, applyDefer, toggleDone, openPicker, applyPick, go, bulk, refNow, run, setBudget, notNow, delegate, setHave };
@@ -906,6 +906,7 @@ export function App() {
       if (k === '?') { e.preventDefault(); setHelp(true); return; }
       if (k === 'c' && L.view !== 'sessions') { e.preventDefault(); setCaptureOpen(true); return; } // Sessions uses c for costs
       if (k === '/') { e.preventDefault(); setFocusRef(null); A.go('list'); setTimeout(() => searchRef.current?.focus(), 0); return; }
+      if (L.qm) return; // the QM page has no row keys: the Now task under it is not on screen @req FR:web-shell/nav.pages.keys
       // @req FR:now-screen/now.actions: d done, n defer, Shift+A delegate, on the one task
       if (L.view === 'now') { const r = L.rows[0]?.ref; if (r && !e.metaKey && !e.ctrlKey) { if (k === 'd') { e.preventDefault(); void A.doAct('done', r); } else if (k === 'n') { e.preventDefault(); void A.notNow(r); } else if (k === 'A') { e.preventDefault(); void A.delegate(r); } else if (k === 'm') { e.preventDefault(); document.getElementById('now-msg')?.focus(); } } return; }
       if (L.view === 'asks' || L.view === 'settings' || L.view === 'inventory' || L.view === 'sessions' || L.view === 'inbox' || L.view === 'prs') return; // these views own their keys @req FR:pr-page/nav.page

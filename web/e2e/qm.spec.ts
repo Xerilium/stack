@@ -61,6 +61,7 @@ test('axe: no violations, light and dark; the page never scrolls sideways', asyn
   await open(page);
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
+    await page.waitForTimeout(200); // the shell's nav colors ease over .12 s: check the settled colors
     const { violations } = await new AxeBuilder({ page }).analyze();
     expect(violations.map((v) => v.id)).toEqual([]);
   }

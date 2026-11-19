@@ -742,3 +742,5 @@ body:not(.keyed) .main kbd:not(.always) { display: none; }
 /* A palette-only page inside the shell (the QM plan): the main region scrolls and pads it, so the rail and tab bar stay. @req FR:web-shell/nav.pages */
 .main:has(> .qm) { --measure: 1040px; }
 .main > .qm { height: auto; overflow: visible; padding: 0; background: transparent; }
+/* Desktop hides the phone brand: an empty header is no landmark at all. */
+@media (min-width: 720px) { .shell-head:not(:has(.banner)) { display: none; } }

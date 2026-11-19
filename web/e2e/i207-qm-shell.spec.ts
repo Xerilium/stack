@@ -1,6 +1,6 @@
 /**
  * The QM plan keeps the app shell: the rail on desktop, the tab bar on phones, one main landmark, one scroll container.
- * @req FR:web-shell/nav.pages @req FR:qm-plan/ui.route
+ * @req FR:web-shell/nav.pages @req FR:web-shell/nav.pages.current @req FR:web-shell/nav.pages.scroll @req FR:web-shell/nav.pages.keys @req FR:qm-plan/ui.route
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
@@ -32,19 +32,31 @@ test('the rail (desktop) or the tab bar (phone) stays, and no nav item is curren
 
 test('one scroll container: the last row scrolls clear of the phone tab bar', async ({ page }, info) => {
   await open(page);
-  const inner = await page.locator('.qm').evaluate((e) => getComputedStyle(e).overflowY);
-  expect(inner).toBe('visible');
-  const last = page.locator('.qm-table tbody tr').last();
-  await last.scrollIntoViewIfNeeded();
-  if (info.project.name === 'mobile') {
-    const row = (await last.boundingBox())!;
-    const tab = (await page.locator('.tabbar').boundingBox())!;
-    // scroll the main region to the end: the last row sits above the tab bar
-    await page.locator('.main').evaluate((m) => { m.scrollTop = m.scrollHeight; });
-    const after = (await last.boundingBox())!;
-    expect(after.y + after.height).toBeLessThanOrEqual(tab.y + 1);
-    expect(row).toBeTruthy();
-  }
+  expect(await page.locator('.qm').evaluate((e) => getComputedStyle(e).overflowY)).toBe('visible');
+  test.skip(info.project.name !== 'mobile', 'the tab bar is phone only');
+  await page.locator('.main').evaluate((m) => { m.scrollTop = m.scrollHeight; });
+  const last = (await page.locator('.qm-table tbody tr').last().boundingBox())!;
+  const tab = (await page.locator('.tabbar').boundingBox())!;
+  expect(last.y + last.height).toBeLessThanOrEqual(tab.y + 1);
+});
+
+test('row keys do nothing on the QM page; the palette still opens', async ({ page }) => {
+  const m = await mockApi(page);
+  await page.route('**/api/qm', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ plan: PLAN }) }));
+  await page.goto('/#/qm');
+  await expect(page.getByRole('heading', { name: 'QM plan' })).toBeVisible();
+  await page.locator('.qm-title').click();
+  for (const k of ['d', 'n', 'Shift+A']) await page.keyboard.press(k);
+  await page.waitForTimeout(300);
+  expect(m.calls.filter((c) => c.path.startsWith('/tasks'))).toEqual([]);
+  await page.keyboard.press(':');
+  await expect(page.getByRole('dialog')).toBeVisible();
+});
+
+test('desktop: no empty header landmark', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'desktop only');
+  await open(page);
+  await expect(page.getByRole('banner')).toHaveCount(0);
 });
 
 test('axe: no landmark or contrast issues on the QM page in the shell', async ({ page }) => {
