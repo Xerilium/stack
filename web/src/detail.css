@@ -45,7 +45,7 @@ section.today .block .what { grid-template-columns: 22px minmax(0, 1fr) auto aut
 }
 .focus-mode.fl .close { min-width: 44px; min-height: 44px; }
 @media (max-width: 800px), (hover: none) {
-  /* The chevron has its own narrow column, so the title spans the row and the actions sit under it. @req FR:task-detail-design/myday.phone.title */
+  /* The chevron has its own narrow column, so the title spans the row and the actions sit under it. @req FR:task-detail-design/myday.phone.title @req FR:task-detail-design/myday.phone.acts */
   section.today .block .what { grid-template-columns: 26px minmax(0, 1fr) auto 16px; grid-template-areas: 'tick title title chev' 'tick meta acts acts'; }
   .today .chev { align-self: center; }
 }

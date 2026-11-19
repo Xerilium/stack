@@ -23,7 +23,7 @@ async function open(page: Page) {
   return what;
 }
 
-// @req FR:task-detail-design/myday.phone.title
+// @req FR:task-detail-design/myday.phone.title @req FR:task-detail-design/myday.phone.acts
 test('on a phone the title spans the row: the actions sit under it, not beside it', async ({ page }, info) => {
   test.skip(info.project.name !== 'mobile', 'phone layout');
   const what = await open(page);
@@ -42,7 +42,7 @@ test('on a phone the title spans the row: the actions sit under it, not beside i
   expect(t.height).toBeLessThanOrEqual(66);
 });
 
-// @req FR:task-detail-design/myday.phone.title @req FR:task-detail-design/a11y.targets
+// @req FR:task-detail-design/myday.phone.acts @req FR:task-detail-design/a11y.targets
 test('on a phone the row actions keep 44 px targets and the page does not scroll sideways', async ({ page }, info) => {
   test.skip(info.project.name !== 'mobile', 'phone layout');
   const what = await open(page);
