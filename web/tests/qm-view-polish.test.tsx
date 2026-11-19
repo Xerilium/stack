@@ -54,3 +54,17 @@ describe('QM view', () => {
     expect(sum.textContent?.trim().startsWith('1')).toBe(true);
   });
 });
+
+/** @req FR:qm-plan/ui.phone */
+describe('QM view on a phone', () => {
+  it('every value cell carries its column label, and table roles are explicit so they survive the stacked layout', async () => {
+    const root = await mount();
+    const row = root.querySelector('tbody tr')!;
+    expect([...row.querySelectorAll('td')].map((c) => c.getAttribute('data-label'))).toEqual(['Agent', 'Top 5', 'Weekly tokens', 'Pre-ack min', 'Post-review min']);
+    expect(root.querySelector('table')!.getAttribute('role')).toBe('table');
+    expect(row.getAttribute('role')).toBe('row');
+    expect(row.querySelector('th')!.getAttribute('role')).toBe('rowheader');
+    expect([...row.querySelectorAll('td')].every((c) => c.getAttribute('role') === 'cell')).toBe(true);
+    expect([...root.querySelectorAll('thead th')].every((c) => c.getAttribute('role') === 'columnheader')).toBe(true);
+  });
+});

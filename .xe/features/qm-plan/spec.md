@@ -60,7 +60,8 @@ The owner needs one table so that the weekly plan is clear at a glance.
 - **FR:ui.sort** (P1): Every column header is a button that sorts by that column; a second click reverses. `aria-sort` marks the sorted column. Pending sorts last
 - **FR:ui.back** (P1): The header starts with a quiet icon button (`aria-label="Back"`, no underline) that goes to `#/now`. It has a 44 px touch target and a visible focus ring
 - **FR:ui.stamp** (P1): The header shows `As of <time>` from `asOf`
-- **FR:ui.style** (P1): Fluent 2 tokens (`docs/design-system.md`), light and dark. On a phone the table scrolls sideways in its own box; the page never does
+- **FR:ui.style** (P1): Fluent 2 tokens (`docs/design-system.md`), light and dark. The page never scrolls sideways
+- **FR:ui.phone** (P1): Under 600 px wide, each project is a stacked block: project and agent, then Top 5, then Weekly tokens, Pre-ack min and Post-review min, each with its column label. No value is off screen. The column headers stay as sort buttons in one row; only that row scrolls sideways. Table roles stay for assistive tech
 
 ## Data Model
 

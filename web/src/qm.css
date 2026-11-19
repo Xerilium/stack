@@ -34,3 +34,21 @@
 @media (prefers-reduced-motion: reduce) { .qm-chev { transition: none; } }
 .qm-tasks ol { margin: var(--fl-s-xs) 0 0; padding-left: var(--fl-s-l); min-width: 240px; }
 @media (min-width: 768px) { .qm { padding: var(--fl-s-xxxl) var(--fl-s-xxl); } }
+/* Phone: each project is a stacked block (project and agent, Top 5, then the three numbers with their labels). Only the sort row scrolls sideways. The label is visual only (empty alt text): the column header names the cell for assistive tech. @req FR:qm-plan/ui.phone */
+@media (max-width: 599px) {
+  .qm-scroll { overflow-x: visible; }
+  .qm-table, .qm-table thead, .qm-table tbody { display: block; min-width: 0; }
+  .qm-table thead tr { display: flex; overflow-x: auto; background: var(--fl-bg2); border-bottom: 1px solid var(--fl-stroke2); border-radius: var(--fl-r-xl) var(--fl-r-xl) 0 0; }
+  .qm-table thead th { flex: none; border-bottom: 0; }
+  .qm-table tbody tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--fl-s-xs) var(--fl-s-m); padding: var(--fl-s-m); border-bottom: 1px solid var(--fl-stroke2); }
+  .qm-table tbody tr:last-child { border-bottom: 0; }
+  .qm-table tbody th, .qm-table tbody td { display: block; padding: 0; border-bottom: 0; text-align: left; min-width: 0; overflow-wrap: anywhere; }
+  .qm-table tbody th { grid-column: 1 / 3; }
+  .qm-table tbody td.num { text-align: left; }
+  .qm-table tbody td.qm-agent { grid-column: 3; text-align: right; }
+  .qm-table tbody td.qm-tasks { grid-column: 1 / -1; display: flex; align-items: baseline; gap: var(--fl-s-s); }
+  .qm-tasks details { flex: 1; min-width: 0; }
+  .qm-table tbody td[data-label]:not(.qm-agent)::before { content: attr(data-label); content: attr(data-label) / ""; display: block; color: var(--fl-fg2); font-size: var(--fl-caption); line-height: var(--fl-caption-lh); }
+  .qm-table tbody td.qm-tasks::before { flex: none; }
+  .qm-tasks ol { min-width: 0; }
+}

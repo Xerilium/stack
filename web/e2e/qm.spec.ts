@@ -67,3 +67,18 @@ test('axe: no violations, light and dark; the page never scrolls sideways', asyn
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   if (isMobile) for (const b of await page.locator('.qm button, .qm summary, .qm-back').all()) { const r = await b.boundingBox(); if (r) expect(r.height).toBeGreaterThanOrEqual(44); }
 });
+
+/** @req FR:qm-plan/ui.phone */
+test('phone: each project is a stacked block; every value and its label show with no sideways scroll', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'phone layout only');
+  await open(page);
+  const box = page.locator('.qm-scroll');
+  expect(await box.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+  const row = page.getByRole('row', { name: /Stack/ });
+  for (const name of ['stack-architect', '2.0M', '10', '30']) await expect(row.getByRole('cell', { name })).toBeInViewport({ ratio: 1 });
+  const tokens = row.locator('td.qm-tokens');
+  expect(await tokens.evaluate((e) => getComputedStyle(e, '::before').content)).toContain('Weekly tokens');
+  // The headers stay as sort buttons.
+  await page.getByRole('button', { name: 'Weekly tokens' }).click();
+  await expect(page.getByRole('columnheader', { name: 'Weekly tokens' })).toHaveAttribute('aria-sort', 'ascending');
+});
