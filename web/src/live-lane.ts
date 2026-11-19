@@ -1,5 +1,5 @@
 /**
- * The live validation checklist: types, labels, and the small API client for `/live`.
+ * The live validation checklist: types and labels. Reads and writes go through the shared client (`createClient().live()`, `liveItem()`).
  * @req FR:pr-review-lane/panel.chip @req FR:pr-review-lane/panel.check
  */
 export type LaneState = 'idle' | 'preparing' | 'working' | 'ready-for-michael' | 'revalidating';
@@ -22,17 +22,3 @@ export const newerLane = (prev: Lane | null, next: Lane): Lane => (prev && next.
 
 /** Who added an item, for the row. */
 export const byWord = (by: string): string => (by === 'owner' ? 'you' : by);
-
-export function liveClient(fetchFn: typeof fetch = (...a) => fetch(...a), base = '/api') {
-  async function call<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetchFn(`${base}${path}`, body === undefined ? { credentials: 'same-origin' } : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), credentials: 'same-origin' });
-    const t = await res.text();
-    const j = t ? JSON.parse(t) : undefined;
-    if (!res.ok) throw new Error((j as { error?: { message?: string } } | undefined)?.error?.message ?? `HTTP ${res.status}`);
-    return j as T;
-  }
-  return {
-    lane: () => call<Lane>('/live'),
-    item: (pr: { repo: string; number: number }, op: ItemOp, o: { id?: string; text?: string } = {}) => call<{ changed: boolean; item: LiveItem }>('/live/items', { op, repo: pr.repo, number: pr.number, ...o }),
-  };
-}

@@ -5,12 +5,11 @@
  * @req FR:pr-review-lane/panel.fix @req FR:pr-review-lane/panel.add @req FR:pr-review-lane/panel.refresh @req FR:pr-review-lane/panel.a11y
  */
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { byWord, CHIP, ITEM_WORD, liveClient, newerLane, toggleOp, type Lane, type LiveItem } from './live-lane';
+import { createClient } from './api';
+import { byWord, CHIP, ITEM_WORD, newerLane, toggleOp, type ItemOp, type Lane, type LiveItem } from './live-lane';
 import './live-lane.css';
 
-type Client = ReturnType<typeof liveClient>;
-
-function Item({ item, busy, run }: { item: LiveItem; busy: boolean; run: (op: Parameters<Client['item']>[1], o?: { id?: string; text?: string }) => Promise<boolean> }) {
+function Item({ item, busy, run }: { item: LiveItem; busy: boolean; run: (op: ItemOp, o?: { id?: string; text?: string }) => Promise<boolean> }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState(item.comment ?? '');
   const timer = useRef<number | undefined>(undefined);
@@ -55,14 +54,14 @@ function Item({ item, busy, run }: { item: LiveItem; busy: boolean; run: (op: Pa
 }
 
 export function LivePanel({ fetchFn }: { fetchFn?: typeof fetch } = {}) {
-  const [api] = useState(() => liveClient(fetchFn));
+  const [api] = useState(() => createClient(fetchFn));
   const [lane, setLane] = useState<Lane | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [add, setAdd] = useState('');
 
   const load = useCallback(async () => {
-    try { const next = await api.lane(); setLane((prev) => newerLane(prev, next)); setError(''); } catch (e) { setError(e instanceof Error ? e.message : 'Could not load the live lane'); }
+    try { const next = await api.live(); setLane((prev) => newerLane(prev, next)); setError(''); } catch (e) { setError(e instanceof Error ? e.message : 'Could not load the live lane'); }
   }, [api]);
   // Reload every 15 s while visible. @req FR:pr-review-lane/panel.refresh
   useEffect(() => {
@@ -71,10 +70,10 @@ export function LivePanel({ fetchFn }: { fetchFn?: typeof fetch } = {}) {
     return () => window.clearInterval(t);
   }, [load]);
 
-  const run = async (op: Parameters<Client['item']>[1], o: { id?: string; text?: string } = {}): Promise<boolean> => {
+  const run = async (op: ItemOp, o: { id?: string; text?: string } = {}): Promise<boolean> => {
     if (!lane?.active) return false;
     setBusy(true);
-    try { await api.item(lane.active, op, o); await load(); return true; } catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); return false; } finally { setBusy(false); }
+    try { await api.liveItem(lane.active, op, o); await load(); return true; } catch (e) { setError(e instanceof Error ? e.message : 'Action failed'); return false; } finally { setBusy(false); }
   };
 
   const a = lane?.active;
