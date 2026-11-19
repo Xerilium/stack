@@ -2,7 +2,7 @@
  * `#/qm`: the weekly QM plan as one plain, sortable table. Read only; agents write it with `stack qm put`.
  * @req FR:qm-plan/ui.route @req FR:qm-plan/ui.table @req FR:qm-plan/ui.sort @req FR:qm-plan/ui.stamp @req FR:qm-plan/ui.style @req FR:qm-plan/live.reload
  */
-import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { connectLive } from './live';
 import { COLS, loadQm, numText, sortRows, type Dir, type QmCol, type QmPlan } from './qm';
 import './qm.css';
@@ -20,7 +20,12 @@ export function QmView({ fetchFn, live = hostLive }: { fetchFn?: typeof fetch; l
   const [broken, setBroken] = useState(false);
   const [error, setError] = useState('');
   const [sort, setSort] = useState<{ col: QmCol; dir: Dir }>({ col: 'project', dir: 'asc' });
-  const load = useCallback(() => { loadQm(fetchFn).then((r) => { setPlan(r.plan); setBroken(!!r.broken); setError(''); }, (e: unknown) => setError(e instanceof Error ? e.message : 'Cannot load the plan')); }, [fetchFn]);
+  // Reads can overlap (a change during a slow read): only the newest one shows.
+  const seq = useRef(0);
+  const load = useCallback(() => {
+    const n = ++seq.current;
+    loadQm(fetchFn).then((r) => { if (n !== seq.current) return; setPlan(r.plan); setBroken(!!r.broken); setError(''); }, (e: unknown) => { if (n === seq.current) setError(e instanceof Error ? e.message : 'Cannot load the plan'); });
+  }, [fetchFn]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => live((kinds) => { if (kinds.some((k) => RELOAD.has(k))) load(); }), [live, load]);
   const by = (col: QmCol) => setSort((s) => ({ col, dir: s.col === col && s.dir === 'asc' ? 'desc' : 'asc' }));

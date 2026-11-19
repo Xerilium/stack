@@ -302,7 +302,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const laneHome = o.laneHome ?? stackHome();
   const live = new LiveStore(laneHome);
   const offLive = live.onWrite(() => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['tasks', 'live'] }); });
-  // qm-plan.json is outside the repo too; agents write it from the CLI. One change per write: skip the poll for this host's own write. @req FR:qm-plan/live.event
+  // qm-plan.json is outside the repo too; agents write it from the CLI. One change per write: skip the poll for this host's own write. @req FR:qm-plan/live.event @req FR:qm-plan/live.event.stop
   const qm = o.qm ?? new QmStore(stackHome());
   const tellQm = () => { for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['qm'] }); };
   const offQm = qm.onWrite(() => { own.set(qm.file, mtime(qm.file)); tellQm(); });

@@ -42,6 +42,20 @@ describe('QmView live reload', () => {
     expect(m.loads()).toBe(3);
   });
 
+  it('shows only the newest read when reads overlap', async () => {
+    const replies: ((name: string) => void)[] = [];
+    const fetchFn = (() => new Promise<Response>((ok) => replies.push((name) => ok(new Response(JSON.stringify(plan(name)), { status: 200 }))))) as unknown as typeof fetch;
+    let emit: (kinds: string[]) => void = () => undefined;
+    root = document.createElement('div'); document.body.append(root);
+    const r = root; act(() => render(<QmView fetchFn={fetchFn} live={(fn) => { emit = fn; return () => undefined; }} />, r));
+    act(() => emit(['qm']));
+    expect(replies).toHaveLength(2);
+    replies[1]('Newer'); await flush();
+    replies[0]('Older'); await flush();
+    expect(r.textContent).toContain('Newer');
+    expect(r.textContent).not.toContain('Older');
+  });
+
   it('stops listening when the page closes', async () => {
     const m = mount(); await flush();
     act(() => render(null, m.root));

@@ -47,8 +47,9 @@ An agent needs a CLI with no server so that it can read and write the plan.
 
 The owner needs the open page to show the plan an agent just wrote so that the plan is never old.
 
-- **FR:live.event** (P1): The web host sends the change event `{kinds: ['qm']}` once after each plan write: a write by the host (`QmStore.onWrite`) or by another process such as `stack qm put` (`QmStore.watch` polls the file mtime). Host shutdown stops the watch
-- **FR:live.reload** (P1): The `#/qm` page reads the plan again on a `qm` change, on a full refresh (stream reconnect), and on each poll when the host has no event stream
+- **FR:live.event** (P1): The web host sends the change event `{kinds: ['qm']}` once after each plan write, by the host or by another process such as `stack qm put` (it polls the file mtime)
+- **FR:live.event.stop** (P1): Host shutdown stops the file poll
+- **FR:live.reload** (P1): The `#/qm` page reads the plan again on a `qm` change, on a full refresh (stream reconnect), and on each poll when the host has no event stream. Only the newest read shows
 
 ### FR:ui: Page
 

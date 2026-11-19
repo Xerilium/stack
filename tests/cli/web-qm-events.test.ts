@@ -43,7 +43,7 @@ async function host() {
 }
 
 describe('startWeb QM plan', () => {
-  // @req FR:qm-plan/live.event
+  // @req FR:qm-plan/live.event @req FR:qm-plan/live.event.stop
   it('a CLI-style write (another process) sends one qm change; close() stops the watch', async () => {
     const h = await host();
     try {
