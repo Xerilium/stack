@@ -103,6 +103,22 @@ The owner needs a failed load to say what happened so that the owner can fix it 
 - **FR:error** (P1): `ErrorState` is a `role="alert"` block that shows what happened (`what`) and an optional next step (`next`)
 - **FR:error.retry** (P1): With `onRetry`, `ErrorState` shows a `Retry` button that calls `onRetry`
 
+### FR:dialog: Dialog
+
+Owner needs every dialog to open, trap focus and close the same way so that the keyboard works the same in each one.
+
+- **FR:dialog** (P1): `Dialog` MUST show a titled modal box over a scrim (`role="dialog"`, `aria-modal`, named by `title`)
+  - **FR:dialog.focus** (P1): `Dialog` MUST keep Tab inside the box and return focus to the opener on close
+  - **FR:dialog.close** (P1): `Dialog` MUST close on Escape and on a tap on the scrim
+  - **FR:dialog.sheet** (P3): `Dialog` MUST be a bottom sheet on a phone unless `sheet` is false
+
+### FR:toasts: Toasts
+
+Owner needs the result of each action in one place so that he sees it and can undo it.
+
+- **FR:toasts** (P1): `Toasts` MUST show every toast in one polite live region
+  - **FR:toasts.actions** (P2): `Toasts` MUST give each toast Dismiss, and Undo when the toast has one
+
 ### FR:a11y: Access
 
 - **FR:a11y** (P1): Every target is at least 44 px on touch and 24 px on desktop. Axe finds no serious or critical violation where a view uses them
