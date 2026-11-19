@@ -12,14 +12,14 @@ export type ErrorCode = (typeof ERROR_CODES)[number];
 /** Every code the API can return; the OpenAPI error enum is generated from this. */
 export const ERROR_CODES = [
   'bad_request', 'unauthorized', 'forbidden', 'not_found', 'method_not_allowed', 'conflict',
-  'payload_too_large', 'unsupported_media_type', 'invalid', 'internal',
+  'payload_too_large', 'unsupported_media_type', 'invalid', 'internal', 'bad_gateway', 'unavailable',
 ] as const;
 
 export interface Issue { field: string; message: string }
 
 export const STATUS: Record<ErrorCode, number> = {
   bad_request: 400, unauthorized: 401, forbidden: 403, not_found: 404, method_not_allowed: 405, conflict: 409,
-  payload_too_large: 413, unsupported_media_type: 415, invalid: 422, internal: 500,
+  payload_too_large: 413, unsupported_media_type: 415, invalid: 422, internal: 500, bad_gateway: 502, unavailable: 503,
 };
 
 /** @req FR:api/errors.codes */

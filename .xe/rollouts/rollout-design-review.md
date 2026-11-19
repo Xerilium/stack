@@ -11,7 +11,7 @@ execution_mode: autonomous
 - **Model**: Feedback panel gets a `Design review` button; host route captures, calls OpenAI Responses, files a gh issue.
 - **Decisions**: OpenAI API key as the ChatGPT connection — rejected scripting chatgpt.com (brittle, terms).
 - **Open**: None
-- **Next**: Write failing tests (core, api, web), then code.
+- **Next**: PR review loop.
 - **Pins**: `src/core/feedback.ts` — capture hook and redaction; `src/inbox/request.ts` — gh issue filer
 - **Assumptions**: `gh` is signed in on the owner's machine.
 
@@ -23,10 +23,10 @@ Issue 170: one-click design review of each page by ChatGPT, filed as a GitHub is
 
 #### design-review
 
-- [ ] Spec
-- [ ] Tests: `tests/core/design-review.test.ts`, `tests/api/design-review.test.ts`, `web/tests/design-review.test.ts`
-- [ ] Code: `src/core/page-goals.ts`, `src/core/design-review.ts`, route, OpenAPI, web host wiring, panel button
-- [ ] Docs: `docs/design-review.md`
+- [x] Spec
+- [x] Tests: `tests/core/design-review.test.ts`, `tests/api/design-review.test.ts`, `web/tests/design-review.test.ts`
+- [x] Code: `src/core/page-goals.ts`, `src/core/design-review.ts`, route, OpenAPI, web host wiring, panel button
+- [x] Docs: `docs/design-review.md`
 
 ## Notes
 

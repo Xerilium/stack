@@ -16,7 +16,7 @@ afterEach(() => setPageCapture(undefined));
 describe('page goals', () => {
   // @req FR:design-review/goals.file @req FR:design-review/goals.file.pages @req FR:design-review/goals.file.entry
   it('lists every page with a name and 2 to 5 goals', () => {
-    expect([...PAGE_IDS].sort()).toEqual(['asks', 'home', 'inbox', 'list', 'now', 'prs', 'projects', 'qm', 'sessions', 'settings', 'today']);
+    expect([...PAGE_IDS].sort()).toEqual(['asks', 'home', 'inbox', 'list', 'now', 'projects', 'prs', 'qm', 'sessions', 'settings', 'today']);
     for (const id of PAGE_IDS) {
       expect(PAGE_GOALS[id].name.length).toBeGreaterThan(0);
       expect(PAGE_GOALS[id].goals.length).toBeGreaterThanOrEqual(2);

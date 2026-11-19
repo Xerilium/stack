@@ -12,6 +12,7 @@ import { parseProject, type Project, type Task } from '../core/parser';
 import { captureTask, CaptureError } from '../core/quick-capture';
 import type { QmStore } from '../core/qm-plan';
 import { FeedbackError, MAX_TEXT as FEEDBACK_MAX_TEXT, type FeedbackStore } from '../core/feedback';
+import { DesignReviewError, type DesignReview } from '../core/design-review';
 import { applyTriage, authorizeEdit, authorizeMutation, claimTask, OUTCOMES, recordResult, TriageDenied, type ResultInput, type Suggestion } from '../core/triage';
 import type { AuxFiles, Storage } from '../core/storage';
 import { agentActivity, type PrStatusProvider } from '../core/activity';
@@ -111,6 +112,8 @@ export interface ApiDeps {
   app?: AppUpdater;
   /** The owner feedback store (~/.stack/feedback.jsonl); absent means POST /feedback is 404. @req FR:feedback-button/api.route */
   feedback?: FeedbackStore;
+  /** ChatGPT design review of a page, filed as an issue; absent means POST /design-review is 404. @req FR:design-review/api.absent */
+  designReview?: DesignReview;
   /** The weekly QM plan (~/.stack/qm-plan.json); absent means GET /qm is 404. @req FR:qm-plan/api.get */
   qm?: QmStore;
   /** Called with unexpected errors (they are never sent to the caller). */
@@ -178,6 +181,11 @@ const FEEDBACK_BODY = {
     capture: { t: 'bool' }, png: { t: 'str', max: 1_000_000, pattern: /^[A-Za-z0-9+/]+={0,2}$/ },
   } satisfies Record<string, Spec>,
   required: ['text'],
+};
+/** Same field rules as feedback, with the route required and no text. @req FR:design-review/api.route */
+const DESIGN_REVIEW_BODY = {
+  schema: { route: { ...FEEDBACK_BODY.schema.route, required: true }, viewport: FEEDBACK_BODY.schema.viewport, theme: FEEDBACK_BODY.schema.theme, capture: FEEDBACK_BODY.schema.capture, png: FEEDBACK_BODY.schema.png } satisfies Record<string, Spec>,
+  required: ['route'],
 };
 const CAPTURE_BODY = {
   schema: {
@@ -656,6 +664,29 @@ export const ROUTES: Route[] = [
       } catch (e) {
         if (e instanceof FeedbackError && e.code === 'invalid') throw invalid([{ field: /screenshot/.test(e.message) ? 'png' : 'text', message: e.message }]);
         if (e instanceof FeedbackError && e.code === 'busy') throw new ApiError('conflict', e.message);
+        throw e;
+      }
+    },
+  },
+  {
+    // One click per page: screenshot and goals to ChatGPT, reply filed as an issue. @req FR:design-review/api.route
+    method: 'POST', doc: '/design-review', name: 'designReview', body: DESIGN_REVIEW_BODY,
+    async run(c) {
+      noQuery(c);
+      // @req FR:design-review/api.owner
+      ownerOnly(c, 'Only the owner can run a design review');
+      // @req FR:design-review/api.absent
+      if (!c.deps.designReview) throw new ApiError('not_found', 'No design review on this host');
+      const b = validate<{ route: string; viewport?: string; theme?: 'light' | 'dark'; capture?: boolean; png?: string }>(await readBody(c.req, 1_000_000), DESIGN_REVIEW_BODY.schema, DESIGN_REVIEW_BODY.required);
+      try {
+        return json(201, await c.deps.designReview.run({ route: b.route, viewport: b.viewport, theme: b.theme, capture: b.capture, png: b.png ? Buffer.from(b.png, 'base64') : undefined }));
+      } catch (e) {
+        // @req FR:design-review/api.page @req FR:design-review/api.shot @req FR:design-review/api.down @req FR:design-review/api.down.issue
+        if (e instanceof DesignReviewError) {
+          if (e.code === 'page') throw invalid([{ field: 'route', message: e.message }]);
+          if (e.code === 'shot') throw invalid([{ field: 'png', message: e.message }]);
+          throw new ApiError(e.code === 'issue' ? 'bad_gateway' : 'unavailable', e.message);
+        }
         throw e;
       }
     },

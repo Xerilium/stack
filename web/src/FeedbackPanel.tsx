@@ -1,10 +1,13 @@
-/** The feedback icon and its panel: text, optional screenshot, Send. @req FR:feedback-button/ui.icon @req FR:feedback-button/ui.panel */
+/**
+ * The feedback icon and its panel: text, optional screenshot, Send, and Design review.
+ * @req FR:feedback-button/ui.icon @req FR:feedback-button/ui.panel @req FR:design-review/ui.button
+ */
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { Client } from './api';
 import { isDesktopApp, pageContext, startShot } from './feedback';
 import './feedback.css';
 
-type Phase = 'closed' | 'open' | 'sending' | 'sent';
+type Phase = 'closed' | 'open' | 'sending' | 'sent' | 'filed';
 /** The host's open function; the icons call it. */
 let openFn: ((from: HTMLElement | null) => void) | undefined;
 let active = false;
@@ -57,6 +60,7 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
   const [shot, setShot] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
+  const [filed, setFiled] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => { ref.current?.querySelector<HTMLElement>('textarea')?.focus(); }, []);
   useEffect(() => { if (phase !== 'sent') return; const t = setTimeout(onClose, 1200); return () => clearTimeout(t); }, [phase]);
@@ -83,6 +87,32 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
     }
   };
 
+  /** One click: capture this page, send it with its goals to ChatGPT, show the issue link. @req FR:design-review/ui.shot @req FR:design-review/ui.result */
+  const review = async () => {
+    if (phase === 'sending') return;
+    setError(null);
+    setPhase('sending');
+    const desktop = isDesktopApp();
+    const grab = desktop ? null : await startShot();
+    const fail = (m: string) => { setHidden(false); setError(m); setPhase('open'); };
+    // @req FR:design-review/ui.no-shot
+    if (!desktop && !grab) return fail('A screenshot is needed');
+    setHidden(true);
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
+    const png = grab ? await grab() : null;
+    if (!desktop && !png) return fail('A screenshot is needed');
+    try {
+      const ctx = pageContext();
+      const r = await api.designReview({ ...ctx, route: ctx.route ?? '/', ...(desktop ? { capture: true } : {}), ...(png ? { png } : {}) });
+      setHidden(false);
+      setFiled(r.url);
+      setPhase('filed');
+    } catch (e) {
+      // @req FR:design-review/ui.result.error
+      fail(e instanceof Error ? e.message : 'Could not run the review');
+    }
+  };
+
   if (hidden) return null;
   return (
     <div class="scrim fb-scrim" onClick={phase === 'sending' ? undefined : onClose}>
@@ -91,7 +121,7 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
           if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (phase !== 'sending') onClose(); return; }
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); return; }
           if (e.key === 'Tab') {
-            const els = [...ref.current!.querySelectorAll<HTMLElement>('textarea, input, button')].filter((x) => !(x as HTMLButtonElement).disabled);
+            const els = [...ref.current!.querySelectorAll<HTMLElement>('textarea, input, button, a[href]')].filter((x) => !(x as HTMLButtonElement).disabled);
             if (!els.length) return;
             const i = els.indexOf(document.activeElement as HTMLElement);
             e.preventDefault();
@@ -100,6 +130,8 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
         }}>
         {phase === 'sent'
           ? <p class="fb-sent" role="status" tabIndex={-1}>Sent</p>
+          : phase === 'filed' && filed
+          ? <p class="fb-sent" role="status">Filed: <a href={filed} target="_blank" rel="noopener noreferrer">{filed.replace(/^https:\/\/github\.com\//, '')}</a></p>
           : (
             <>
               <h2 class="dialog-title">Send feedback</h2>
@@ -108,6 +140,8 @@ function Panel({ api, phase, setPhase, onClose }: { api: Client; phase: Phase; s
               <label class="fb-shot"><input type="checkbox" checked={shot} disabled={phase === 'sending'} onChange={(e) => setShot((e.target as HTMLInputElement).checked)} />Include a screenshot of this page</label>
               {error && <p class="fb-err" role="alert">{error}</p>}
               <div class="fb-actions">
+                {/* No text needed: only sending turns it off. @req FR:design-review/ui.button.text */}
+                <button type="button" class="btn" disabled={phase === 'sending'} title="Send this page and its goals to ChatGPT and file the reply as a GitHub issue" onClick={() => void review()}>Design review</button>
                 <button type="button" class="btn primary" disabled={!text.trim() || phase === 'sending'} onClick={() => void send()}>{phase === 'sending' ? 'Sending…' : 'Send'}</button>
               </div>
             </>
