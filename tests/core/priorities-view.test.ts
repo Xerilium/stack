@@ -121,6 +121,11 @@ describe('QM', () => {
     expect(v.qm?.rows.map((r) => [r.project, r.action, r.agent?.name ?? null])).toEqual([['catalyst', 'Approve the QM 5', null], ['stack', 'QM 3pm final calls on plan PR 119', 'qm-planner']]);
     expect(v.now.rows.map((r) => [r.id, r.action])).toEqual([['stack', 'Ship v2'], ['catalyst', gapText('CoS', 'today', 'tasks/<project>.md')]]);
   });
+  // @req FR:priorities-tables/rows.gap.by @req FR:priorities-tables/qm.later
+  it('a QM gap row says by when QM opens', () => {
+    const v = view([qm({ windows: [{ from: '15:00' }] })]);
+    expect(v.qm?.rows.map((r) => [r.gap, r.action])).toEqual([[true, gapText('CoS', 'by 3 PM', 'tasks/<project>.md')]]);
+  });
   // @req FR:priorities-tables/qm.off @req FR:priorities-tables/qm.today
   it('says Not a priority today on an off day', () => {
     const thu = new Date('2026-11-19T19:00:00Z');

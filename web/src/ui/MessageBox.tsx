@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import './ui.css';
 
 /** The longest text a session prompt takes (`FR:agent-sessions/run.prompt`). */
@@ -25,14 +25,16 @@ export function MessageBox({ heading, to, send = 'Send', text: start = '', off, 
   const [text, setText] = useState(start);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; bad: boolean } | null>(null);
+  /** A send in flight: a ref, so a second submit in the same frame cannot send twice. */
+  const sending = useRef(false);
   const submit = async (e: Event) => {
     e.preventDefault();
     const t = text.trim();
-    if (!t || busy || off) return;
-    setBusy(true); setNote(null);
+    if (!t || sending.current || off) return;
+    sending.current = true; setBusy(true); setNote(null);
     try { await onSend(t); setText(''); setNote({ text: `Sent to ${to}`, bad: false }); }
     catch (err) { setNote({ text: err instanceof Error && err.message ? err.message : 'Not sent', bad: true }); }
-    finally { setBusy(false); }
+    finally { sending.current = false; setBusy(false); }
   };
   return (
     <div class="ui-msg" role="group" aria-label={heading}>

@@ -140,7 +140,7 @@ export function PrioritiesTables({ v, send }: { v: PrioritiesView; /** Sends a m
         )))}
     </ul>
   );
-  const detail = at === null ? null : s.key === 'prs' ? <PrDetail key={s.t.rows[at].url} r={s.t.rows[at]} send={send} /> : <PriDetail key={`${cur}:${at}:${s.t.rows[at].id}`} r={s.t.rows[at]} tz={v.timeZone} send={send} />;
+  const detail = at === null ? null : s.key === 'prs' ? <PrDetail key={s.t.rows[at].url} r={s.t.rows[at]} send={send} /> : <PriDetail key={`${cur}:${s.t.rows[at].id}:${s.t.rows[at].ref ?? s.t.rows[at].project}`} r={s.t.rows[at]} tz={v.timeZone} send={send} />;
   return (
     <section class="pri-tables fl" aria-label="Priorities" data-testid="pri-tables">
       <div class="pri-head">

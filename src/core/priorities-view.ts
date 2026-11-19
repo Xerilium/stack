@@ -148,7 +148,7 @@ export function prioritiesView(input: ViewInput): PrioritiesView {
     const cos = agentOf(p.cos ?? COS, s);
     const by = when ? `by ${when.replace(/: $/, '')}` : 'today';
     return {
-      id: p.id, project, file, agent: null, more: 0, status: null, action: `${cos.name}, ${by}: ${gapTask(file)}`, gap: true, cos,
+      id: p.id, project, file, agent: null, more: 0, status: null, action: cut(`${cos.name}, ${by}: ${gapTask(file)}`), gap: true, cos,
       request: `Priority "${project}" has no tiered task. ${gapTask(file).replace(/^a/, 'A')} ${by}.`, ref: null, ...stamp(now, s ? [Date.parse(sessions!.at)] : []),
     };
   };
