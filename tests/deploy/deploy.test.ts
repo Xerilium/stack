@@ -70,7 +70,7 @@ describe('bicep build', () => {
   });
 });
 
-// @req FR:deploy-docs/ci.valid @req FR:deploy-docs/ci.deploy @req FR:deploy-docs/ci.e2e
+// @req FR:deploy-docs/ci.valid @req FR:deploy-docs/ci.deploy @req FR:deploy-docs/ci.e2e @req FR:deploy-docs/ci.coverage
 describe('workflows', () => {
   const dir = join(root, '.github/workflows');
   const docs = readdirSync(dir).map((f) => [f, parse(read(`.github/workflows/${f}`))] as const);
@@ -98,6 +98,18 @@ describe('workflows', () => {
       expect(d.permissions).toEqual({ contents: "read" });
       for (const m of read(`.github/workflows/${f}`).matchAll(/\buses:\s*(\S+)/g)) expect(m[1]).toMatch(/@[0-9a-f]{40}$/);
     }
+  });
+  it('the test job enforces the core coverage threshold', () => {
+    const steps = parse(read('.github/workflows/ci.yml')).jobs.test.steps as Array<{ run?: string; if?: string; with?: { name?: string; path?: string } }>;
+    expect(steps.map((s) => s.run)).toContain('pnpm test:coverage');
+    expect(steps.map((s) => s.run)).not.toContain('pnpm test');
+    expect(JSON.parse(read('package.json')).scripts['test:coverage']).toMatch(/jest --coverage/);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const cfg = require(join(root, 'jest.config.js')) as { coverageThreshold: Record<string, Record<string, number>> };
+    expect(cfg.coverageThreshold['./src/core/']).toEqual({ statements: 90, lines: 90, functions: 90, branches: 85 });
+    const up = steps.find((s) => s.with?.name === 'coverage');
+    expect(up?.if).toBe('failure()');
+    expect(up?.with?.path).toBe('coverage');
   });
   it('e2e runs Playwright on pull requests and guards on web/', () => {
     const text = read('.github/workflows/e2e.yml');
