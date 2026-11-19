@@ -37,6 +37,8 @@ This feature ships the nav and page split of `FR:product-reset/ia.nav` and `FR:p
 
 - **FR:pris.route** (P1): `#/priorities` opens the page, heading `Priorities`, with the Priorities block of `FR:pris-sessions-ui/pris.block`. Its behavior does not change (expand, inline edit, save, conflict, live re-read). The palette says `Go to Priorities`
 
+- **FR:pris.states** (P1): While its data loads, the Priorities or Sessions page says `Loading priorities…` or `Loading sessions…`. A failed read says `Cannot load priorities.` (or sessions) and that it tries again by itself. A host without the store says `Priorities are not on this host.` (or Sessions)
+
 ### FR:sessions: Sessions in More
 
 - **FR:sessions.route** (P1): `#/inventory` opens the Sessions page, heading `Sessions`, with the Sessions and Archive candidates lists of `FR:pris-sessions-ui/sessions.*`. Their behavior does not change. The Agents view keeps `#/agents`, and its old address `#/sessions` still opens Agents

@@ -139,7 +139,7 @@ export interface ChipView { text: string; tone: 'muted' | 'ok' | 'warn' | 'accen
 /** What the row's agent chip says: a live session first, then a review, then the agent. @req FR:agent-team/web.chip */
 export function chipFor(o: { agent?: TeamAgent; review?: ReviewItem; session?: SessionItem; reviewing?: boolean; /** The task's agents in order; the title lists the chain. @req FR:agent-team/web.chip.title */ chain?: TeamAgent[] }): ChipView {
   if (o.reviewing) return { text: 'Reviewing…', tone: 'accent', title: `${o.agent?.name ?? 'Agent'} is reviewing this task`, state: true };
-  if (o.session?.state === 'needs-you') return { text: 'Needs you', tone: 'warn', title: `${o.session.title}: waiting for a permission. Answer in Asks`, state: true };
+  if (o.session?.state === 'needs-you') return { text: 'Needs you', tone: 'warn', title: `${o.session.title}: waiting for a permission. Answer in Notifications`, state: true };
   if (o.session?.state === 'running') return { text: 'Working', tone: 'accent', title: o.session.title, state: true };
   if (o.review) {
     // A verdict is state the owner must read: partial with needs is a warning, otherwise it reads as done.

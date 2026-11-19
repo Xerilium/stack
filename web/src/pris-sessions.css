@@ -69,3 +69,4 @@ a.session-row:hover { background: var(--hover); }
 .page-view { max-width: 720px; }
 .sessions-empty { margin: 8px 0; color: var(--muted); }
 .nav-bell { flex: none; }
+.page-note { margin: 8px 0; color: var(--muted); }

@@ -272,7 +272,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
   return (
     <section class={`asks-view${offline ? ' offline' : ''}`} aria-label="Notifications">
       <header class="asks-head">
-        <h1 class="h1">Notifications{asks.total > 0 && <span class="count" aria-label={`${asks.total} open`}>{asks.total}</span>}</h1>
+        <h1 class="h1">Notifications{asks.total + (signin ? 1 : 0) > 0 && <span class="count" aria-label={`${asks.total + (signin ? 1 : 0)} open`}>{asks.total + (signin ? 1 : 0)}</span>}</h1>
         <LiveBadge a={asks} unreachable={unreachable} onSignIn={onSignIn} />
         {notify?.supported && (
           <button type="button" class={`notify-btn${notify.on ? ' on' : ''}${notify.blocked && !notify.on ? ' blocked' : ''}`} aria-pressed={notify.on} aria-label={notify.blocked && !notify.on ? 'Notifications blocked' : notify.on ? 'Notifications on' : 'Notify me'} title={notify.blocked && !notify.on ? blockedHelp() : notify.on ? 'Notifications are on: tap to turn off' : 'Get a notification when an agent needs you'} onClick={notify.toggle}>

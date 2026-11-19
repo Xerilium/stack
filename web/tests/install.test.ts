@@ -6,10 +6,10 @@ import { createInstall } from '../src/install';
 const manifest = JSON.parse(readFileSync(new URL('../public/manifest.webmanifest', import.meta.url), 'utf8'));
 
 describe('manifest', () => {
-  it('lists shortcuts for Needs you and My day', () => {
+  it('lists shortcuts for Notifications and My day', () => {
     const urls = manifest.shortcuts.map((s: { url: string }) => s.url);
-    expect(urls).toEqual(['/#/asks', '/#/today']);
-    expect(manifest.shortcuts.map((s: { name: string }) => s.name)).toEqual(['Needs you', 'My day']);
+    expect(urls).toEqual(['/#/notifications', '/#/today']);
+    expect(manifest.shortcuts.map((s: { name: string }) => s.name)).toEqual(['Notifications', 'My day']);
     for (const s of manifest.shortcuts) expect(s.icons[0].src).toBe('/icons/icon-192.png');
     expect(manifest.categories).toContain('productivity');
   });

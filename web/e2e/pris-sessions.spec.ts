@@ -168,8 +168,10 @@ test.describe('Priorities', () => {
   test('a host with no store shows no Priorities and no Sessions', async ({ page }) => {
     await open(page, { pris: null, inventory: false });
     await expect(block(page)).toHaveCount(0);
+    await expect(page.getByTestId('page-note')).toHaveText('Priorities are not on this host.'); // @req FR:notifications/pris.states
     await open(page, { pris: null, inventory: false }, 'inventory');
     await expect(page.getByTestId('sessions')).toHaveCount(0);
+    await expect(page.getByTestId('page-note')).toHaveText('Sessions are not on this host.');
     await expect(page.getByTestId('sessions-empty')).toHaveCount(0);
   });
 

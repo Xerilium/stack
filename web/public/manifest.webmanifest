@@ -39,8 +39,8 @@
   ],
   "shortcuts": [
     {
-      "name": "Needs you",
-      "url": "/#/asks",
+      "name": "Notifications",
+      "url": "/#/notifications",
       "icons": [
         {
           "src": "/icons/icon-192.png",

@@ -110,6 +110,17 @@ function PriRow({ pri, n, ids, open, onToggle, ctl }: { pri: Pri; n: number; /**
   );
 }
 
+/**
+ * What a Priorities or Sessions page shows while its data is not ready: loading, failed, or not on this host.
+ * @req FR:notifications/pris.states
+ */
+export function PageNote({ phase, what }: { phase: 'loading' | 'ready' | 'absent' | 'error'; what: string }) {
+  if (phase === 'loading') return <p class="page-note" role="status" data-testid="page-note">Loading {what.toLowerCase()}…</p>;
+  if (phase === 'error') return <p class="page-note" role="alert" data-testid="page-note">Cannot load {what.toLowerCase()}. It tries again by itself.</p>;
+  if (phase === 'absent') return <p class="page-note" data-testid="page-note">{what} are not on this host.</p>;
+  return null;
+}
+
 /** `bare` drops the section heading: the page heading (`#page-h`) names it. @req FR:pris-sessions-ui/pris.block */
 export function PrisBlock({ ctl, bare = false }: { ctl: PrisCtl; bare?: boolean }) {
   const [openId, setOpenId] = useState<string | null>(null);

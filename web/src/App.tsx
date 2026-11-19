@@ -21,7 +21,7 @@ import { calendarRange, dayFrame, needsRefresh, wallMinutes, withProjects, type 
 import { allDay, busyIntervals, joinable, type CalEvent } from './meetings';
 import { budgetOf, clampBudget, dateKey, loadSaved, saveBudget, STEP, store } from './day';
 import { AsksView } from './AsksView';
-import { PrisBlock, SessionsBlock } from './PrisSessions';
+import { PageNote, PrisBlock, SessionsBlock } from './PrisSessions';
 import { usePrisSessions } from './usePrisSessions';
 import { InboxView } from './InboxView';
 import { PrsButton, PrsFlyoutHost, PrsNavItem, PrsPage, prsNavNow } from './PrsPanel';
@@ -1026,8 +1026,8 @@ export function App() {
         {phase === 'loading' && view !== 'asks' && view !== 'priorities' && view !== 'inventory' && view !== 'inbox' && view !== 'sessions' && view !== 'prs' && view !== 'settings' && <div class="skeleton" role="status" aria-busy="true" aria-label="Loading"><div class="sk big" /><div class="sk" /><div class="sk" /><div class="sk" /></div>}
         {view === 'asks' && <AsksView asks={asks} notify={notify} offline={offline} onSignIn={toLogin} talk={askTalk} />}
         {/* Pages with one h1 and a labelled region each. @req FR:notifications/pris.route @req FR:notifications/sessions.route @req NFR:notifications/a11y.axe */}
-        {view === 'priorities' && <section class="page-view" aria-labelledby="page-h"><h1 class="h1" id="page-h">{LABEL.priorities}</h1><PrisBlock ctl={prisSessions.pris} bare /></section>}
-        {view === 'inventory' && <section class="page-view" aria-labelledby="page-h"><h1 class="h1" id="page-h">{LABEL.inventory}</h1><SessionsBlock ctl={prisSessions.sessions} toast={toast} label="Waiting on you" /></section>}
+        {view === 'priorities' && <section class="page-view" aria-labelledby="page-h"><h1 class="h1" id="page-h">{LABEL.priorities}</h1><PageNote phase={prisSessions.pris.phase} what="Priorities" /><PrisBlock ctl={prisSessions.pris} bare /></section>}
+        {view === 'inventory' && <section class="page-view" aria-labelledby="page-h"><h1 class="h1" id="page-h">{LABEL.inventory}</h1><PageNote phase={prisSessions.sessions.phase} what="Sessions" /><SessionsBlock ctl={prisSessions.sessions} toast={toast} label="Waiting on you" /></section>}
         {/* @req FR:pr-page/nav.page */}
         {view === 'prs' && <PrsPage api={api} toast={toast} />}
         {view === 'inbox' && <InboxView api={api} toast={toast} refresh={`${tick}|${asks.liveTick}`} onStatus={(r) => setInboxAttention(r.summary.attention)} />}

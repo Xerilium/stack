@@ -37,5 +37,5 @@ export const notifySupported = (w: Partial<Window> & { navigator?: Partial<Navig
 export async function raise(note: Note): Promise<void> {
   if (!notifySupported() || Notification.permission !== 'granted') return;
   const reg = await navigator.serviceWorker.getRegistration();
-  if (reg) await reg.showNotification(note.title, { body: note.body, tag: note.tag, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', data: { url: '/#/asks' } });
+  if (reg) await reg.showNotification(note.title, { body: note.body, tag: note.tag, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', data: { url: '/#/notifications' } });
 }

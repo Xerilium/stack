@@ -206,9 +206,9 @@ export function Drawer({ s, item, cursorItem, team = [], onClose, defaultAgent, 
               {s.transcript.lines.map((l, i) => <TranscriptLine key={i} l={l} />)}
             </div>
             <p class="sr-only" role="status" aria-live="polite">{s.transcript.lines.filter((l) => l.kind === 'tool').map((l) => (l.kind === 'tool' ? `${l.title} ${l.status}` : '')).slice(-1)[0] ?? ''}</p>
-            {s.transcript.waiting && <p class="drawer-note wait" role="status">Waiting for you: {s.transcript.waiting.title} · <a href="#/asks">Open in Asks</a></p>}
+            {s.transcript.waiting && <p class="drawer-note wait" role="status">Waiting for you: {s.transcript.waiting.title} · <a href="#/notifications">Open in Notifications</a></p>}
             {s.transcript.done && <p class={`drawer-note done${s.transcript.done.error ? ' err' : ''}`} role="status">{s.transcript.done.text}</p>}
-            {item?.state === 'needs-you' && !s.transcript.waiting && <p class="drawer-note wait"><a href="#/asks">Answer in Asks</a></p>}
+            {item?.state === 'needs-you' && !s.transcript.waiting && <p class="drawer-note wait"><a href="#/notifications">Answer in Notifications</a></p>}
             {running && !s.transcript.done && <p class="drawer-note live" role="status"><span class="dot" aria-hidden="true" />Working…</p>}
             <div ref={end} />
           </div>
