@@ -1,7 +1,13 @@
 import type { ComponentChildren } from 'preact';
-import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 import { mdLinks as linksOf, parseInline, refCtxOf, type Node } from './markdown';
 import { EFFORT, IMPACT, PRIORITY, STATUS, type Choice } from './row';
+import { Dialog } from './ui/Dialog';
+
+// The shared components live in `web/src/ui/`; these names stay here for the views that import them from `parts`.
+export { Dialog } from './ui/Dialog';
+export { Toasts, type Toast } from './ui/Toasts';
+export { EmptyState } from './ui/States';
 
 export const GROUPS = {
   priority: { label: 'Priority', key: 'p', set: PRIORITY },
@@ -130,8 +136,6 @@ export function Chip({ group, value, onPick }: { group: GroupName; value: string
   );
 }
 
-export { EmptyState } from './ui/States';
-
 /** A terminal command with a Copy button. Used by first-run setup. @req FR:first-run-onboarding/step.email */
 export function CopyCommand({ cmd, testId, label = 'Copy' }: { cmd: string; testId?: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -139,36 +143,6 @@ export function CopyCommand({ cmd, testId, label = 'Copy' }: { cmd: string; test
     <div class="ob-cmd">
       <code data-testid={testId}>{cmd}</code>
       <button type="button" class="ob-btn" aria-label={label === 'Copy' ? undefined : label} onClick={() => { void navigator.clipboard?.writeText(cmd).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }, () => undefined); }}>{copied ? 'Copied' : 'Copy'}</button>
-    </div>
-  );
-}
-
-/** Dialog with focus restore. @req FR:web-app/ux.a11y */
-export function Dialog({ title, onClose, children, sheet = true }: { title: string; onClose: () => void; children: ComponentChildren; sheet?: boolean }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const prev = document.activeElement as HTMLElement | null;
-    const first = ref.current?.querySelector<HTMLElement>('input, button');
-    first?.focus();
-    return () => prev?.focus?.();
-  }, []);
-  return (
-    <div class="scrim" onClick={onClose}>
-      <div ref={ref} class={`dialog${sheet ? ' sheet' : ''}`} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); return; }
-          if (e.key === 'Tab') {
-            const els = [...ref.current!.querySelectorAll<HTMLElement>('input, button, [tabindex="0"]')].filter((x) => !(x as HTMLButtonElement).disabled);
-            if (!els.length) return;
-            const i = els.indexOf(document.activeElement as HTMLElement);
-            const next = e.shiftKey ? (i <= 0 ? els.length - 1 : i - 1) : (i + 1) % els.length;
-            e.preventDefault();
-            els[next].focus();
-          }
-        }}>
-        <h2 class="dialog-title">{title}</h2>
-        {children}
-      </div>
     </div>
   );
 }
@@ -192,21 +166,6 @@ export function Picker({ groups, count, onChoose, onClose }: { groups: GroupName
         </fieldset>
       ))}
     </Dialog>
-  );
-}
-
-export interface Toast { id: number; text: string; kind: 'ok' | 'err'; undo?: () => void }
-export function Toasts({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number) => void }) {
-  return (
-    <div class="toasts" role="status" aria-live="polite">
-      {toasts.map((t) => (
-        <div key={t.id} class={`toast ${t.kind}`}>
-          <span>{t.text}</span>
-          {t.undo && <button type="button" class="link" onClick={() => { t.undo!(); dismiss(t.id); }}>Undo</button>}
-          <button type="button" class="link" aria-label="Dismiss" onClick={() => dismiss(t.id)}>×</button>
-        </div>
-      ))}
-    </div>
   );
 }
 

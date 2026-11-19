@@ -1,11 +1,7 @@
 /*
- * Phone and desktop polish: one empty-state shape, text on the soft accent at 4.5:1, and touch targets at 44 px.
- * @req FR:first-run-onboarding/polish.empty @req FR:first-run-onboarding/polish.contrast @req FR:first-run-onboarding/polish.tap @req FR:first-run-onboarding/polish.overflow
+ * Phone and desktop polish: text on the soft accent at 4.5:1, and touch targets at 44 px.
+ * @req FR:first-run-onboarding/polish.contrast @req FR:first-run-onboarding/polish.tap @req FR:first-run-onboarding/polish.overflow
  */
-.empty-state { padding: var(--s-24) 0; color: var(--muted); display: flex; flex-direction: column; gap: var(--s-8); align-items: flex-start; }
-.empty-state p { margin: 0; }
-.empty-what { color: var(--ink2); font-size: var(--fs-body); }
-.empty-next { font-size: var(--fs-secondary); }
 
 /* +30m sits beside the "don't fit" summary, not inside it. */
 .nofit-wrap { position: relative; }
@@ -31,5 +27,3 @@
   .handle { display: inline-flex; align-items: center; justify-content: center; }
   .quiet-link { display: inline-block; padding-block: 4px; margin-block: -4px; min-height: 24px; }
 }
-.empty-next a { display: inline-flex; align-items: center; min-height: 24px; }
-@media (pointer: coarse) { .empty-next a { min-height: var(--tap); } }

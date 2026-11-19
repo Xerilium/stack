@@ -6,7 +6,7 @@
 .fb-btn .fb-ic { flex: none; }
 .phone-brand .fb-btn.compact { margin-left: auto; color: var(--ink); }
 .phone-brand .chip.unsaved + .fb-btn.compact, .phone-brand .fb-btn.compact + .prs-btn.compact { margin-left: 4px; }
-.fb-panel { display: flex; flex-direction: column; gap: var(--s-12); width: min(440px, calc(100vw - 32px)); }
+.fb-panel { display: flex; flex-direction: column; gap: var(--s-12); }
 .fb-panel .dialog-title { margin: 0; }
 .fb-text { width: 100%; box-sizing: border-box; min-height: 112px; resize: vertical; padding: 10px 12px; font: inherit; font-size: var(--fs-secondary); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-row); }
 .fb-text:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-color: transparent; }
