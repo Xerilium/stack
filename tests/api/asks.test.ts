@@ -5,7 +5,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 const NOW = new Date('2026-10-28T18:00:00Z');
-const BODY = { ask: 'Approve merging PR 879 into dev', kind: 'approve', recommend: 'Approve', default: 'Merges at 8am', by: '2026-10-29T15:00:00Z', reversible: true, link: 'https://github.com/o/r/pull/879', priority: 'high', effort: '2m' };
+const BODY = { ask: 'Approve merging PR 879 into dev', kind: 'approve', why: 'CI is green', recommend: 'Approve', default: 'Merges at 8am', by: '2026-10-29T15:00:00Z', reversible: true, link: 'https://github.com/o/r/pull/879', priority: 'high', effort: '2m' };
 
 async function mk() {
   const storage = new MemoryStorage();
@@ -106,7 +106,7 @@ describe('asks routes', () => {
   it('decide asks take options with commas', async () => {
     const { call, mint } = await mk();
     const w = await mint('tasks:write');
-    expect((await call(w, 'POST', '/asks/d', { ask: 'When?', kind: 'decide', options: ['Friday, risky', 'Monday'], recommend: 'Monday' })).status).toBe(200);
+    expect((await call(w, 'POST', '/asks/d', { ask: 'When?', kind: 'decide', why: 'Launch date', options: ['Friday, risky', 'Monday'], recommend: 'Monday' })).status).toBe(200);
     expect((await call('owner', 'POST', '/asks/d/answer', { answer: 'option', text: 'Friday, risky' })).json).toEqual({ changed: true });
   });
 });

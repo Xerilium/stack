@@ -30,7 +30,7 @@ describe('host push wiring', () => {
   // @req FR:iphone-access/check.asks @req FR:iphone-access/check.read @req FR:iphone-access/notify.dedupe.store @req FR:iphone-access/send.private
   it('an ask write due within 1h pushes once; a later check skips it', async () => {
     const s = await paired();
-    const w = await s.putAsk('deploy-ok', { ask: 'Approve deploy', kind: 'approve', by: soon() });
+    const w = await s.putAsk('deploy-ok', { ask: 'Approve deploy', kind: 'approve', why: 'CI is green', by: soon() });
     expect(w.status).toBeLessThan(300);
     // The write starts the check in the background; this check queues behind it.
     const c = await s.check();
@@ -58,7 +58,7 @@ describe('host push wiring', () => {
   // @req FR:iphone-access/notify.prune @req FR:iphone-access/send.status
   it('a 410 from the push service removes the subscription', async () => {
     const s = await paired(undefined, 410);
-    await s.putAsk('k', { ask: 'K', kind: 'approve', by: soon() });
+    await s.putAsk('k', { ask: 'K', kind: 'approve', why: 'w', by: soon() });
     expect(await (await s.check()).json()).toEqual({ sent: 0, removed: 0, failed: 0, skipped: 0 });
     const file = await s.storage.readAux('.stack/devices.json');
     expect(file?.content).not.toContain('web.push.apple.com');

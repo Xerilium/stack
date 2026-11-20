@@ -64,6 +64,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/asks/{key}` | POST create or update an ask (agents) |
 | `/asks/{key}/answer` | POST the owner's answer (owner session only) |
 | `/asks/{key}/handle` | POST close an ask after acting, or reopen it with a reply |
+| `/asks/{key}/reply` | POST reply in the ask thread as the agent (answers an owner question) |
 | `/sessions` | GET live agent sessions on this machine with state and cost; POST start a new session (owner only) |
 | `/sessions/cost` | GET agent spend by day, project, model |
 | `/sessions/{id}/messages` | GET the last turns of a session |

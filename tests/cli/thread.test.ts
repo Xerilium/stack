@@ -14,7 +14,7 @@ async function stack(d: string, ...args: string[]) {
 describe('stack asks put --ref and stack inbox reply', () => {
   it('puts an ask on a task and replies as an agent', async () => {
     const d = dir();
-    expect((await stack(d, 'asks', 'put', 'q1', '--ask', 'Which cover?', '--kind', 'answer', '--from', 'cid', '--ref', 'tasks/f4.md:5')).out).toBe('q1\n');
+    expect((await stack(d, 'asks', 'put', 'q1', '--ask', 'Which cover?', '--kind', 'answer', '--from', 'cid', '--why', 'Print run is Friday', '--ref', 'tasks/f4.md:5')).out).toBe('q1\n');
     expect(readFileSync(join(d, 'tasks/f4.md'), 'utf8')).toContain('- [ ] Ship\n  - [ ] 🙋 Which cover?\n    > id: q1\n'); // the ask row under its task
     expect(readFileSync(join(d, 'tasks/f4.md'), 'utf8')).toContain('    > ref: f4:4');
     expect((await stack(d, 'asks', 'put', 'q2', '--ask', 'x', '--kind', 'answer', '--from', 'cid', '--ref', 'tasks/f4.md:99')).code).toBe(2);

@@ -37,16 +37,16 @@ describe('ask routing routes', () => {
   it('a token puts an ask with an agent link; a bad link is 400', async () => {
     const { call } = await mk();
     expect((await call('token', 'POST', '/asks/a1', BODY)).status).toBe(200);
-    expect((await call('token', 'POST', '/asks/a2', { ...BODY, agent: 'not a link' })).status).toBe(400);
+    expect((await call('token', 'POST', '/asks/a2', { ...BODY, agent: 'not a link' })).status).toBe(422);
     const list = await call('owner', 'GET', '/asks?state=all');
     expect(list.json.items[0]).toMatchObject({ key: 'a1', agent: LINK, turn: 'owner' });
   });
   // @req FR:ask-routing/addr.context
-  it('a new token ask without why is 400', async () => {
+  it('a new token ask without why is 422', async () => {
     const { call } = await mk();
-    const { why: _w, ...noWhy } = BODY;
+    const noWhy = { ...BODY, why: undefined };
     const r = await call('token', 'POST', '/asks/a1', noWhy);
-    expect(r.status).toBe(400);
+    expect(r.status).toBe(422);
     expect(JSON.stringify(r.json)).toContain('why is required');
   });
   // @req FR:ask-routing/ask.put
@@ -65,6 +65,6 @@ describe('ask routing routes', () => {
     expect(r.json).toEqual({ changed: true });
     const item = (await call('owner', 'GET', '/asks?state=all')).json.items[0];
     expect(item).toMatchObject({ key: 'q1', state: 'answered', text: 'Green', turn: 'owner' });
-    expect((await call('token', 'POST', '/asks/q1/reply', {})).status).toBe(400);
+    expect((await call('token', 'POST', '/asks/q1/reply', {})).status).toBe(422); // text is required;
   });
 });

@@ -17,12 +17,12 @@ describe('stack asks', () => {
   it('put writes the ask row and prints the key; list ranks; handle closes', async () => {
     const d = dir();
     writeFileSync(join(d, 'detail.md'), 'Remaining risk: keyboard pass.');
-    const put = await stack(d, 'asks', 'put', 'pr-879-approve', '--ask', 'Approve merging PR 879', '--kind', 'approve', '--from', 'allyte-cos', '--recommend', 'Approve', '--default', 'Merges at 8am', '--by', '2026-10-29T15:00:00Z', '--reversible', 'yes', '--link', 'https://github.com/o/r/pull/879', '--priority', 'high', '--effort', '2m', '--blocks', '3', '--detail-file', join(d, 'detail.md'));
+    const put = await stack(d, 'asks', 'put', 'pr-879-approve', '--ask', 'Approve merging PR 879', '--kind', 'approve', '--from', 'allyte-cos', '--why', 'CI is green', '--recommend', 'Approve', '--default', 'Merges at 8am', '--by', '2026-10-29T15:00:00Z', '--reversible', 'yes', '--link', 'https://github.com/o/r/pull/879', '--priority', 'high', '--effort', '2m', '--blocks', '3', '--detail-file', join(d, 'detail.md'));
     expect(put).toMatchObject({ code: 0, out: 'pr-879-approve\n' });
     const raw = readFileSync(join(d, 'tasks/asks.md'), 'utf8');
     expect(raw).toContain('- [ ] 🙋 ‼️ Approve merging PR 879\n  > id: pr-879-approve\n');
     expect(raw).toContain('Remaining risk: keyboard pass.');
-    await stack(d, 'asks', 'put', 'low-one', '--ask', 'Rename the repo', '--kind', 'go-do', '--from', 'cos', '--priority', 'low');
+    await stack(d, 'asks', 'put', 'low-one', '--ask', 'Rename the repo', '--kind', 'go-do', '--from', 'cos', '--why', 'w', '--priority', 'low');
     const list = await stack(d, 'asks', 'list', '--now', '2026-10-28T18:00:00Z');
     const lines = list.out.trim().split('\n');
     expect(lines).toHaveLength(2);
@@ -50,7 +50,7 @@ describe('stack asks', () => {
 
   it('archive deletes old done ask rows', async () => {
     const d = dir();
-    await stack(d, 'asks', 'put', 'k', '--ask', 'x', '--kind', 'approve', '--from', 'cos');
+    await stack(d, 'asks', 'put', 'k', '--ask', 'x', '--kind', 'approve', '--from', 'cos', '--why', 'w');
     await stack(d, 'asks', 'handle', 'k', '--outcome', 'handled');
     expect((await stack(d, 'asks', 'archive')).out.trim()).toBe('no change: nothing to archive');
     const r = await stack(d, 'asks', 'archive', '--days', '0');

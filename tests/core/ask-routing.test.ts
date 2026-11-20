@@ -1,11 +1,13 @@
 /**
  * Ask routing core: address, turn, owner questions, agent replies (`.xe/features/ask-routing/spec.md`).
  */
-import { mkdtempSync, readFileSync } from 'fs';
+import { execFileSync } from 'child_process';
+import { mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { answerAsk, askTurn, listAsks, putAsk, readAsk, replyAsk, AskDenied, markDelivery } from '../../src/core/asks';
 import { ConflictError, MemoryStorage } from '../../src/core/storage';
+import { GitStorage } from '../../src/core/storage-git';
 import { run } from '../../src/cli/run';
 
 const NOW = new Date('2026-11-19T14:00:00Z');
@@ -24,7 +26,7 @@ describe('agent link', () => {
   it('is stored as > agent: metadata and read back', async () => {
     const { ctx, storage } = mk();
     await putAsk(ctx, 'a1', { ...base, agent: LINK }, 'allyte-cos');
-    expect((await storage.read('tasks/asks.md')).content).toContain(`    > agent: ${LINK}`);
+    expect((await storage.read('tasks/asks.md')).content).toContain(`  > agent: ${LINK}`);
     expect((await readAsk(ctx, 'a1'))!.ask.agent).toBe(LINK);
   });
   it('refuses a value that is not a session link', async () => {
@@ -121,7 +123,7 @@ describe('agent reply', () => {
     const { ctx } = mk();
     await putAsk(ctx, 'a1', base, 'allyte-cos');
     await expect(replyAsk(ctx, 'a1', { text: ' ' }, 'x')).rejects.toThrow(/text/);
-    await expect(replyAsk(ctx, 'a1', { text: 'x'.repeat(1001) }, 'x')).rejects.toThrow(/text/);
+    await expect(replyAsk(ctx, 'a1', { text: 'word '.repeat(250) }, 'x')).rejects.toThrow(/text/);
   });
 });
 
@@ -141,9 +143,14 @@ describe('delivery marks', () => {
     expect(await markDelivery(ctx, 'a1', { claim: true })).toBe(true);
   });
   it('two writers at once: one claim wins, the answer and a reply both land', async () => {
-    const storage = new MemoryStorage();
-    const c1 = { storage, now: () => NOW };
-    const c2 = { storage, now: () => NOW };
+    // two git storages on one repo, as two processes (host and CLI): only the repo write lock and file versions keep the writes apart
+    const dir = mkdtempSync(join(tmpdir(), 'stack-race-'));
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+    const git = (...a: string[]) => execFileSync('git', a, { cwd: dir, env });
+    git('init', '-q', '-b', 'main'); git('config', 'user.name', 't'); git('config', 'user.email', 't@t');
+    writeFileSync(join(dir, 'README.md'), 'r\n'); git('add', '.'); git('commit', '-q', '-m', 'init');
+    const c1 = { storage: new GitStorage(dir), now: () => NOW };
+    const c2 = { storage: new GitStorage(dir), now: () => NOW };
     await putAsk(c1, 'a1', { ...base, agent: LINK }, 'allyte-cos');
     await putAsk(c1, 'a2', { ...base, agent: LINK }, 'allyte-cos');
     await answerAsk(c1, 'a1', { answer: 'go' });
@@ -177,5 +184,15 @@ describe('CLI', () => {
     process.env.CLAUDE_CODE_SESSION_ID = 'cli-1';
     expect(await run(['asks', 'put', 'a1', '--ask', 'Approve X', '--kind', 'approve', '--from', 'cos', '--why', 'w', '--dir', d, '--no-commit'], { out: () => undefined, err: () => undefined })).toBe(0);
     expect(readFileSync(join(d, 'tasks/asks.md'), 'utf8')).toContain('> agent: [cos](#local_cli-1)');
+  });
+});
+
+// @req FR:ask-routing/doc.snippet
+describe('agent doc', () => {
+  it('opens with the paste-ready rule and its exact commands', () => {
+    const doc = readFileSync(join(__dirname, '../../docs/asks.md'), 'utf8');
+    const rule = doc.slice(doc.indexOf('## The rule'), doc.indexOf('## Put an ask'));
+    for (const s of ['Never use `AskUserQuestion`', '--why', '--recommend', '--link', 'end your turn', 'Stack resumes this session', 'stack asks handle <key>', 'stack asks reply <key>']) expect(rule).toContain(s);
+    expect(doc.indexOf('## The rule')).toBeGreaterThan(0);
   });
 });

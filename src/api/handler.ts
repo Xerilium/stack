@@ -36,7 +36,7 @@ import { AI_PREFIX, GitHubWriteDenied, type GitHubWrites } from './github-write'
 import { QueueRefused, QueueUnavailable, type PrQueue } from './pr-queue';
 import { ITEM_OPS, LiveError, type ItemOp, type LiveStore } from '../core/live-lane';
 import { briefViews, type BriefStore, type FactsStore } from '../core/pr-review';
-import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handleAsk, LIST_STATES, listAsks, putAsk, type AnswerInput, type AskPut, type HandleInput } from '../core/asks';
+import { answerAsk, ASK_ANSWERS, ASK_KINDS, ASK_OUTCOMES, ASK_PRIORITIES, handleAsk, LIST_STATES, listAsks, putAsk, replyAsk, type AnswerInput, type AskPut, type AskTurn, type HandleInput } from '../core/asks';
 import { currentRows, handleEntry, INBOX_STATES, SEND_KINDS, listInbox, replyFromAgent, sendToInbox, type InboxKind } from '../core/inbox';
 import { presentedToken } from './auth/authorize';
 import type { AgentRuns } from '../agents/runs';
@@ -287,6 +287,8 @@ const ASK_PUT_BODY = {
     effort: { t: 'str', max: 4, line: true, pattern: /^\d{1,3}[mh]$/ }, blocks: { t: 'int', min: 0, max: 99 }, detail: { t: 'str', max: 20_000 }, reopen: { t: 'bool' },
     // quick triage. @req FR:quick-triage/api.put
     flow: { t: 'str', max: 80, line: true, pattern: /^[a-z0-9][a-z0-9._-]{0,79}$/ }, seq: { t: 'int', min: 1, max: 99 }, apply: { t: 'str', max: 500, line: true }, applies: { t: 'strs', max: 4, commas: false },
+    // @req FR:ask-routing/addr.api: the agent side of the thread, `[Name](#local_<id>)`; the core checks the link.
+    agent: { t: 'str', max: 200, line: true },
   } satisfies Record<string, Spec>,
   required: [] as string[],
 };
@@ -342,6 +344,8 @@ const INBOX_JUNK_BODY = {
   schema: { action: { t: 'enum', values: ['archive', 'unsubscribe-archive'] }, ids: { t: 'strs', max: 500 } } satisfies Record<string, Spec>,
   required: ['action', 'ids'],
 };
+/** @req FR:ask-routing/reply.surfaces */
+const ASK_REPLY_BODY = { schema: { text: { t: 'str', required: true, max: 1000, line: true }, agent: { t: 'str', max: 200, line: true } } satisfies Record<string, Spec>, required: ['text'] };
 const ASK_HANDLE_BODY = {
   schema: { outcome: { t: 'enum', values: ASK_OUTCOMES }, note: { t: 'str', max: 500, line: true }, reply: { t: 'str', max: 1000, line: true } } satisfies Record<string, Spec>,
   required: ['outcome'],
@@ -362,7 +366,7 @@ const ASSIGN_BODY = { schema: { agent: SLUG, note: { t: 'str', max: 1000, line: 
 /** The ref in a path segment (`/tasks/{ref}/...`). */
 const refParam = (c: Ctx) => { const r = parseRef(c.params[0]); if (!r) throw invalid([{ field: 'ref', message: 'Must be project:line' }]); return r; };
 const BRIEF_Q: Record<string, Spec> = { refresh: { t: 'str', max: 1 } };
-const ASK_Q: Record<string, Spec> = { state: { t: 'enum', values: LIST_STATES }, limit: { t: 'int', min: 1, max: 200 } };
+const ASK_Q: Record<string, Spec> = { state: { t: 'enum', values: LIST_STATES }, limit: { t: 'int', min: 1, max: 200 }, turn: { t: 'enum', values: ['owner', 'agent', 'none'] } };
 /** Inbox refs are stored 1-based with the file path; the api speaks `name:line` (0-based). */
 const apiRef = (fileRef: string) => { const m = /^(tasks\/.+\.md):(\d+)$/.exec(fileRef); return m ? formatRef({ path: m[1], line: Number(m[2]) - 1 }) : fileRef; };
 const REMOVE_BODY = { schema: { project: { t: 'str', max: 200, line: true } } satisfies Record<string, Spec>, required: [] as string[] };
@@ -832,8 +836,9 @@ export const ROUTES: Route[] = [
     method: 'GET', doc: '/asks', name: 'asks.list', query: ASK_Q,
     async run(c) {
       const q = readQuery(c.url, Object.keys(ASK_Q));
-      const v = validate<{ state?: (typeof LIST_STATES)[number] }>(Object.fromEntries([...q.entries()].filter(([k]) => k === 'state')), ASK_Q, []);
-      return json(200, await listAsks(c.life, { state: v.state, limit: intParam(q, 'limit', 50, 1, 200) }));
+      const v = validate<{ state?: (typeof LIST_STATES)[number]; turn?: AskTurn }>(Object.fromEntries([...q.entries()].filter(([k]) => k === 'state' || k === 'turn')), ASK_Q, []);
+      // @req FR:ask-routing/turn.list
+      return json(200, await listAsks(c.life, { state: v.state, limit: intParam(q, 'limit', 50, 1, 200), ...(v.turn ? { turn: v.turn } : {}) }));
     },
   },
   {
@@ -848,7 +853,19 @@ export const ROUTES: Route[] = [
       if (actor !== 'owner' && c.params[0].startsWith('perm-')) throw new ApiError('forbidden', 'Permission asks are written by Stack only');
       const name = actor.startsWith('token:') ? (c.token?.name ?? 'agent') : actor;
       // A token updates only asks it wrote (security M5); the owner may update any ask.
-      return json(200, await putAsk(c.life, c.params[0], { ...b, ...(ref ? { ref: formatRef(ref) } : {}) }, name, actor.startsWith('token:') ? { writer: `token:${name}` } : {}));
+      // @req FR:ask-routing/addr.context: a token is an agent, so a new ask needs `why`.
+      return json(200, await putAsk(c.life, c.params[0], { ...b, ...(ref ? { ref: formatRef(ref) } : {}) }, name, actor.startsWith('token:') ? { writer: `token:${name}`, agent: true } : {}));
+    },
+  },
+  {
+    // @req FR:ask-routing/reply.surfaces: the agent answers in the ask's thread (a token or the owner page).
+    method: 'POST', doc: '/asks/{key}/reply', name: 'asks.reply', body: ASK_REPLY_BODY,
+    async run(c) {
+      noQuery(c);
+      const b = validate<{ text: string; agent?: string }>(await readBody(c.req), ASK_REPLY_BODY.schema, ASK_REPLY_BODY.required);
+      const actor = caller(c.req).actor;
+      const name = actor.startsWith('token:') ? (c.token?.name ?? 'agent') : actor;
+      return json(200, await replyAsk(c.life, c.params[0], b, name));
     },
   },
   {

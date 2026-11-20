@@ -373,6 +373,11 @@ describe('response parity (real handler output vs documented schemas)', () => {
     await go('asks.answer', 'POST', '/asks/pr-1/answer', { answer: 'go' }, 409);
     await go('asks.handle', 'POST', '/asks/pr-1/handle', { outcome: 'handled', note: 'merged' }, 200);
     await go('asks.handle', 'POST', '/asks/zzz/handle', { outcome: 'handled' }, 404);
+    // @req FR:ask-routing/reply.surfaces
+    await go('asks.put', 'POST', '/asks/q-1', { ask: 'Status?', from: 'owner', agent: '[Cos](#local_abc)' }, 200);
+    await go('asks.reply', 'POST', '/asks/q-1/reply', { text: 'Green' }, 200);
+    await go('asks.reply', 'POST', '/asks/pr-1/reply', { text: 'x' }, 409);
+    await go('asks.reply', 'POST', '/asks/zzz/reply', { text: 'x' }, 404);
     // @req FR:status-ingest/api.put @req FR:status-ingest/api.invalid
     await go('reports.put', 'POST', '/reports', { agent: 'xe-cos', project: 'stack', top: [{ text: 'Ship' }], asks: [{ id: 'a', ask: 'Approve', link: 'https://x.test/1', by: '2026-10-23' }] }, 200);
     await go('reports.put', 'POST', '/reports', { agent: 'Bad' }, 400);

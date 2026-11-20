@@ -56,7 +56,7 @@ describe('thread routes', () => {
     expect(r.status).toBe(201);
     expect(r.json.id).toMatch(/^in-/);
     expect((await call(w, 'POST', '/inbox/reply', { ref: 'flantastic-4:7', text: 'x', expect: 'stale' })).status).toBe(409);
-    expect((await call(w, 'POST', '/asks/q1', { ask: 'Which cover?', kind: 'answer', ref: 'flantastic-4:7' })).status).toBe(200);
+    expect((await call(w, 'POST', '/asks/q1', { ask: 'Which cover?', kind: 'answer', why: 'Print run is Friday', ref: 'flantastic-4:7' })).status).toBe(200);
     expect((await call(w, 'POST', '/asks/q2', { ask: 'x', kind: 'answer', ref: 'flantastic-4:99' })).status).toBe(404);
     expect((await call(w, 'POST', '/asks/q2', { ask: 'x', kind: 'answer', ref: 'nope' })).status).toBe(422);
     const th = await call(w, 'GET', '/tasks/flantastic-4:7/thread');

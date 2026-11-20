@@ -3,7 +3,15 @@ id: ask-routing
 title: Ask Routing
 author: flanakin
 description: "Every question between the owner and an agent is one ask thread with one home. Stack carries each answer to the asking session and wakes it. The owner sees only threads where it is his turn."
-dependencies: [ask-queue, task-asks, agent-sessions, session-inventory, goal-model, agent-delivery]
+dependencies:
+  [
+    ask-queue,
+    task-asks,
+    agent-sessions,
+    session-inventory,
+    goal-model,
+    agent-delivery,
+  ]
 ---
 
 <!-- markdownlint-disable single-title -->
@@ -61,9 +69,9 @@ Root causes:
 The owner needs each ask tied to the session that waits on it so that the answer can go back to that session.
 
 - **FR:addr.link** (P1): An ask row MAY have `> agent: [Name](#<session id>)` (`FR:goal-model/agent.link`). It names the agent side of the thread
-- **FR:addr.env** (P1): `stack asks put` and `stack asks reply` MUST set `agent` from the caller's environment when `--agent` is absent: `CLAUDE_CODE_HOST_SESSION_ID` when it starts `local_`, else `local_<CLAUDE_CODE_SESSION_ID>`. The name is `--from`. No ID: no link. An existing link is replaced only by `--agent`
-- **FR:addr.api** (P1): `POST /asks/{key}` and the MCP `asks_put` accept `agent` as a link string. A value that is not a link is `400`. The MCP server fills it from its own environment (`FR:addr.env`) when absent
-- **FR:addr.context** (P1): A new ask from an agent (CLI, API token, MCP) MUST have `why`. Without it the put fails with `why is required: say what you need and why in one line`
+- **FR:addr.env** (P1): `stack asks put` and `stack asks reply` MUST set `agent` from the caller's environment when `--agent` is absent: `CLAUDE_CODE_HOST_SESSION_ID` when it starts `local_`, else `local_<CLAUDE_CODE_SESSION_ID>`. The name is `--from`. No ID: no link. The session that writes last is the one that waits, so each write sets the link
+- **FR:addr.api** (P1): `POST /asks/{key}`, `POST /asks/{key}/reply`, and the MCP `asks_put` and `asks_reply` accept `agent` as a link string. A value that is not a link is `422`. The stdio MCP server fills it from its own environment (`FR:addr.env`) when absent
+- **FR:addr.context** (P1): A new ask from an agent (CLI, API token) MUST have `why`, else `422` with `why is required: say what you need and why in one line`. The MCP `asks_put` requires `why` on every call (the stdio server writes as the owner)
 
 ### FR:turn: Whose turn it is
 

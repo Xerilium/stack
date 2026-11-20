@@ -119,23 +119,29 @@ export const TOOLS: ToolDef[] = [
     } },
 
   // ---- asks. No answer tool: agents never answer. @req FR:mcp-server/tools.asks
-  { name: 'asks_put', route: 'asks.put', method: 'POST', path: '/asks/{key}', pathArg: 'key', required: ['key'], pipeArgs: ['options', 'applies'],
-    description: 'Put an ask for the owner (stable key; same key updates).',
+  // @req FR:ask-routing/addr.context: every put says why, so the owner never has to ask what it is.
+  { name: 'asks_put', route: 'asks.put', method: 'POST', path: '/asks/{key}', pathArg: 'key', required: ['key', 'why'], pipeArgs: ['options', 'applies'],
+    description: 'Put an ask for the owner (stable key; same key updates). Stack wakes your session with the answer.',
     props: {
       key: str('Stable ask key, a-z 0-9 . _ -'), ask: str('One decision, 200 chars max'), kind: enumOf(ASK_KINDS), from: str('Your agent name'), project: str('Project'),
       why: str('One line'), recommend: str('Your recommendation'), options: str('A|B (decide)'), default: str('Applied if silent'), by: str('Deadline, ISO'),
       reversible: { type: 'boolean' }, link: str('https URL'), priority: enumOf(ASK_PRIORITIES), effort: str('Owner effort, e.g. 2m'), blocks: { type: 'integer', minimum: 0, maximum: 99 },
       detail: str('Long markdown, owner only'), reopen: { type: 'boolean' }, flow: str('Quick triage flow slug'), seq: { type: 'integer', minimum: 1, maximum: 99 },
-      ref: REF, apply: str('Action on go'), applies: str('One action per option, a|b'),
+      ref: REF, apply: str('Action on go'), applies: str('One action per option, a|b'), agent: str('Your session link [Name](#local_id); default: this session'),
     },
     reply: (b) => { const o = obj(b); const k = typeof o.key === 'string' && KEY_OUT.test(o.key) ? ` ${o.key}` : ''; return `${o.created === true ? 'created' : 'updated'}${k}`; } },
   { name: 'asks_list', route: 'asks.list', method: 'GET', path: '/asks', description: 'List asks; state answered shows asks to act on.',
-    props: { state: enumOf(LIST_STATES), limit: { type: 'integer', minimum: 1, maximum: 200, description: 'Default 50' } },
+    props: { state: enumOf(LIST_STATES), limit: { type: 'integer', minimum: 1, maximum: 200, description: 'Default 50' }, turn: enumOf(['owner', 'agent', 'none']) },
     reply: (b) => { const o = obj(b); return JSON.stringify({ total: o.total, items: Array.isArray(o.items) ? o.items.map(askRow) : [] }); } },
   { name: 'asks_handle', route: 'asks.handle', method: 'POST', path: '/asks/{key}/handle', pathArg: 'key', required: ['key', 'outcome'],
     description: 'Close or reopen an ask after acting on the answer.',
     props: { key: str('Ask key'), outcome: enumOf(ASK_OUTCOMES), note: str('One line'), reply: str('One-line reply when reopening') },
     reply: (b, a = {}) => (obj(b).changed === false ? 'no change' : `handled ${typeof a['key'] === 'string' && KEY_OUT.test(a['key']) ? a['key'] : ''}`.trim()) },
+  // @req FR:ask-routing/reply.surfaces
+  { name: 'asks_reply', route: 'asks.reply', method: 'POST', path: '/asks/{key}/reply', pathArg: 'key', required: ['key', 'text'],
+    description: 'Reply in an ask thread: answer the owner question, or ask back on your ask.',
+    props: { key: str('Ask key'), text: str('One line, 1000 chars max'), agent: str('Your session link; default: this session') },
+    reply: (b, a = {}) => (obj(b).changed === false ? 'no change' : `replied ${typeof a['key'] === 'string' && KEY_OUT.test(a['key']) ? a['key'] : ''}`.trim()) },
   { name: 'asks_answer_wait', route: 'asks.list', method: 'GET', path: '/asks', query: { state: 'all', limit: '200' }, required: ['key'],
     description: 'Wait up to waitSec (max 20) for the owner to answer an ask.',
     props: { key: str('Ask key'), waitSec: { type: 'integer', minimum: 0, maximum: 20, description: 'Default 0: check once' } },

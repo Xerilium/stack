@@ -2,7 +2,19 @@
 
 Agents bring the owner decisions through asks, never chat. An ask is a 🙋 task row under the task it blocks (`- [ ] 🙋 ‼️ Approve X` with `> key: value` lines), so one read of a task file shows the work and what blocks it. One ask is one exact decision. The owner sees the top few, ranked by Stack, with your recommendation and default-if-silent. Keep asks rare, specific, and answerable in one tap.
 
-Spec: [.xe/features/ask-queue/spec.md](../.xe/features/ask-queue/spec.md). Design: [docs/design/ask-queue.md](design/ask-queue.md).
+Spec: [.xe/features/ask-queue/spec.md](../.xe/features/ask-queue/spec.md), [.xe/features/ask-routing/spec.md](../.xe/features/ask-routing/spec.md). Design: [docs/design/ask-queue.md](design/ask-queue.md).
+
+## The rule (paste into every agent file)
+
+> **Ask the owner only through Stack.** Never use `AskUserQuestion`, chat, or a message to another agent to ask him anything.
+>
+> 1. Put one ask: `stack asks put <key> --from "<your name>" --ask "<one decision>" --kind approve|decide|review|go-do|answer --why "<what and why, one line>" --recommend "<your pick>" --link <https url>`.
+> 2. Not blocked: carry on. Blocked: end your turn. Do not poll.
+> 3. Stack resumes this session with his answer. Act on it, then `stack asks handle <key> --outcome handled --note "<what you did>"`.
+> 4. To ask back on the same thread: `stack asks reply <key> --from "<your name>" --text "…"`.
+> 5. When Stack brings you his question (`the owner asks you (<key>)`), answer with `stack asks reply <key> --from "<your name>" --text "…"`. Never answer in chat.
+
+Stack links each ask to the session that wrote it (`> agent: [Name](#local_…)`, from `CLAUDE_CODE_HOST_SESSION_ID`). That link is how his answer finds you. Pass `--agent "[Name](#local_<id>)"` only to send the answer to another session.
 
 ## Put an ask
 
@@ -50,7 +62,9 @@ Same operations as the CLI, for agents on the Stack MCP server: `asks_put` (`opt
 
 ## Wake on answer
 
-When the owner answers, Stack adds one line to `tasks/.stack/wake/<from>.md` (your `--from`, lowercased, odd characters as `-`): `- <iso> <key> <answer>`. It holds no answer text and sends nothing over the network. Watch or read this file, then run `stack asks list --state answered`. `handle` (or a retract) removes the line.
+When the owner answers, `stack web` resumes the session in the ask's `agent` link with the answer and logs `stack: delivered to <Name>` in the thread. A busy session gets it when its turn ends. A session that is gone gets `undelivered: Session gone`, and the wake file below is the fallback.
+
+Stack also adds one line to `tasks/.stack/wake/<from>.md` (your `--from`, lowercased, odd characters as `-`): `- <iso> <key> <answer>`. It holds no answer text and sends nothing over the network. Watch or read this file, then run `stack asks list --state answered`. `handle` (or a retract) removes the line.
 
 ## Keep the queue small
 
@@ -83,9 +97,7 @@ A key that is already a row is skipped, so a second run changes nothing.
 
 > Bring Michael decisions only through `stack asks put` (see `docs/asks.md`). After each state update, upsert the asks for every open decision and `resolve` the ones no longer needed. Read `stack asks list --state answered` at the start of every run and act on the answers, then `stack asks archive`. Do not message him in chat.
 
-Use this paragraph instead of "message Michael":
-
-> When you need a decision, fact, approval, or human-only step from Michael, do not message him. Put one ask: `asks_put` (MCP) or `stack asks put <key> --from <you> ...`, with your recommendation and a default only if silence is safe. Then carry on with other work. Your wake file `tasks/.stack/wake/<you>.md` lists answered asks; at the start of each run read it (or `asks_list state=answered`), act, and close each with `asks_handle`. To block on one answer, call `asks_answer_wait`. Resolve asks that became moot.
+Use "The rule" at the top of this page instead of "message Michael". MCP agents use `asks_put`, `asks_reply`, and `asks_handle` the same way.
 
 ## Quick triage: a few questions, answered in one sitting
 

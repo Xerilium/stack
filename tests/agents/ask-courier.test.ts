@@ -47,7 +47,7 @@ describe('courier pass', () => {
   });
   it('skips asks with no agent link', async () => {
     const { ctx, deps, prompts } = mk();
-    const { agent: _drop, ...noLink } = base;
+    const noLink = { ...base, agent: undefined };
     await putAsk(ctx, 'a1', noLink, 'x');
     await answerAsk(ctx, 'a1', { answer: 'go' });
     expect(await courierPass(deps)).toEqual([]);
@@ -113,14 +113,17 @@ describe('busy session', () => {
   });
 });
 
+const ended = (deps: CourierDeps) => new Promise<boolean>((ok) => { deps.onFallback = (_k, posted) => ok(posted); });
+
 // @req FR:ask-routing/deliver.fallback
 describe('owner question fallback', () => {
   it('posts the final text as the reply when the agent did not reply', async () => {
     const { ctx, deps, subs } = mk();
     await putAsk(ctx, 'q1', { ask: 'What blocks 316?', from: 'owner', agent: LINK }, 'owner');
     expect(await courierPass(deps)).toEqual([{ key: 'q1', result: 'delivered' }]);
+    const done = ended(deps);
     subs.get('run-1')!({ type: 'done', stopReason: 'end_turn', cost: { usd: 0, tokens: 0 }, turns: 1, durationMs: 1, text: 'Lint fails on\nmain.' });
-    await new Promise((r) => setTimeout(r, 20));
+    expect(await done).toBe(true);
     const a = (await readAsk(ctx, 'q1'))!.ask;
     expect(a).toMatchObject({ state: 'answered', answer: 'reply', text: 'Lint fails on main.' });
   });
@@ -130,8 +133,9 @@ describe('owner question fallback', () => {
     await courierPass(deps);
     const { replyAsk } = await import('../../src/core/asks');
     await replyAsk(ctx, 'q1', { text: 'Green' }, 'Stack architect');
+    const done = ended(deps);
     subs.get('run-1')!({ type: 'done', stopReason: 'end_turn', cost: { usd: 0, tokens: 0 }, turns: 1, durationMs: 1, text: 'I replied.' });
-    await new Promise((r) => setTimeout(r, 20));
+    expect(await done).toBe(false);
     expect((await readAsk(ctx, 'q1'))!.ask.text).toBe('Green');
   });
 });
@@ -144,7 +148,6 @@ describe('loop', () => {
     await answerAsk(ctx, 'a1', { answer: 'go' });
     const l1 = startAskCourier(deps, { intervalMs: 60_000 });
     const l2 = startAskCourier({ ...deps, ctx: { ...ctx } }, { intervalMs: 60_000 });
-    await new Promise((r) => setTimeout(r, 50));
     await l1.close(); await l2.close();
     expect(prompts).toHaveLength(1);
   });

@@ -26,7 +26,7 @@ describe("an ask is updated only by the token that wrote it", () => {
   it("another token cannot rewrite the ask", async () => {
     const s = await mk();
     expect(
-      (await put(s, "a-q1", s.a, { ask: "Ship v2?", kind: "approve" })).status,
+      (await put(s, "a-q1", s.a, { ask: "Ship v2?", kind: "approve", why: "Tests pass" })).status,
     ).toBe(200);
     const r = await put(s, "a-q1", s.b, { ask: "Ship v1?" });
     expect(r.status).toBe(403);
@@ -50,7 +50,7 @@ describe("an ask is updated only by the token that wrote it", () => {
 
   it("the writer and the owner can still update it", async () => {
     const s = await mk();
-    await put(s, "a-q2", s.a, { ask: "Ship v2?", kind: "approve" });
+    await put(s, "a-q2", s.a, { ask: "Ship v2?", kind: "approve", why: "Tests pass" });
     expect((await put(s, "a-q2", s.a, { why: "Tests pass" })).status).toBe(200);
     expect(
       (
@@ -68,7 +68,7 @@ describe("an ask is updated only by the token that wrote it", () => {
 
   it("a token cannot claim to be the writer", async () => {
     const s = await mk();
-    await put(s, "a-q3", s.a, { ask: "Ship v2?", kind: "approve" });
+    await put(s, "a-q3", s.a, { ask: "Ship v2?", kind: "approve", why: "Tests pass" });
     expect(
       (await put(s, "a-q3", s.b, { writer: "token:agent-b", ask: "x" })).status,
     ).not.toBe(200);

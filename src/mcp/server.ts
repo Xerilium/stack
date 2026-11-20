@@ -20,6 +20,8 @@ export interface McpServerOptions {
   onEvent?: (e: McpEvent) => void;
   /** Receives the error's class name only. */
   onError?: (className: string) => void;
+  /** The caller's own session link for a name (stdio: from its environment); fills `agent` on asks_put and asks_reply. @req FR:ask-routing/addr.api */
+  link?: (name: string) => string | undefined;
 }
 
 const BASE = 'https://mcp.invalid/api';
@@ -43,6 +45,10 @@ export function createMcpServer(opts: McpServerOptions): Server {
     try { args = checkArgs(t, req.params.arguments); } catch (e) {
       if (e instanceof ArgError) return fail(errorText('invalid', [{ field: e.field, message: e.message }]));
       throw e;
+    }
+    if ((t.name === 'asks_put' || t.name === 'asks_reply') && args['agent'] === undefined && opts.link) {
+      const l = opts.link(typeof args['from'] === 'string' ? args['from'] : 'agent');
+      if (l) args = { ...args, agent: l };
     }
     try {
       let timer: ReturnType<typeof setTimeout> | undefined;
