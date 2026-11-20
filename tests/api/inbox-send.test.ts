@@ -84,11 +84,13 @@ describe('POST /inbox-items/{id}/send', () => {
   // @req FR:email-send/send.once @req FR:email-send/send.once.unsure
   it('one send per item at a time; a send with no answer is reported as not confirmed', async () => {
     let release: () => void = () => undefined;
+    let started: () => void = () => undefined;
+    const inFlight = new Promise<void>((ok) => { started = ok; });
     const sent: string[] = [];
-    const slow: ReplyBox = { ...fakeBox().box, send: (id) => new Promise<void>((ok) => { sent.push(id); release = ok; }) };
+    const slow: ReplyBox = { ...fakeBox().box, send: (id) => new Promise<void>((ok) => { sent.push(id); release = ok; started(); }) };
     const { call } = await mk(async () => slow);
     const first = call('POST', `/inbox-items/${ID}/send`, { text: 'Yes.' });
-    await new Promise((r) => setTimeout(r, 20));
+    await inFlight;
     expect((await call('POST', `/inbox-items/${ID}/send`, { text: 'Yes.' })).status).toBe(409);
     release();
     expect((await first).json).toEqual({ ok: true });
