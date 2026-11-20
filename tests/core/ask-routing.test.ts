@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { answerAsk, askTurn, listAsks, putAsk, readAsk, replyAsk, AskDenied, markDelivery } from '../../src/core/asks';
+import { answerAsk, askTurn, handleAsk, listAsks, putAsk, readAsk, replyAsk, AskDenied, markDelivery } from '../../src/core/asks';
 import { ConflictError, MemoryStorage } from '../../src/core/storage';
 import { GitStorage } from '../../src/core/storage-git';
 import { run } from '../../src/cli/run';
@@ -78,6 +78,35 @@ describe('owner questions', () => {
   it('only the owner writes from owner', async () => {
     const { ctx } = mk();
     await expect(putAsk(ctx, 'q1', { ask: 'Status?', from: 'owner', agent: LINK }, 'cos', { writer: 'token:cos' })).rejects.toThrow(AskDenied);
+    await expect(putAsk(ctx, 'q1', { ask: 'Status?', from: 'owner', agent: LINK, why: 'w' }, 'cos', { agent: true })).rejects.toThrow(AskDenied);
+  });
+  // @req FR:ask-routing/ask.close
+  it('only the owner closes his question; a token replies only on its own asks', async () => {
+    const { ctx } = mk();
+    await putAsk(ctx, 'q1', { ask: 'Status?', from: 'owner', agent: LINK }, 'owner');
+    await expect(handleAsk(ctx, 'q1', { outcome: 'handled' }, 'cos')).rejects.toThrow(AskDenied);
+    await expect(replyAsk(ctx, 'q1', { text: 'x' }, 'cos', { writer: 'token:cos' })).rejects.toThrow(AskDenied);
+    await putAsk(ctx, 'a1', base, 'allyte-cos', { writer: 'token:allyte-cos' });
+    await expect(replyAsk(ctx, 'a1', { text: 'x' }, 'allyte-cos', { writer: 'token:allyte-cos' })).resolves.toEqual({ changed: true });
+    await expect(replyAsk(ctx, 'a1', { text: 'x' }, 'cos', { writer: 'token:other' })).rejects.toThrow(AskDenied);
+  });
+  // @req FR:ask-routing/addr.api
+  it('a token cannot set an agent link', async () => {
+    const { ctx } = mk();
+    await expect(putAsk(ctx, 'a1', { ...base, agent: LINK }, 'cos', { writer: 'token:cos', agent: true })).rejects.toThrow(AskDenied);
+  });
+  // @req FR:ask-routing/deliver.reset
+  it('reopening or relinking an owner question clears the old delivery', async () => {
+    const { ctx } = mk();
+    await putAsk(ctx, 'q1', { ask: 'Status?', from: 'owner', agent: LINK }, 'owner');
+    expect(await markDelivery(ctx, 'q1', { claim: true })).toBe(true);
+    await markDelivery(ctx, 'q1', { failed: 'Session gone' });
+    await putAsk(ctx, 'q1', { agent: '[Stack architect](#local_new)' }, 'owner');
+    expect((await readAsk(ctx, 'q1'))!.ask.undelivered).toBeUndefined();
+    expect(await markDelivery(ctx, 'q1', { claim: true })).toBe(true);
+    await answerAsk(ctx, 'q1', { answer: 'done' });
+    await putAsk(ctx, 'q1', { reopen: true }, 'owner');
+    expect((await readAsk(ctx, 'q1'))!.ask.delivered).toBeUndefined();
   });
   it('a follow-up gives the turn back to the agent; done closes it', async () => {
     const { ctx } = mk();
