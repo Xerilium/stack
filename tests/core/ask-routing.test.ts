@@ -2,7 +2,7 @@
  * Ask routing core: address, turn, owner questions, agent replies (`.xe/features/ask-routing/spec.md`).
  */
 import { execFileSync } from 'child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'fs';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { answerAsk, askTurn, handleAsk, listAsks, putAsk, readAsk, replyAsk, AskDenied, markDelivery } from '../../src/core/asks';
@@ -242,5 +242,17 @@ describe('agent doc', () => {
     const rule = doc.slice(doc.indexOf('## The rule'), doc.indexOf('## Put an ask'));
     for (const s of ['Never use `AskUserQuestion`', '--why', '--recommend', '--link', 'end your turn', 'Stack resumes this session', 'stack asks handle <key>', 'stack asks reply <key>']) expect(rule).toContain(s);
     expect(doc.indexOf('## The rule')).toBeGreaterThan(0);
+  });
+});
+
+// @req FR:ask-routing/doc.agents
+describe('rule block in every agent file', () => {
+  it('matches docs/asks.md word for word', () => {
+    const root = join(__dirname, '../..');
+    const doc = readFileSync(join(root, 'docs/asks.md'), 'utf8');
+    const block = doc.slice(doc.indexOf('> **Ask the owner only through Stack.**'), doc.indexOf('\n\nStack links each ask')).trim();
+    expect(block.length).toBeGreaterThan(200);
+    const files = [...readdirSync(join(root, '.claude/agents')).filter((f) => f.endsWith('.md')).map((f) => join(root, '.claude/agents', f)), join(root, 'docs/agent-instructions.md')];
+    for (const f of files) expect([f, readFileSync(f, 'utf8').includes(block)]).toEqual([f, true]);
   });
 });

@@ -152,6 +152,16 @@ describe('createSdkDriver', () => {
     expect(run.sessionId).toBe('new-0000-0000-0000-000000000009');
     expect((sdk.calls[0] as { options: Record<string, unknown> }).options).toMatchObject({ cwd: '/Users/me/dev/stack' });
   });
+  // @req FR:agent-team/driver.options @req FR:ask-routing/deliver.mode
+  it('passes the permission mode; bypass also allows skipping permissions', async () => {
+    const sdk = fakeSdk();
+    const d = createSdkDriver({ sdk, now: () => NOW });
+    await collect((await d.prompt({ cwd: '/Users/me/dev/stack', text: 'Go', options: { permissionMode: 'bypassPermissions' }, onPermission: async () => ({ optionId: 'allow' }) })).updates);
+    expect((sdk.calls[0] as { options: Record<string, unknown> }).options).toMatchObject({ permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true });
+    await collect((await d.prompt({ cwd: '/Users/me/dev/stack', text: 'Go', options: { permissionMode: 'default' }, onPermission: async () => ({ optionId: 'allow' }) })).updates);
+    expect((sdk.calls[1] as { options: Record<string, unknown> }).options.allowDangerouslySkipPermissions).toBeUndefined();
+    expect((sdk.calls[1] as { options: Record<string, unknown> }).options.permissionMode).toBe('default');
+  });
   it('refuses a session that is active elsewhere or already running', async () => {
     const d = createSdkDriver({ sdk: fakeSdk(), configDir: home, now: () => NOW });
     await expect(d.prompt({ sessionId: 'a1b2c3d4-0000-0000-0000-000000000001', text: 'x', onPermission: async () => ({ optionId: 'allow' }) })).rejects.toThrow(SessionBusy);

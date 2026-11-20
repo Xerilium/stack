@@ -42,7 +42,12 @@ export interface Session {
 export interface Turn { at: string; role: 'user' | 'assistant'; text: string }
 export interface Run { id: string; sessionId: string | null; updates: AsyncIterable<Update> }
 /** Per-prompt options an agent persona needs; every field is optional and a driver may ignore what it cannot honour. @req FR:agent-team/driver.options */
+/** The permission modes a run may take. @req FR:agent-team/driver.options */
+export const PERMISSION_MODES = ['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const;
+export type RunPermissionMode = (typeof PERMISSION_MODES)[number];
 export interface PromptOptions {
+  /** The run's permission mode; `bypassPermissions` skips every permission ask. @req FR:ask-routing/deliver.mode */
+  permissionMode?: RunPermissionMode;
   /** Appended to the runtime's own system prompt (the agent's persona and the task context). */
   systemPrompt?: string;
   model?: string;

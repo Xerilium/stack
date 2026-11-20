@@ -155,6 +155,20 @@ describe('loop', () => {
   });
 });
 
+// @req FR:ask-routing/deliver.mode
+describe('permission mode', () => {
+  const run = async (mode?: string) => {
+    const { ctx, deps, prompts } = mk({ sessions: [{ id: 'local_abc', cli: 'cli-abc', state: 'idle', ...(mode ? { mode } : {}) } as never] });
+    await putAsk(ctx, 'a1', base, 'x');
+    await answerAsk(ctx, 'a1', { answer: 'go' });
+    await courierPass(deps);
+    return (prompts[0] as { options?: { permissionMode?: string } }).options?.permissionMode;
+  };
+  it('resumes a bypass session in bypass mode', async () => { expect(await run('bypassPermissions')).toBe('bypassPermissions'); });
+  it('keeps acceptEdits and default', async () => { expect(await run('acceptEdits')).toBe('acceptEdits'); expect(await run('default')).toBe('default'); });
+  it('runs an unknown or missing mode as default', async () => { expect(await run('auto')).toBe('default'); expect(await run()).toBe('default'); });
+});
+
 // Review round: open dialogs, missing ids, stale fallbacks, quoted data.
 describe('safety', () => {
   // @req FR:ask-routing/deliver.busy

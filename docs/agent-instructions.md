@@ -14,14 +14,24 @@ Paste this into the scheduled agent's prompt. Replace `<project>` and `<agent>`.
 2. For each item, oldest first:
    - Skip an item whose `agent` names another agent: the owner picked that agent.
    - The task is at `row` (where the row is now). Use `ref` only when `row` is missing (the row is gone: handle it with a note that says so).
-   - Do what `text` asks (kind `instruction`; `reply` and `decision` entries are answers to your asks). Line breaks were folded to ` / `.
+   - Do what `text` asks (kind `instruction`; `reply` and `decision` entries are answers to your asks). Line breaks were folded to `/`.
    - Kind `enrich`: fill in the row per [task-rubric.md](task-rubric.md) (`Next:`, `Done when:`, `Context:`, `Links:`, `Owner:`) until `stack check <row>` scores 4. Edit the row only; do not do the work. It comes on `🙋` rows too. Keep the title words, so the entry still finds the row; to split a two-action title, add child rows. Host delivery does not run `enrich`.
    - Reply on the task in one line so the owner sees it in the task thread:
      `stack inbox reply <row> --from <agent> --text "<what you did, or what you need>"`
    - Close the entry:
      `stack inbox handle <id> --from <agent> --note "<one line: result or PR link>"`
-3. If you cannot act, still reply with what you need, and ask in Needs you (`stack asks put`). Do not handle the entry until the work is done or the owner withdraws it.
+3. If you cannot act, still reply with what you need, and put an ask (see "Ask the owner" below). Do not handle the entry until the work is done or the owner withdraws it.
 4. Never write an instruction yourself. Only the owner writes in the inbox (`POST /inbox` is owner only).
+
+## Ask the owner
+
+> **Ask the owner only through Stack.** Never use `AskUserQuestion`, chat, or a message to another agent to ask him anything.
+>
+> 1. Put one ask: `stack asks put <key> --from "<your name>" --ask "<one decision>" --kind approve|decide|review|go-do|answer --why "<what and why, one line>" --recommend "<your pick>" --link <https url>`.
+> 2. Not blocked: carry on. Blocked: end your turn. Do not poll.
+> 3. Stack resumes this session with his answer. Act on it, then `stack asks handle <key> --outcome handled --note "<what you did>"`.
+> 4. To ask back on the same thread: `stack asks reply <key> --from "<your name>" --text "…"`.
+> 5. When Stack brings you his question (`the owner asks you (<key>)`), answer with `stack asks reply <key> --from "<your name>" --text "…"`. Never answer in chat.
 ```
 
 ## Commands

@@ -33,6 +33,8 @@ export interface SessionFacts {
 export interface SessionItem {
   id: string; title: string; project: SessionProject; state: SessionState; reason: SessionReason; pinned: boolean;
   lastActivityAt: string; link: string; /** The Claude Code session id (`cliSessionId`): the id a prompt resumes. */ cli?: string; prs: { url: string; state: string }[]; ask?: string; scheduled?: { id: string; name: string };
+  /** The app's permission mode for the session. @req FR:ask-routing/deliver.mode */
+  mode?: string;
 }
 export interface Inventory {
   at: string; total: number; counts: Record<SessionState, number>;
@@ -301,7 +303,7 @@ export function runInventory(o: InventoryOptions): Inventory {
     return {
       // @req FR:session-inventory/needs.reason
       id: f.id, title: f.title, project: projectOf(f.cwd), state, reason: superseded ? 'superseded' : stale ? 'stale' : reason, pinned: f.pinned,
-      lastActivityAt: new Date(at).toISOString(), link: sessionLink(f.id), ...(cliOf.has(f.id) ? { cli: cliOf.get(f.id)! } : {}), prs: f.prs.filter((p) => !p.dismissed).map((p) => ({ url: p.url, state: p.state })),
+      lastActivityAt: new Date(at).toISOString(), link: sessionLink(f.id), ...(cliOf.has(f.id) ? { cli: cliOf.get(f.id)! } : {}), ...(f.permissionMode ? { mode: f.permissionMode } : {}), prs: f.prs.filter((p) => !p.dismissed).map((p) => ({ url: p.url, state: p.state })),
       ...(f.summary?.ask && (state === 'waiting' || state === 'stuck') ? { ask: f.summary.ask } : {}),
       ...(f.scheduledTaskId ? { scheduled: { id: f.scheduledTaskId, name: sched.get(f.scheduledTaskId) ?? f.scheduledTaskId } } : {}),
       at, candidate: superseded || stale,

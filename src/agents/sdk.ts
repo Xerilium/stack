@@ -155,6 +155,8 @@ export function createSdkDriver(o: SdkDriverOptions = {}): AgentDriver {
           ...(po.model ? { model: po.model } : {}), ...(po.title && !req.sessionId ? { title: po.title } : {}),
           ...(po.allowedTools ? { allowedTools: po.allowedTools } : {}), ...(po.disallowedTools ? { disallowedTools: po.disallowedTools } : {}),
           ...(po.schema ? { outputFormat: { type: 'json_schema', schema: po.schema } } : {}),
+          // @req FR:ask-routing/deliver.mode: the SDK needs the explicit flag to run in bypass.
+          ...(po.permissionMode ? { permissionMode: po.permissionMode, ...(po.permissionMode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}) } : {}),
         };
         const it = (await sdk()).query({ prompt: req.text, options: { ...(req.sessionId ? { resume: req.sessionId } : {}), ...(req.cwd ? { cwd: req.cwd } : {}), includePartialMessages: true, canUseTool, abortController: ac, ...(o.maxBudgetUsd !== undefined ? { maxBudgetUsd: o.maxBudgetUsd } : {}), ...extra } });
         for await (const raw of it) {
