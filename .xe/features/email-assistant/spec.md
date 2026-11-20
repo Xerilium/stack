@@ -34,7 +34,8 @@ Owner needs every inbox triaged all day without running a command, so that mail 
 - **FR:auto.nobrowser** (P1): Email assistant MUST NOT drive a browser or the screen in a pass; a test MUST fail when `src/email/` or its imports reach `playwright`, `puppeteer`, or a computer-use client
 - **FR:auto.isolate** (P1): A pass MUST continue with the next inbox when one inbox fails
   > - @req FR:email-runner/cli.all
-- **FR:auto.backlog** (P1): When one delta brings more than `--max` messages, the pass MUST queue the extra message ids in the inbox state, advance the cursor, and handle the queue oldest first in later passes; no rerun by the owner is needed
+- **FR:auto.backlog** (P1): When one delta brings more than `--max` messages, the pass MUST queue the extra message ids in the inbox state and advance the cursor
+  - **FR:auto.backlog.drain** (P1): Later passes MUST handle the queue oldest first, with no rerun by the owner
   - **FR:auto.backlog.ask** (P2): When the queue holds more than 1,000 ids, the pass MUST write one `answer` ask `mail-backlog-<inbox>`: "Look back how far for <inbox>?" with options `14 days` / `3 days` / `Only new mail`
 - **FR:auto.signin** (P1): When a provider reports that sign-in is lost (Graph `invalid_grant` or `interaction_required`, Google `invalid_grant`, IMAP auth failure), the pass MUST write one `go-do` ask `mail-signin-<inbox>` with the exact login command, and MUST skip that inbox until sign-in works
   - **FR:auto.signin.clear** (P1): The first good pass of that inbox MUST handle the ask as `resolved`
@@ -106,7 +107,8 @@ Owner needs only the mail that needs his call, as ranked asks, so that he never 
 - **FR:surface.asks** (P1): Email assistant MUST reach the owner only through asks; it MUST NOT write a digest, a recap, an email, or a notification of its own
 - **FR:surface.cap** (P1): Email assistant MUST keep at most `maxOpenAsks` (default 5) open individual mail asks per inbox
   - **FR:surface.cap.pick** (P1): A `needs_decision`, a `sensitive` item, a VIP sender, or urgency 2 or more MUST get its own ask, most urgent first, up to the cap
-  - **FR:surface.cap.rollup** (P1): Every other drafted reply MUST go into one `review` ask per inbox `mail-drafts-<inbox>`: "<N> reply drafts ready in <inbox>", link to the provider's Drafts, detail up to 20 lines `sender · subject` (no body)
+  - **FR:surface.cap.rollup** (P1): Every other drafted reply MUST go into one `review` ask per inbox `mail-drafts-<inbox>`: "<N> reply drafts ready in <inbox>", with a link to the provider's Drafts
+    - **FR:surface.cap.rollup.detail** (P1): The rollup ask detail MUST list up to 20 lines of `sender · subject`, with no body
   - **FR:surface.cap.overflow** (P2): Items over the cap MUST wait in the queue and MUST get an ask when a slot opens
 - **FR:surface.priority** (P1): Ask priority MUST come from urgency: 3 `high`, 2 `normal`, 1 or less `low`; a VIP adds one level (max `high`); `crit` is never set by mail
 - **FR:surface.system** (P1): System asks (`mail-signin-*`, `mail-model-down`, `mail-budget-*`, `mail-backlog-*`) MUST be at most one open per key and MUST be handled by the assistant when the cause clears
@@ -125,7 +127,8 @@ Owner needs tokens and list-price dollars per inbox per day, visible in Stack, s
   > - @req FR:agent-sessions/web.usage.panel
 - **FR:meter.cli** (P1): `stack email status --all` MUST print the same numbers per inbox, plus messages, settled by rules, sent to a model, drafts, and asks for today
 - **FR:meter.api** (P2): `GET /email/usage` MUST return the `$usage-day` rows, owner only
-- **FR:meter.budget** (P1): When an inbox reaches `dailyTokenCap` (default 1,000,000 tokens) in a day, the pass MUST stop model calls for that inbox until the next owner-local day, queue the mail that needs a model, and write one `decide` ask `mail-budget-<inbox>`: options `Raise cap for today` / `Wait until tomorrow`, default `Wait until tomorrow`
+- **FR:meter.budget** (P1): When an inbox reaches `dailyTokenCap` (default 1,000,000 tokens) in a day, the pass MUST stop model calls for that inbox until the next owner-local day and queue the mail that needs a model
+  - **FR:meter.budget.ask** (P1): The pass MUST write one `decide` ask `mail-budget-<inbox>` with options `Raise cap for today` / `Wait until tomorrow`, default `Wait until tomorrow`
   - **FR:meter.budget.rules** (P1): Rules-only settling MUST continue while the cap holds
 
 ### FR:tokens: Token efficiency
