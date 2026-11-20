@@ -118,6 +118,17 @@ The owner needs every answer to reach and wake the asker so that he never relays
 - **FR:deliver.loop** (P1): `stack web` runs a pass every 15 s and once at start, only when it has agent runs and an inventory, never in demo mode. Passes never overlap
 - **FR:deliver.once** (P1): One ask is delivered at most once per turn, also with two writers on one repo: the claim (`delivered`) is written before the prompt, under the repo write lock and the row's version, and only the writer that set it prompts
 
+### FR:ui: One page for every thread
+
+The owner needs one page that shows only his turns, with each thread's context and state, so that he answers in one action and never hunts across chats.
+
+- **FR:ui.mine** (P1): The Asks page and its count MUST list `turn: owner` asks only, ranked (`GET /asks?turn=owner`). An answered owner question shows as `<Agent> replied` with the reply text
+- **FR:ui.waiting** (P1): Under the list, a collapsed `Waiting on agents (<n>)` group MUST list `turn: agent` asks. Each card shows the agent name and one status chip: `Delivered <time ago>` (`ok`), `Not delivered: <reason>` (`bad`), or `Sending…` (`neutral`) when neither is set. Nothing in the group asks him to act
+- **FR:ui.thread** (P1): A card's detail MUST show the thread (oldest first, the newest 5 lines, `Show all` for the rest), each line as `<who>: <text>` with its time. `stack:` lines are muted
+- **FR:ui.reply** (P1): On an answered owner question the card offers `Done` (closes it) and `Reply` (opens the reply box). The reply box keeps an editable draft and sends only on an explicit `Send to <Agent>` click or Enter; it never sends on its own (`FR:ui-kit/send.box`)
+- **FR:ui.ask** (P1): `Ask an agent` at the top of the page MUST open a form: an agent picker (live sessions from the inventory, newest first, named by title) and a question box, sent only by `Send to <Agent>`. Sending puts an owner question (`FR:ask.put`) with a new key `q-<yyyymmdd>-<4 hex>` and the picked session as `agent`
+- **FR:ui.kit** (P1): The page uses only `ui-kit` components; a new piece of UI is a new reusable component. Muted cards, one accent, whole-card click, buttons named by their effect, readable at 375 px and on desktop, in light and dark
+
 ### FR:doc: Agents ask there and nowhere else
 
 The owner needs every agent to use one channel so that every question lands in one place.
