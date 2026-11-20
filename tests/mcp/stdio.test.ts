@@ -1,5 +1,5 @@
 import { PassThrough } from 'stream';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { resolveScopes, runStdio } from '../../src/mcp/stdio';
@@ -76,6 +76,27 @@ describe('runStdio', () => {
     expect(msgs[3].result).toEqual({ content: [{ type: 'text', text: 'error forbidden' }], isError: true });
     stdin.end();
     await done;
+  });
+  // @req FR:ask-routing/addr.api @req FR:ask-routing/ask.put
+  it('links asks to the session in its environment and never asks as the owner', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'stack-mcp-'));
+    mkdirSync(join(dir, 'tasks'));
+    const stdin = new PassThrough(); const stdout = new PassThrough(); const stderr = new PassThrough();
+    const done = runStdio({ argv: ['--dir', dir], env: { CLAUDE_CODE_HOST_SESSION_ID: 'local_abc' }, stdin, stdout, stderr });
+    const f = frames(stdout);
+    const send = (o: unknown) => stdin.write(JSON.stringify(o) + '\n');
+    send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'c', version: '1' } } });
+    send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+    send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'asks_put', arguments: { key: 'a1', ask: 'Approve X', kind: 'approve', from: 'cos', why: 'CI green' } } });
+    send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'asks_put', arguments: { key: 'q1', ask: 'Status?', kind: 'answer', from: 'owner', why: 'w' } } });
+    send({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'asks_put', arguments: { key: 'a2', ask: 'Approve Y', kind: 'approve', why: 'w' } } });
+    await f.until(2, 3, 4);
+    const by = (id: number) => f.msgs.find((m) => m.id === id);
+    expect(by(2).result.content[0].text).toBe('created a1');
+    expect(by(3).result).toEqual({ content: [{ type: 'text', text: 'error forbidden' }], isError: true });
+    expect(by(4).result.isError).toBe(true); // from is required
+    stdin.end(); await done;
+    expect(readFileSync(join(dir, 'tasks/asks.md'), 'utf8')).toContain('> agent: [cos](#local_abc)');
   });
   it('rejects bad flags on stderr without task data', async () => {
     const stderr = new PassThrough(); let err = '';

@@ -61,13 +61,13 @@ test('a file written by an agent appears by itself; the answer lands back in the
   await expect(page.getByTestId('live-status')).toHaveText(/Live/);
 
   // agent writes an ask: the page re-renders with no reload and no toast
-  cli('asks', 'put', 'pr-1', '--ask', 'Approve merging PR 1', '--kind', 'approve', '--from', 'cos', '--recommend', 'Approve', '--default', 'Merges at 8', '--reversible', 'yes', '--by', new Date(Date.now() + 3 * 3600_000).toISOString(), '--link', 'https://github.com/o/r/pull/1');
+  cli('asks', 'put', 'pr-1', '--ask', 'Approve merging PR 1', '--kind', 'approve', '--from', 'cos', '--why', 'CI is green', '--recommend', 'Approve', '--default', 'Merges at 8', '--reversible', 'yes', '--by', new Date(Date.now() + 3 * 3600_000).toISOString(), '--link', 'https://github.com/o/r/pull/1');
   await expect(page.locator('.ask-card .ask-title')).toHaveText('Approve merging PR 1', { timeout: 5000 });
   await expect(page.locator('.toast')).toHaveCount(0);
   await expect(page).toHaveTitle('(1) Stack');
 
   // a higher-ranked ask from another agent jumps ahead; the owner's cursor stays on the ask being read
-  cli('asks', 'put', 'urgent', '--ask', 'Wire the invoice', '--kind', 'go-do', '--from', 'finance-cos', '--priority', 'crit');
+  cli('asks', 'put', 'urgent', '--ask', 'Wire the invoice', '--kind', 'go-do', '--from', 'finance-cos', '--why', 'Due today', '--priority', 'crit');
   await expect(page.locator('.ask-li').first()).toContainText('Wire the invoice');
   await expect(page.locator('.ask-card .ask-title')).toHaveText('Approve merging PR 1');
 

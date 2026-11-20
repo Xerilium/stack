@@ -5,6 +5,7 @@
  * @req FR:ask-queue/flow.put @req FR:ask-queue/flow.answer @req FR:ask-queue/flow.handle @req FR:ask-queue/flow.default @req FR:ask-queue/flow.thread
  * @req FR:quick-triage/flow.fields @req FR:quick-triage/flow.apply @req FR:quick-triage/flow.text @req FR:quick-triage/flow.order
  * @req FR:task-asks/core.contract
+ * @req FR:ask-routing/addr.link @req FR:ask-routing/turn.derive @req FR:ask-routing/reply.cmd
  */
 import { EFFORT, IMPACT, LifecycleError, PRIORITY, SPECIAL, STATUS, type LifecycleContext } from './lifecycle';
 import { ConflictError, NotFoundError, writeAll, type FileWrite } from './storage';
@@ -15,6 +16,7 @@ import { currentRows, inboxTitle, rowKey } from './inbox';
 import { parseProject, type Task } from './parser';
 import { ASK_KEY, isAskRow } from './task-ids';
 import { fencedLines } from './task-lint';
+import { parseAgentLink } from './goal-model';
 import { applyAction, describe as describeAction, parseAction, parseTaskRef, readRow, type Action } from './ask-actions';
 
 export const ASK_KINDS = ['approve', 'decide', 'review', 'go-do', 'answer'] as const;
@@ -28,6 +30,16 @@ export type AskState = (typeof ASK_STATES)[number];
 export type AskPriority = (typeof ASK_PRIORITIES)[number];
 export type AskAnswer = (typeof ASK_ANSWERS)[number];
 export type AskOutcome = (typeof ASK_OUTCOMES)[number];
+export type AskTurn = 'owner' | 'agent' | 'none';
+/** The owner's own questions to an agent carry this `from`. @req FR:ask-routing/ask.put */
+export const OWNER = 'owner';
+
+/** Whose move it is: the owner on an open agent ask or an answered owner question, the agent on the reverse. @req FR:ask-routing/turn.derive */
+export function askTurn(a: Pick<Ask, 'from' | 'state'>): AskTurn {
+  if (a.state === 'done') return 'none';
+  const mine = a.from === OWNER;
+  return (a.state === 'open') === mine ? 'agent' : 'owner';
+}
 
 export interface Ask {
   key: string; state: AskState; ask: string; kind: AskKind; from: string;
@@ -41,6 +53,10 @@ export interface Ask {
   refText?: string;
   /** Who created the ask (`token:<name>` for a token, else the core actor); only that writer or the owner updates it (security M5). */
   writer?: string;
+  /** The agent side of the thread: `[Name](#local_<id>)`. @req FR:ask-routing/addr.link */
+  agent?: string;
+  /** When Stack woke the agent's session for this turn, or why it could not. @req FR:ask-routing/deliver.wake */
+  delivered?: string; undelivered?: string;
   /** Free markdown under `## Detail`; shown only when the owner expands the ask. */
   detail: string;
   /** Lines under `## Thread`, as written. */
@@ -54,11 +70,14 @@ export interface AskPut {
   ask?: string; kind?: AskKind; from?: string; project?: string; why?: string; recommend?: string; options?: string[]; default?: string; by?: string;
   reversible?: boolean; link?: string; priority?: AskPriority; effort?: string; blocks?: number; detail?: string; reopen?: boolean;
   flow?: string; seq?: number; ref?: string; apply?: string; applies?: string[];
+  agent?: string;
 }
 export interface AnswerInput { answer: AskAnswer; text?: string; until?: string }
 export interface HandleInput { outcome: AskOutcome; note?: string; reply?: string }
 
 export interface ListedAsk extends Omit<Ask, 'extra' | 'thread'> {
+  /** Whose move it is. @req FR:ask-routing/turn.derive */
+  turn: AskTurn;
   score: number; rank?: number; overdue: boolean; snoozedUntil?: string; agentReply?: string;
   /** The task title and where that row is now. @req FR:agent-thread/ask.ref */
   task?: string; row?: string;
@@ -75,7 +94,7 @@ const MAX_LINE = 500;
 const MAX_TEXT = 1000;
 const MAX_DETAIL = 20_000;
 const KEY = ASK_KEY;
-const FIELDS = ['state', 'ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'created', 'updated', 'answer', 'text', 'answered', 'outcome', 'handled', 'note', 'snoozed', 'flow', 'seq', 'ref', 'apply', 'applies', 'reftext', 'writer'] as const;
+const FIELDS = ['state', 'ask', 'kind', 'from', 'project', 'why', 'recommend', 'options', 'default', 'by', 'reversible', 'link', 'priority', 'effort', 'blocks', 'created', 'updated', 'answer', 'text', 'answered', 'outcome', 'handled', 'note', 'snoozed', 'flow', 'seq', 'ref', 'apply', 'applies', 'reftext', 'writer', 'agent', 'delivered', 'undelivered'] as const;
 const FLOW = /^[a-z0-9][a-z0-9._-]{0,79}$/;
 const actionOk = (t: string) => { try { parseAction(t); return true; } catch { return false; } };
 const refOk = (t: string) => { try { parseTaskRef(t); return true; } catch { return false; } };
@@ -121,7 +140,7 @@ export function formatAsk(a: Ask): string {
     ['effort', a.effort], ['blocks', String(a.blocks)], ['created', a.created], ['updated', a.updated],
     ['answer', a.answer], ['text', a.text], ['answered', a.answered], ['outcome', a.outcome], ['handled', a.handled], ['note', a.note], ['snoozed', a.snoozed],
     ['flow', a.flow], ['seq', a.seq === undefined ? undefined : String(a.seq)], ['ref', a.ref], ['reftext', a.refText], ['apply', a.apply], ['applies', a.applies?.join(' | ')],
-    ['writer', a.writer],
+    ['writer', a.writer], ['agent', a.agent], ['delivered', a.delivered], ['undelivered', a.undelivered],
   ];
   const lines = [`# Ask: ${a.key}`, '', HEADER, '', ...f.filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `- ${k}: ${v}`), ...a.extra];
   if (a.detail.trim()) lines.push('', '## Detail', '', a.detail.trim().replace(/^## /gm, '\\## '));
@@ -168,7 +187,8 @@ function setField(a: Ask, k: string, v: string): void {
     case 'reftext': a.refText = v; break;
     case 'apply': if (actionOk(v)) a.apply = v; break;
     case 'applies': { const parts = v.split(' | ').map((o) => o.trim()); if (parts.every(actionOk)) a.applies = parts; break; }
-    case 'by': case 'created': case 'updated': case 'answered': case 'snoozed': if (isoOk(v)) a[k] = v; break;
+    case 'by': case 'created': case 'updated': case 'answered': case 'snoozed': case 'delivered': if (isoOk(v)) a[k] = v; break;
+    case 'agent': if (parseAgentLink(v)) a.agent = v; break;
     default: (a as unknown as Record<string, string>)[k] = v;
   }
 }
@@ -205,7 +225,7 @@ export function formatAskRow(a: Ask, indent = ''): string[] {
     ['time', a.effort], ['blocks', a.blocks ? String(a.blocks) : undefined], ['created', a.created], ['updated', a.updated],
     ['answer', a.answer], ['text', a.text], ['answered', a.answered], ['outcome', a.outcome], ['handled', a.handled], ['note', a.note], ['snoozed', a.snoozed],
     ['flow', a.flow], ['seq', a.seq === undefined ? undefined : String(a.seq)], ['ref', a.ref], ['reftext', a.refText], ['apply', a.apply], ['applies', a.applies?.join(' | ')],
-    ['writer', a.writer],
+    ['writer', a.writer], ['agent', a.agent], ['delivered', a.delivered], ['undelivered', a.undelivered],
   ];
   const lines = [
     `${indent}- [${a.state === 'done' ? 'x' : ' '}] 🙋 ${mark ? `${mark} ` : ''}${a.ask}`,
@@ -520,7 +540,7 @@ function line(name: string, v: unknown, max = MAX_LINE, optional = true): string
   return t;
 }
 
-const OWNER_FIELDS = ['answer', 'text', 'answered', 'outcome', 'handled', 'note', 'snoozed', 'state', 'created', 'updated'];
+const OWNER_FIELDS = ['answer', 'text', 'answered', 'outcome', 'handled', 'note', 'snoozed', 'state', 'created', 'updated', 'delivered', 'undelivered'];
 
 /** Validates agent input; returns only the fields the agent sent. */
 function checkPut(input: AskPut): Partial<Ask> & { detail?: string } {
@@ -552,6 +572,12 @@ function checkPut(input: AskPut): Partial<Ask> & { detail?: string } {
     if (!Array.isArray(input.applies) || !input.applies.every((x) => typeof x === 'string')) throw new LifecycleError('applies must list one action per option');
     out.applies = input.applies.map((x, i) => { const v = line(`applies[${i}]`, x, MAX_LINE, false)!.replace(/\|/g, '/'); parseAction(v); return v; }); // one clean line each; `|` separates the stored list
   }
+  // @req FR:ask-routing/addr.link @req FR:ask-routing/addr.api
+  if (input.agent !== undefined) {
+    const l = typeof input.agent === 'string' ? parseAgentLink(input.agent) : null;
+    if (!l) throw new LifecycleError('agent must be a link like [Name](#local_<id>)');
+    out.agent = `[${oneLine(l.name).replace(/[[\]]/g, '')}](#${l.id})`;
+  }
   if (input.detail !== undefined) {
     if (typeof input.detail !== 'string' || input.detail.length > MAX_DETAIL) throw new LifecycleError(`detail must be at most ${MAX_DETAIL} characters`);
 // eslint-disable-next-line no-control-regex
@@ -562,11 +588,18 @@ function checkPut(input: AskPut): Partial<Ask> & { detail?: string } {
 
 /** A write the caller may not make; the message is fixed text. */
 export class AskDenied extends Error {}
+/** A new agent ask without context; fixed text, so the API may relay it. @req FR:ask-routing/addr.context */
+export class AskNeedsContext extends LifecycleError { constructor() { super('why is required: say what you need and why in one line'); } }
 
 /** Creates or updates an ask. `opts.writer` names a token caller, which may update only asks it wrote. @req FR:ask-queue/flow.put */
-export async function putAsk(ctx: LifecycleContext, key: string, input: AskPut, actor: string, opts: { writer?: string } = {}): Promise<{ key: string; created: boolean }> {
+export async function putAsk(ctx: LifecycleContext, key: string, input: AskPut, actor: string, opts: { writer?: string; /** An agent surface (CLI, token, MCP): a new ask needs `why`. */ agent?: boolean } = {}): Promise<{ key: string; created: boolean }> {
   asksPath(key);
   const fields = checkPut(input);
+  // @req FR:ask-routing/ask.put: only the owner asks as the owner, and an owner question names the agent that must answer.
+  if (fields.from === OWNER && (opts.writer || opts.agent)) throw new AskDenied('Only the owner can ask as the owner');
+  // @req FR:ask-routing/addr.api: a token's session is not on this host, and a link it wrote would let it prompt any local session.
+  if (fields.agent && opts.writer) throw new AskDenied('A token cannot link a session');
+  if (fields.from === OWNER && !fields.kind) fields.kind = 'answer';
   if (fields.ref !== undefined) { try { fields.refText = (await readRow(ctx, parseTaskRef(fields.ref))).row[3]; } catch (e) { if (e instanceof NotFoundError) throw e; throw new LifecycleError(`ref: ${e instanceof Error ? e.message : 'no such row'}`); } }
   const now = clock(ctx).toISOString();
   return mutate<{ key: string; created: boolean }>(ctx, key, (cur, snap) => {
@@ -575,6 +608,9 @@ export async function putAsk(ctx: LifecycleContext, key: string, input: AskPut, 
       if (snap.ids.has(key)) throw new LifecycleError(`Ask key "${key}" is a task ID; use another key`);
       const from = fields.from ?? line('from', actor, 80);
       if (!fields.ask || !fields.kind || !from) throw new LifecycleError('ask, kind and from are required');
+      // @req FR:ask-routing/addr.context
+      if (opts.agent && from !== OWNER && !fields.why) throw new AskNeedsContext();
+      if (from === OWNER && !fields.agent) throw new LifecycleError('agent is required: name the session that must answer');
       if (fields.kind === 'decide' && !fields.options) throw new LifecycleError('options are required for kind decide');
       if (fields.applies && fields.applies.length !== (fields.options ?? []).length) throw new LifecycleError('applies must have one entry per option');
       const next: Ask = { key, state: 'open', reversible: false, priority: 'normal', blocks: 0, detail: '', thread: [], extra: [], ...fields, ask: fields.ask, kind: fields.kind, from, created: now, updated: now, writer: opts.writer ?? actor };
@@ -592,6 +628,8 @@ export async function putAsk(ctx: LifecycleContext, key: string, input: AskPut, 
       next.state = 'open';
       for (const k of ['answer', 'text', 'answered', 'outcome', 'handled', 'note', 'snoozed'] as const) delete next[k];
     }
+    // @req FR:ask-routing/deliver.reset: a reopen or a new session link starts the delivery again.
+    if (old.state === 'done' || (fields.agent && fields.agent !== old.agent)) { delete next.delivered; delete next.undelivered; }
     return { next, message: `Ask: ${key}`, result: { key, created: false } };
   });
 }
@@ -611,14 +649,14 @@ export async function answerAsk(ctx: LifecycleContext, key: string, input: Answe
   const result = await recordAnswer(ctx, key, input, text, now, nowD, seen);
   const before = seen.ask ? { ask: seen.ask } : null;
   let action: Action | null = null;
-  if (before && before.ask.state === 'open' && before.ask.ref) {
+  if (before && before.ask.state === 'open' && before.ask.ref && before.ask.from !== OWNER) {
     const a = before.ask;
     if (input.answer === 'go' && a.apply) action = parseAction(a.apply);
     else if (input.answer === 'option' && a.applies && a.options) { const i = a.options.indexOf(text!); if (i >= 0 && a.applies[i]) action = parseAction(a.applies[i]); }
     else if (a.kind === 'answer' && (input.answer === 'reply' || input.answer === 'ask')) action = { kind: 'note', text: `🙋 ${now.slice(0, 10)}: ${text}` };
   }
   // @req FR:task-asks/core.wake: wake files are keyed by ask key and `from`, so they work the same for ask rows.
-  if (result.changed && before && !['defer'].includes(input.answer)) await updateWake(ctx, before.ask.from, key, input.answer === 'retract' ? null : input.answer, nowD);
+  if (result.changed && before && before.ask.from !== OWNER && !['defer'].includes(input.answer)) await updateWake(ctx, before.ask.from, key, input.answer === 'retract' ? null : input.answer, nowD);
   if (action && before) {
     let r;
     try { r = await applyAction(ctx, { ...parseTaskRef(before.ask.ref!), text: before.ask.refText }, action); }
@@ -653,6 +691,18 @@ async function recordAnswer(ctx: LifecycleContext, key: string, input: AnswerInp
       a.updated = now;
       return { next: a, message: `Ask retracted: ${key}`, result: { changed: true } };
     }
+    // @req FR:ask-routing/ask.follow: on his own question the owner follows up (the agent's turn again) or closes it.
+    if (a.from === OWNER && a.state !== 'done' && input.answer !== 'defer') {
+      if (input.answer === 'done') {
+        a.state = 'done'; a.outcome = 'handled'; a.handled = `${now} by ${OWNER}`; a.updated = now;
+        return { next: a, message: `Ask closed: ${key}`, result: { changed: true } };
+      }
+      if (input.answer !== 'reply' && input.answer !== 'ask') throw new LifecycleError('answer must be reply, ask or done on your own question');
+      a.state = 'open'; a.updated = now;
+      for (const k of ['answer', 'text', 'answered', 'delivered', 'undelivered'] as const) delete a[k];
+      a.thread = [...a.thread, `- ${now} you: ${text}`];
+      return { next: a, message: `Ask follow-up: ${key}`, result: { changed: true } };
+    }
     if (a.state !== 'open') throw new ConflictError(`Ask is ${a.state}`);
     if (input.answer === 'defer') {
       if (!isoOk(input.until)) throw new LifecycleError('until must be an ISO date-time');
@@ -665,7 +715,8 @@ async function recordAnswer(ctx: LifecycleContext, key: string, input: AnswerInp
       return { next: a, message: `Ask deferred: ${key}`, result: { changed: true } };
     }
     if (input.answer === 'option' && !(a.options ?? []).includes(text!)) throw new LifecycleError('text must be one of the options');
-    a.state = 'answered'; a.answer = input.answer; a.answered = now; a.updated = now; delete a.snoozed;
+    // @req FR:ask-routing/deliver.reset: the agent's turn starts undelivered.
+    a.state = 'answered'; a.answer = input.answer; a.answered = now; a.updated = now; delete a.snoozed; delete a.delivered; delete a.undelivered;
     if (text) a.text = text; else delete a.text;
     if (input.answer === 'reply' || input.answer === 'ask') a.thread = [...a.thread, `- ${now} you: ${text}`];
     return { next: a, message: `Ask answered: ${key}`, result: { changed: true } };
@@ -683,6 +734,8 @@ export async function handleAsk(ctx: LifecycleContext, key: string, input: Handl
   let from = '';
   const res = await mutate<{ changed: boolean }>(ctx, key, (cur) => {
     if (!cur) throw new NotFoundError(`Ask not found: ${key}`);
+    // @req FR:ask-routing/ask.close
+    if (cur.ask.from === OWNER && actor !== OWNER) throw new AskDenied('Only the owner closes his own question');
     from = cur.ask.from;
     const a = { ...cur.ask };
     if (input.outcome === 'reopen') {
@@ -701,6 +754,84 @@ export async function handleAsk(ctx: LifecycleContext, key: string, input: Handl
   // @req FR:ask-queue/wake.clear
   if (from) await updateWake(ctx, from, key, null, new Date(now));
   return res;
+}
+
+/**
+ * The caller's own session as a link, from the environment Claude Code gives every tool call: the desktop id (`local_…`), else
+ * `local_<Claude Code session id>`. Undefined outside a session.
+ * @req FR:ask-routing/addr.env
+ */
+export function envLink(name: string, env: Record<string, string | undefined>): string | undefined {
+  const host = env.CLAUDE_CODE_HOST_SESSION_ID?.trim();
+  const cli = env.CLAUDE_CODE_SESSION_ID?.trim();
+  const id = host && /^local_[A-Za-z0-9_-]+$/.test(host) ? host : cli && /^[A-Za-z0-9_-]+$/.test(cli) ? `local_${cli}` : undefined;
+  const label = oneLine(name).replace(/[[\]]/g, '').slice(0, 80);
+  return id && label ? `[${label}](#${id})` : undefined;
+}
+
+/** A thread name: the actor without line breaks or `:`, at most 64 characters. */
+const threadName = (actor: string) => oneLine(actor).replace(/[:[\]]/g, '').slice(0, 64).trim() || 'agent';
+
+/**
+ * The agent's reply in the thread: answers an owner question, reopens an answered agent ask, or adds context to an open one.
+ * @req FR:ask-routing/reply.cmd
+ */
+export async function replyAsk(ctx: LifecycleContext, key: string, input: { text: string; agent?: string }, actor: string, opts: { /** A token caller: replies only on asks it wrote, never links a session. */ writer?: string } = {}): Promise<{ changed: boolean }> {
+  asksPath(key);
+  const text = line('text', input.text, MAX_TEXT, false)!;
+  const link = input.agent === undefined ? undefined : checkPut({ agent: input.agent }).agent;
+  if (link && opts.writer) throw new AskDenied('A token cannot link a session');
+  const who = threadName(actor);
+  const nowD = clock(ctx);
+  const now = nowD.toISOString();
+  let from = '';
+  const res = await mutate<{ changed: boolean }>(ctx, key, (cur) => {
+    if (!cur) throw new NotFoundError(`Ask not found: ${key}`);
+    // @req FR:ask-routing/reply.cmd: a token answers only in its own threads (security M5).
+    if (opts.writer && (cur.ask.from === OWNER || (cur.ask.writer && cur.ask.writer !== opts.writer))) throw new AskDenied('Only the agent that wrote this ask can reply');
+    if (cur.ask.state === 'done') throw new ConflictError('Ask is done');
+    const a = { ...cur.ask, updated: now, thread: [...cur.ask.thread, `- ${now} ${who}: ${text}`] };
+    if (link) a.agent = link;
+    from = a.from;
+    if (a.from === OWNER) {
+      if (a.state === 'answered') return { next: a, message: `Ask reply: ${key}`, result: { changed: true } }; // more for the owner to read
+      a.state = 'answered'; a.answer = 'reply'; a.text = text; a.answered = now;
+    } else if (a.state === 'answered') {
+      a.state = 'open';
+      for (const k of ['answer', 'text', 'answered', 'outcome', 'handled', 'snoozed', 'delivered', 'undelivered'] as const) delete a[k];
+    }
+    return { next: a, message: `Ask reply: ${key}`, result: { changed: true } };
+  });
+  if (from && from !== OWNER) await updateWake(ctx, from, key, null, nowD);
+  return res;
+}
+
+/** What the courier records on an ask. */
+export type DeliveryMark = { claim: true } | { sent: string } | { release: true } | { failed: string };
+
+/**
+ * The courier's marks, each one version-checked write: `claim` takes the turn for delivery (true only for the one writer that set it),
+ * `sent` logs the delivery, `release` gives a busy session's turn back, `failed` records why it could not be delivered.
+ * @req FR:ask-routing/deliver.once @req FR:ask-routing/deliver.wake @req FR:ask-routing/deliver.find
+ */
+export async function markDelivery(ctx: LifecycleContext, key: string, m: DeliveryMark): Promise<boolean> {
+  const now = clock(ctx).toISOString();
+  return mutate<boolean>(ctx, key, (cur) => {
+    if (!cur) return { skip: false };
+    const a = { ...cur.ask };
+    if ('claim' in m) {
+      if (askTurn(a) !== 'agent' || !a.agent || a.delivered || a.undelivered) return { skip: false };
+      a.delivered = now;
+      return { next: a, message: `Ask delivery: ${key}`, result: true };
+    }
+    if (!a.delivered) return { skip: false };
+    if ('sent' in m) a.thread = [...a.thread, `- ${now} stack: delivered to ${threadName(m.sent)}`];
+    else {
+      delete a.delivered;
+      if ('failed' in m) { a.undelivered = line('reason', m.failed, 200) ?? 'failed'; a.thread = [...a.thread, `- ${now} stack: not delivered (${a.undelivered})`]; }
+    }
+    return { next: a, message: `Ask delivery: ${key}`, result: true };
+  });
 }
 
 /**
@@ -809,9 +940,12 @@ export async function importAsks(ctx: LifecycleContext, o: { dryRun?: boolean } 
 }
 
 /** Ranked list. @req FR:ask-queue/ask.rank @req FR:ask-queue/flow.default */
-export async function listAsks(ctx: LifecycleContext, o: { state?: (typeof LIST_STATES)[number]; limit?: number } = {}, at?: Date): Promise<AskList> {
+export async function listAsks(ctx: LifecycleContext, o: { state?: (typeof LIST_STATES)[number]; limit?: number; turn?: AskTurn } = {}, at?: Date): Promise<AskList> {
+  // @req FR:ask-routing/turn.list: a turn alone lists that side's live asks (open or answered, not snoozed), ranked like the open list.
+  const byTurn = o.turn !== undefined && o.state === undefined;
   const state = o.state ?? 'open';
   if (!oneOf(LIST_STATES, state)) throw new LifecycleError(`state must be one of ${LIST_STATES.join(', ')}`);
+  if (o.turn !== undefined && !oneOf(['owner', 'agent', 'none'] as const, o.turn)) throw new LifecycleError('turn must be one of owner, agent, none');
   const now = at ?? clock(ctx);
   const all = await readAll(ctx);
   const latest = all.map((a) => a.updated).sort().pop();
@@ -826,7 +960,7 @@ export async function listAsks(ctx: LifecycleContext, o: { state?: (typeof LIST_
     const flow = a.flow ? all.filter((x) => x.flow === a.flow) : [];
     const progress = a.flow ? { flowTotal: flow.length, flowDone: flow.filter((x) => x.state !== 'open').length } : {};
     const cur = rowOf.get(a.key);
-    return { ...rest, ...(a.refText ? { task: inboxTitle(a.refText) } : {}), ...(cur ? { row: apiRefOf(cur) } : {}), score: scoreAsk(a, now), overdue: a.state === 'open' && !!a.by && Date.parse(a.by) < now.getTime(), ...(a.snoozed ? { snoozedUntil: a.snoozed } : {}), ...(agentReply ? { agentReply } : {}), ...progress };
+    return { ...rest, ...(a.refText ? { task: inboxTitle(a.refText) } : {}), ...(cur ? { row: apiRefOf(cur) } : {}), turn: askTurn(a), score: scoreAsk(a, now), overdue: a.state === 'open' && !!a.by && Date.parse(a.by) < now.getTime(), ...(a.snoozed ? { snoozedUntil: a.snoozed } : {}), ...(agentReply ? { agentReply } : {}), ...progress };
   };
   /** A flow's questions sit together, by seq, where its best-scored question ranks. @req FR:quick-triage/flow.order */
   const flowsTogether = (sorted: Ask[]): Ask[] => {
@@ -841,14 +975,16 @@ export async function listAsks(ctx: LifecycleContext, o: { state?: (typeof LIST_
     return out;
   };
   let rows: Ask[];
-  if (state === 'open') {
-    rows = flowsTogether(all.filter((a) => a.state === 'open' && !snoozed(a)).sort((a, b) => scoreAsk(b, now) - scoreAsk(a, now) || (Date.parse(a.by ?? '') || Infinity) - (Date.parse(b.by ?? '') || Infinity) || a.created.localeCompare(b.created) || a.key.localeCompare(b.key)));
+  const turnOk = (a: Ask) => o.turn === undefined || askTurn(a) === o.turn;
+  if (state === 'open' || byTurn) {
+    rows = flowsTogether(all.filter((a) => (byTurn ? a.state !== 'done' : a.state === 'open') && !snoozed(a) && turnOk(a)).sort((a, b) => scoreAsk(b, now) - scoreAsk(a, now) || (Date.parse(a.by ?? '') || Infinity) - (Date.parse(b.by ?? '') || Infinity) || a.created.localeCompare(b.created) || a.key.localeCompare(b.key)));
   } else if (state === 'snoozed') rows = all.filter((a) => a.state === 'open' && snoozed(a)).sort((a, b) => (a.snoozed ?? '').localeCompare(b.snoozed ?? ''));
   else if (state === 'answered') rows = all.filter((a) => a.state === 'answered').sort((a, b) => (a.answered ?? '').localeCompare(b.answered ?? ''));
   else if (state === 'done') rows = all.filter((a) => a.state === 'done').sort((a, b) => b.updated.localeCompare(a.updated));
   else rows = all.sort((a, b) => a.key.localeCompare(b.key));
+  rows = rows.filter(turnOk);
   const total = rows.length;
   const items = rows.slice(0, o.limit ?? 50).map(decorate);
-  if (state === 'open') items.forEach((it, i) => { it.rank = i + 1; });
+  if (state === 'open' || byTurn) items.forEach((it, i) => { it.rank = i + 1; });
   return { items, total, latest, snoozed: all.filter((a) => a.state === 'open' && snoozed(a)).length };
 }

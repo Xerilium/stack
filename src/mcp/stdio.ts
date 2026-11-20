@@ -13,6 +13,7 @@ import { ConfigError, loadConfig } from '../core/config';
 import { FsStorage } from '../core/storage';
 import { GitStorage } from '../core/storage-git';
 import { createMcpServer } from './server';
+import { envLink } from '../core/asks';
 
 const USAGE = 'Usage: stack-mcp [--dir <path>] [--scopes <a,b>]\nScopes: ' + SCOPES.join(', ') + ' (default: read,write; env STACK_MCP_SCOPES)\n';
 
@@ -37,7 +38,8 @@ export async function runStdio(io: StdioIo): Promise<number> {
     const storage = existsSync(join(dir, '.git')) ? new GitStorage(dir) : new FsStorage(dir);
     // Local process, same trust as the CLI: the API gate is open and the tool scopes are the limit.
     const api = createApiHandler({ storage, config: loadConfig(dir), authorize: () => true });
-    const server = createMcpServer({ api, scopes: resolveScopes(scopes), onError: (n) => io.stderr.write(`stack-mcp: ${n}\n`) });
+    // @req FR:ask-routing/addr.api: the session that runs this server is the one an ask waits in.
+    const server = createMcpServer({ api, scopes: resolveScopes(scopes), link: (n) => envLink(n, io.env), onError: (n) => io.stderr.write(`stack-mcp: ${n}\n`) });
     const closed = new Promise<void>((r) => { server.onclose = () => r(); });
     await server.connect(new StdioServerTransport(io.stdin, io.stdout));
     io.stdin.once('end', () => { void server.close(); });

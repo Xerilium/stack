@@ -1,15 +1,15 @@
 /** @req FR:mcp-server/tools.asks */
 import { setup } from './helpers';
 
-const put = { key: 'pr-1', ask: 'Approve PR 1', kind: 'approve', from: 'allyte-cos' };
+const put = { key: 'pr-1', ask: 'Approve PR 1', kind: 'approve', from: 'allyte-cos', why: 'CI is green' };
 
 describe('asks tools', () => {
   it('shows ask tools by scope; no answer tool', async () => {
     const { rpc, mint } = await setup();
     const names = async (...s: any[]) => (await rpc(await mint(...s), 'tools/list')).json.result.tools.map((x: any) => x.name).filter((n: string) => n.startsWith('asks'));
     expect(await names('tasks:read')).toEqual(['asks_list', 'asks_answer_wait']);
-    expect(await names('tasks:write')).toEqual(['asks_put', 'asks_handle']);
-    expect(await names('read', 'write')).toEqual(['asks_put', 'asks_list', 'asks_handle', 'asks_answer_wait']);
+    expect(await names('tasks:write')).toEqual(['asks_put', 'asks_handle', 'asks_reply']);
+    expect(await names('read', 'write')).toEqual(['asks_put', 'asks_list', 'asks_handle', 'asks_reply', 'asks_answer_wait']);
   });
   it('puts, lists, and handles', async () => {
     const { text, mint, api } = await setup();

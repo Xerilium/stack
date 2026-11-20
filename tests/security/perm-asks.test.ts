@@ -54,7 +54,7 @@ describe("perm-* asks are reserved for the broker", () => {
     const s = await mk();
     const r = await s.call("POST", "/api/asks/agent-q1", {
       headers: s.h,
-      body: { ask: "Ship it?", kind: "approve" },
+      body: { ask: "Ship it?", kind: "approve", why: "Tests pass" },
     });
     expect(r.status).toBe(200);
   });

@@ -19,7 +19,7 @@ Design and rationale: `docs/design/ask-queue.md`. Agent contract: `docs/asks.md`
 ## Scope
 
 - In: MCP tools (`FR:mcp-server/tools.asks`), the wake file (`FR:wake`), ask file format and storage path, core put/answer/handle/snooze/list/score, API routes `asks.list`, `asks.put`, `asks.answer`, `asks.handle`, a file watcher and server-sent events in `stack web`, CLI `stack asks`, the Asks view in the web app.
-- Out: parsing CoS state files (they are prose and agent-owned; see design doc), pushing answers into a running chat session, email/Slack ingestion (module `email-triage` feeds asks), notifications, multi-user.
+- Out: parsing CoS state files (they are prose and agent-owned; see design doc), pushing answers into a running chat session (`ask-routing`), email/Slack ingestion (module `email-triage` feeds asks), notifications, multi-user.
 
 ## Ask file format (v1)
 

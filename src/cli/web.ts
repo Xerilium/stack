@@ -53,6 +53,7 @@ import {
 } from './tailnet';
 import { serveSetup, withSetupMeta, type SetupHandler } from './setup';
 import { deliverySettings, deliveryStatus, DeliveryStore, startDeliveryLoop, startLogin, type DeliveryDeps } from '../agents/delivery';
+import { startAskCourier } from '../agents/ask-courier';
 
 const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, stdio: 'pipe', encoding: 'utf8' });
 
@@ -379,6 +380,9 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs, onRaw: o.watch?.onRaw, watchFn: o.watch?.watchFn });
   // A new message is a task file change (tasks/.stack/inbox): deliver it now instead of at the next tick.
   const offDelivery = deliveryLoop ? watcher.on((c) => { if (c.kinds.includes('tasks')) deliveryLoop.kick(); }) : undefined;
+  // @req FR:ask-routing/deliver.loop: every answer goes to the asking session; an answer is a task file change, so it goes at once.
+  const courier = agents && inventory && o.info?.mode !== 'demo' ? startAskCourier({ ctx: { storage, config }, runs: agents, inventory }, { onError: (e) => console.error(`ask courier: ${e instanceof Error ? e.message : 'error'}`) }) : undefined;
+  const offCourier = courier ? watcher.on((c) => { if (c.kinds.includes('tasks')) courier.kick(); }) : undefined;
   const beat = o.watch?.heartbeatMs ?? 20_000;
   const who = o.label ?? 'local';
   let port = o.port;
@@ -590,9 +594,10 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
     await prServers?.stopAll();
     offLive();
     offQm(); unwatchQm();
-    offDelivery?.();
+    offDelivery?.(); offCourier?.();
     watcher.close();
     await deliveryLoop?.close();
+    await courier?.close();
     const closed = Promise.all(servers.map((s) => new Promise<void>((ok) => s.close(() => ok())))); // stop accepting; open sockets stay until below
     for (const s of servers) s.closeIdleConnections();
     // Let api requests already being handled finish (bounded), so their writes join the final flush.

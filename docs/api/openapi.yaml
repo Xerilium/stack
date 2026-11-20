@@ -1160,6 +1160,14 @@ paths:
             type: integer
             minimum: 1
             maximum: 200
+        - name: turn
+          in: query
+          schema:
+            type: string
+            enum:
+              - owner
+              - agent
+              - none
       responses:
         "200":
           description: Asks
@@ -1296,6 +1304,10 @@ paths:
                     type: string
                     maxLength: 200
                   description: One action per option (- for none)
+                agent:
+                  type: string
+                  maxLength: 200
+                  description: Single line.
       responses:
         "200":
           description: Written
@@ -1307,6 +1319,46 @@ paths:
                   key:
                     type: string
                   created:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/Error"
+  /asks/{key}/reply:
+    post:
+      summary: "Reply in an ask thread as the agent: answers an owner question, reopens an answered ask, or adds context to an open one. 409 on a done ask"
+      operationId: replyAsk
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  maxLength: 1000
+                  description: One line, 1-1000 characters Single line.
+                agent:
+                  type: string
+                  maxLength: 200
+                  description: Your session link, [Name](#local_<id>), when the ask has none Single line.
+      responses:
+        "200":
+          description: Replied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changed:
                     type: boolean
         default:
           $ref: "#/components/responses/Error"
@@ -5215,6 +5267,23 @@ components:
         writer:
           type: string
           description: Who created the ask; only that token or the owner updates it
+        turn:
+          type: string
+          enum:
+            - owner
+            - agent
+            - none
+          description: Whose move it is
+        agent:
+          type: string
+          description: The agent session link, [Name](#local_<id>)
+        delivered:
+          type: string
+          format: date-time
+          description: When Stack woke the agent session for this turn
+        undelivered:
+          type: string
+          description: Why Stack could not wake the agent session
         row:
           $ref: "#/components/schemas/Ref"
         task:

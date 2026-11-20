@@ -2,7 +2,7 @@ import { LifecycleError } from '../core/lifecycle';
 import { TriageBlocked, TriageDenied } from '../core/triage';
 import { ConflictError, NotFoundError, PathError, StorageError } from '../core/storage';
 import { InboxFull } from '../core/inbox';
-import { AskDenied } from '../core/asks';
+import { AskDenied, AskNeedsContext } from '../core/asks';
 import { ReportBusy, ReportDenied } from '../core/reports';
 import { PrisBusy, PrisConflict } from '../core/pris';
 import { PrPriBusy, PrPriConflict, PrPriInvalid, PrPriNotFound } from '../core/pr-priority';
@@ -50,6 +50,7 @@ export function toApiError(e: unknown): ApiError {
   if (e instanceof PrPriInvalid) return new ApiError('invalid', 'Validation failed', e.issues);
   if (e instanceof TriageBlocked) return new ApiError('conflict', e.message);
   // Core messages can quote file content or user input, so clients only get fixed text.
+  if (e instanceof AskNeedsContext) return new ApiError('invalid', e.message);
   if (e instanceof LifecycleError) return /not found/i.test(e.message) ? new ApiError('not_found', 'Not found') : new ApiError('invalid', 'Request cannot be applied');
   return new ApiError('internal', 'Internal error');
 }

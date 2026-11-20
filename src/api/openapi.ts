@@ -340,6 +340,11 @@ const DOCS: Record<string, RouteDoc> = {
     desc: { reply: 'One line shown to the owner on the reopened ask' },
     responses: ok('Handled', { type: 'object', properties: { changed: { type: 'boolean' } } }),
   },
+  'asks.reply': {
+    operationId: 'replyAsk', summary: 'Reply in an ask thread as the agent: answers an owner question, reopens an answered ask, or adds context to an open one. 409 on a done ask',
+    desc: { text: 'One line, 1-1000 characters', agent: 'Your session link, [Name](#local_<id>), when the ask has none' },
+    responses: ok('Replied', { type: 'object', properties: { changed: { type: 'boolean' } } }),
+  },
   'reports.put': {
     operationId: 'putReport', summary: 'Store an agent status report in the host live store (~/.stack, never git); the latest per agent and project replaces the prior; its asks show in Needs you. 400 lists every schema issue; 404 on hosts with no store. See docs/report.md',
     requestBody: { required: true, content: { 'application/json': { schema: ref('ReportInput') } } },
@@ -865,7 +870,7 @@ export function buildOpenApi(): J {
             answer: { type: 'string', enum: [...ASK_ANSWERS] }, text: { type: 'string' }, answered: { type: 'string', format: 'date-time' }, outcome: { type: 'string', enum: [...ASK_OUTCOMES] },
             handled: { type: 'string' }, note: { type: 'string' }, snoozed: { type: 'string', format: 'date-time' }, detail: { type: 'string' },
             score: { type: 'integer' }, rank: { type: 'integer' }, overdue: { type: 'boolean' }, snoozedUntil: { type: 'string', format: 'date-time' }, agentReply: { type: 'string' },
-            flow: { type: 'string' }, seq: { type: 'integer' }, ref: ref('Ref'), apply: { type: 'string' }, applies: { type: 'array', items: { type: 'string' } }, flowTotal: { type: 'integer' }, flowDone: { type: 'integer' }, refText: { type: 'string' }, writer: { type: 'string', description: 'Who created the ask; only that token or the owner updates it' },
+            flow: { type: 'string' }, seq: { type: 'integer' }, ref: ref('Ref'), apply: { type: 'string' }, applies: { type: 'array', items: { type: 'string' } }, flowTotal: { type: 'integer' }, flowDone: { type: 'integer' }, refText: { type: 'string' }, writer: { type: 'string', description: 'Who created the ask; only that token or the owner updates it' }, turn: { type: 'string', enum: ['owner', 'agent', 'none'], description: 'Whose move it is' }, agent: { type: 'string', description: 'The agent session link, [Name](#local_<id>)' }, delivered: { type: 'string', format: 'date-time', description: 'When Stack woke the agent session for this turn' }, undelivered: { type: 'string', description: 'Why Stack could not wake the agent session' },
             row: ref('Ref'), task: { type: 'string' },
           },
         },
