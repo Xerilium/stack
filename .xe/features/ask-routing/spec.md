@@ -135,6 +135,7 @@ The owner needs one page that shows only his turns, with each thread's context a
 The owner needs every agent to use one channel so that every question lands in one place.
 
 - **FR:doc.snippet** (P1): `docs/asks.md` MUST open with a paste-ready rule block: never `AskUserQuestion` or chat to ask the owner; put an ask with `why`, `recommend`, and a link; end the turn when blocked; Stack resumes the session with the answer; reply with `stack asks reply`
+- **FR:doc.agents** (P1): Every agent definition in `.claude/agents/` and the prompt snippet in `docs/agent-instructions.md` MUST carry that rule block word for word
 
 ## Data Model
 

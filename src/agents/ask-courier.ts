@@ -8,10 +8,10 @@ import { listAsks, markDelivery, OWNER, readAsk, replyAsk, askTurn, oneLine, typ
 import { parseAgentLink } from '../core/goal-model';
 import type { LifecycleContext } from '../core/lifecycle';
 import type { AgentRuns } from './runs';
-import { SessionBusy } from './driver';
+import { PERMISSION_MODES, SessionBusy, type RunPermissionMode } from './driver';
 
 /** A session the courier can find: the inventory id (`local_…`), its Claude Code id, and its state. */
-export interface CourierSession { id: string; cli?: string; state?: string; reason?: string }
+export interface CourierSession { id: string; cli?: string; state?: string; reason?: string; /** The app's permission mode. */ mode?: string }
 export interface CourierDeps {
   ctx: LifecycleContext;
   runs: Pick<AgentRuns, 'prompt' | 'subscribe' | 'running'> & Partial<Pick<AgentRuns, 'sessions'>>;
@@ -24,6 +24,8 @@ export type CourierResult = 'delivered' | 'busy' | 'gone' | 'failed';
 
 /** Inventory reasons that mean a dialog is open in the app (`FR:session-inventory/state.waiting`). */
 const OPEN_DIALOG = new Set(['question', 'permission']);
+/** The session's own mode, never a raised one: an unknown mode runs as `default`. @req FR:ask-routing/deliver.mode */
+const modeOf = (s: CourierSession): RunPermissionMode => ((PERMISSION_MODES as readonly string[]).includes(s.mode ?? '') ? s.mode as RunPermissionMode : 'default');
 /** The commands that close the loop run without a permission ask; every other tool asks as on the dashboard. @req FR:ask-routing/deliver.wake */
 const CLOSE_TOOLS = ['Bash(stack asks handle:*)', 'Bash(stack asks reply:*)'];
 const WORD: Record<string, string> = { go: 'Approved', no: 'Rejected', option: 'Chose', reply: 'Replied', ask: 'Asked', done: 'Done' };
@@ -60,7 +62,7 @@ async function deliver(d: CourierDeps, a: ListedAsk, sessions: CourierSession[])
   const full = (await readAsk(d.ctx, a.key))?.ask;
   if (!full) return null;
   let runId: string;
-  try { ({ runId } = await d.runs.prompt({ sessionId: cli, text: deliveryPrompt(full), options: { allowedTools: CLOSE_TOOLS } })); }
+  try { ({ runId } = await d.runs.prompt({ sessionId: cli, text: deliveryPrompt(full), options: { allowedTools: CLOSE_TOOLS, permissionMode: modeOf(s) } })); }
   catch (e) {
     if (e instanceof SessionBusy) { await markDelivery(d.ctx, a.key, { release: true }); return 'busy'; }
     await markDelivery(d.ctx, a.key, { failed: e instanceof Error && e.message ? e.message : 'failed' });
