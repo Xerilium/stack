@@ -9,6 +9,7 @@ export const ACTIONS: readonly ActionInfo[] = [
   { id: 'snooze', label: 'Snooze', ready: true },
   { id: 'ask-me-later', label: 'Ask me later', ready: true },
   { id: 'create-task', label: 'Create task', ready: true },
+  { id: 'not-junk', label: 'Not junk', ready: true },
   { id: 'archive', label: 'Archive', ready: false },
   { id: 'unsubscribe', label: 'Unsubscribe', ready: false },
   { id: 'delegate', label: 'Delegate to agent', ready: false },

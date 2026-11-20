@@ -1,5 +1,5 @@
 /** Inbox contracts. Types only. @req FR:inbox-page/item.shape */
-export const ACTION_IDS = ['reply-draft', 'mark-done', 'snooze', 'ask-me-later', 'create-task', 'archive', 'unsubscribe', 'delegate', 'schedule', 'forward-draft'] as const;
+export const ACTION_IDS = ['reply-draft', 'mark-done', 'snooze', 'ask-me-later', 'create-task', 'not-junk', 'archive', 'unsubscribe', 'delegate', 'schedule', 'forward-draft'] as const;
 export type ActionId = (typeof ACTION_IDS)[number];
 export type Source = 'email' | 'teams' | 'slack' | 'github';
 
@@ -23,6 +23,8 @@ export interface InboxItem {
   link?: string;
   /** Email only: the Graph message the draft replies to. */
   messageId?: string;
+  /** The owner said this is not junk; later passes keep it. @req FR:inbox-page/junk.restore */
+  notJunk?: boolean;
   /** Triage class (email) or chat type; used in action requests, never message text. */
   kind?: string;
 }

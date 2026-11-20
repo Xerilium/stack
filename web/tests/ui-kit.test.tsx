@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ActionBar, ActionMenu, type ActionItem } from '../src/ui/ActionMenu';
 import { DayGrid, placeItems } from '../src/ui/DayGrid';
 import { FilterPills } from '../src/ui/FilterPills';
+import { Fold } from '../src/ui/Fold';
 import { Flag } from '../src/ui/Flag';
 import { MessageBox } from '../src/ui/MessageBox';
 import { LinkList } from '../src/ui/LinkList';
@@ -599,5 +600,27 @@ describe('SplitView reader', () => {
     const r = mount(<SplitView wide open reader list={<p>L</p>} detail={<h3>D</h3>} label="X" empty="Pick" onBack={() => {}} />);
     expect(r.querySelector('.ui-split')?.className).toBe('ui-split wide reader');
     expect(mount(<SplitView wide open list={<p>L</p>} detail={<h3>D</h3>} label="X" empty="Pick" onBack={() => {}} />).querySelector('.ui-split')?.className).toBe('ui-split wide');
+  });
+});
+
+// @req FR:ui-kit/fold.show @req FR:ui-kit/fold.toggle @req FR:ui-kit/fold.aside
+describe('Fold', () => {
+  it('is closed at first; the heading button opens it and shows the aside', () => {
+    const r = mount(<Fold id="f1" title="Junk" count={3} aside={<button type="button">Archive all</button>}><p>rows</p></Fold>);
+    const b = r.querySelector<HTMLButtonElement>('.ui-fold-btn')!;
+    expect(b.closest('h2')).not.toBeNull();
+    expect(b.textContent).toBe('›Junk3');
+    expect(b.getAttribute('aria-expanded')).toBe('false');
+    expect(b.getAttribute('aria-controls')).toBe('f1');
+    expect(r.querySelector('#f1')?.hasAttribute('hidden')).toBe(true);
+    expect(r.querySelector('.ui-fold-aside')).toBeNull();
+    expect(r.textContent).not.toContain('rows');
+    act(() => { b.click(); });
+    expect(b.getAttribute('aria-expanded')).toBe('true');
+    expect(r.querySelector('#f1')?.hasAttribute('hidden')).toBe(false);
+    expect(r.querySelector('#f1')?.textContent).toBe('rows');
+    expect(r.querySelector('.ui-fold-aside button')?.textContent).toBe('Archive all');
+    act(() => { b.click(); });
+    expect(r.querySelector('.ui-fold-aside')).toBeNull();
   });
 });

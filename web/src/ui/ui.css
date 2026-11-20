@@ -246,3 +246,17 @@
 .ui-tmsg.fold > summary:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 2px; border-radius: var(--fl-r-sm); }
 .ui-tmsg.fold .ui-tmsg-from { font-weight: 500; }
 @media (pointer: coarse), (max-width: 719px) { .ui-tmsg.fold > summary { min-height: var(--tap); } }
+
+/* Fold: a closed group with a heading button and a count. @req FR:ui-kit/fold.show @req FR:ui-kit/fold.toggle @req FR:ui-kit/fold.aside */
+.ui-fold { margin-top: var(--fl-s-l); padding-top: var(--fl-s-s); border-top: 1px solid var(--fl-stroke2); }
+.ui-fold-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.ui-fold-h { margin: 0; font-size: inherit; font-weight: inherit; }
+.ui-fold-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 8px 0 4px; border: 0; border-radius: var(--fl-r-md); background: transparent; color: var(--fl-fg2); font: 600 13px/20px var(--fl-font); cursor: pointer; }
+.ui-fold-btn:hover { color: var(--fl-fg1); background: rgb(127 127 127 / 10%); }
+.ui-fold-btn:focus-visible { outline: 2px solid var(--fl-focus); outline-offset: 2px; }
+.ui-fold-chev { display: inline-block; width: 10px; transition: transform var(--fl-fast); }
+.ui-fold[data-open="true"] .ui-fold-chev { transform: rotate(90deg); }
+.ui-fold-count { font-weight: 400; color: var(--fl-fg3); }
+.ui-fold-aside { display: flex; flex-wrap: wrap; gap: 8px; }
+.ui-fold-body { margin-top: var(--fl-s-s); }
+@media (pointer: coarse), (max-width: 719px) { .ui-fold-btn, .ui-fold-aside .fl-btn, .ui-fold-aside .btn { min-height: var(--tap); } }
