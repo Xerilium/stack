@@ -48,7 +48,7 @@ function Kind({ type }: { type: AccountRow['type'] }) {
 }
 
 /** The row menu: drafts, sign in again, disconnect (asks first). Arrows move, Escape closes and returns focus. @req FR:connect-accounts/web.menu */
-function RowMenu({ a, busy, onDrafts, onSend, onSignIn, onRemove }: { a: AccountRow; busy: boolean; onDrafts: (on: boolean) => void; onSend: (on: boolean) => void; onSignIn: () => void; onRemove: () => void }) {
+function RowMenu({ a, busy, onDrafts, onToggleSend, onSignIn, onRemove }: { a: AccountRow; busy: boolean; onDrafts: (on: boolean) => void; onToggleSend: (on: boolean) => void; onSignIn: () => void; onRemove: () => void }) {
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
@@ -95,7 +95,7 @@ function RowMenu({ a, busy, onDrafts, onSend, onSignIn, onRemove }: { a: Account
                 </button>
               )}
               {a.mail && a.account && (
-                <button type="button" role="menuitemcheckbox" aria-checked={!!a.send} class="fl-option acct-check" aria-describedby={`${id}-send-hint`} onClick={pick(() => onSend(!a.send))}>
+                <button type="button" role="menuitemcheckbox" aria-checked={!!a.send} class="fl-option acct-check" aria-describedby={`${id}-send-hint`} onClick={pick(() => onToggleSend(!a.send))}>
                   <span class="acct-box" aria-hidden="true">{a.send ? '✓' : ''}</span>
                   <span>{SEND_LABEL}<small id={`${id}-send-hint`} class="acct-hint">{SEND_HINT}</small></span>
                   <span class="acct-onoff">{a.send ? 'On' : 'Off'}</span>
@@ -114,7 +114,7 @@ function RowMenu({ a, busy, onDrafts, onSend, onSignIn, onRemove }: { a: Account
 /** One tone per account state: the same word never shows in two colors. @req FR:connect-accounts/web.row */
 const STATE_TONE: Record<AccountRow['state'], ChipTone> = { connected: 'ok', expired: 'warn', down: 'warn', error: 'bad' };
 
-function Row({ a, busy, now, onSignIn, onDrafts, onSend, onRemove }: { a: AccountRow; busy: boolean; now: Date; onSignIn: () => void; onDrafts: (on: boolean) => void; onSend: (on: boolean) => void; onRemove: () => void }) {
+function Row({ a, busy, now, onSignIn, onDrafts, onToggleSend, onRemove }: { a: AccountRow; busy: boolean; now: Date; onSignIn: () => void; onDrafts: (on: boolean) => void; onToggleSend: (on: boolean) => void; onRemove: () => void }) {
   const tip = statusTip(a, now);
   const name = a.account || 'Earlier sign-in';
   return (
@@ -126,7 +126,7 @@ function Row({ a, busy, now, onSignIn, onDrafts, onSend, onRemove }: { a: Accoun
         <span class="sr-only">. {tip}</span>
       </span>
       {needsFix(a) ? <button type="button" class="fl-btn primary acct-fix" disabled={busy} aria-label={`Fix ${name}`} onClick={onSignIn}>Fix</button> : <span class="acct-fix-gap" aria-hidden="true" />}
-      <RowMenu a={a} busy={busy} onDrafts={onDrafts} onSend={onSend} onSignIn={onSignIn} onRemove={onRemove} />
+      <RowMenu a={a} busy={busy} onDrafts={onDrafts} onToggleSend={onToggleSend} onSignIn={onSignIn} onRemove={onRemove} />
     </li>
   );
 }
@@ -224,7 +224,7 @@ export function ConnectAccounts({ api, onChange, other, now = new Date(), refres
             <Row key={`${a.account}|${i}`} a={a} busy={busy || waiting} now={now}
               // Signing in again keeps drafts on when they were on.
               onSignIn={() => void start(a.account ? { account: a.account, ...(a.drafts ? { drafts: true } : {}), ...(a.send ? { send: true } : {}) } : {})}
-              onSend={(on) => { if (on) remember({ account: a.account, ...(a.drafts ? { drafts: true } : {}), send: true }); void run(() => api.connectSend(a.account, on)); }}
+              onToggleSend={(on) => { if (on) remember({ account: a.account, ...(a.drafts ? { drafts: true } : {}), send: true }); void run(() => api.connectSend(a.account, on)); }}
               onDrafts={(on) => { if (on) remember({ account: a.account, drafts: true, ...(a.send ? { send: true } : {}) }); void run(() => api.connectDrafts(a.account, on)); }}
               onRemove={() => void run(async () => { await api.connectRemove(a.account); })} />
           ))}

@@ -130,12 +130,14 @@ function Reply({ row, draft, api, toast, onSent }: { row: InboxRow; draft: Reply
     <section class="in-reply" aria-labelledby={`rp-${row.id}`}>
       <h4 class="in-thread-h" id={`rp-${row.id}`}>Reply</h4>
       <label class="sr-only" for={`rt-${row.id}`}>Reply to {row.from}</label>
-      <textarea id={`rt-${row.id}`} class="in-reply-text" rows={7} value={text} disabled={busy} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} onBlur={() => void save()} />
-      <div class="in-draft-actions">
-        {draft.canSend && <button type="button" class="btn primary" disabled={busy || !text.trim()} onClick={() => void send()}>Send</button>}
-        {!draft.canSend && draft.link && <a class="btn" href={draft.link} target="_blank" rel="noopener noreferrer">Open draft in Outlook</a>}
-        <span class="in-reply-note">{replyNote(draft)}{!draft.canSend && <> <a class="in-manage" href="#/settings/accounts">Turn on Send in Settings</a></>}</span>
-      </div>
+      <form onSubmit={(e) => { e.preventDefault(); void send(); }}>
+        <textarea id={`rt-${row.id}`} class="in-reply-text" rows={7} value={text} disabled={busy} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} onBlur={() => void save()} />
+        <div class="in-draft-actions">
+          {draft.canSend && <button type="submit" class="btn primary" disabled={busy || !text.trim()}>Send</button>}
+          {!draft.canSend && draft.link && <a class="btn" href={draft.link} target="_blank" rel="noopener noreferrer">Open draft in Outlook</a>}
+          <span class="in-reply-note">{replyNote(draft)}{!draft.canSend && <> <a class="in-manage" href="#/settings/accounts">Turn on Send in Settings</a></>}</span>
+        </div>
+      </form>
     </section>
   );
 }
@@ -218,7 +220,7 @@ export function InboxView({ api, toast, onStatus, refresh }: { api: Client; toas
   };
   /** Not junk keeps the row and moves it to the list; every other action removes the row. */
   const done = (id: string, action: string) => setItems((xs) => (action === 'not-junk' ? xs.map((x) => (x.id === id ? { ...x, notJunk: true } : x)) : xs.filter((x) => x.id !== id)));
-  const row = (r: InboxRow, isJunkRow: boolean) => <Row key={r.id} row={r} catalog={catalog} api={api} toast={toast} junk={isJunkRow} selected={r.id === sel} onOpen={() => setSel(r.id)} done={done} />;
+  const rowOf = (r: InboxRow, isJunkRow: boolean) => <Row key={r.id} row={r} catalog={catalog} api={api} toast={toast} junk={isJunkRow} selected={r.id === sel} onOpen={() => setSel(r.id)} done={done} />;
   const unread = main.filter((i) => i.unread).length;
   const empty = emptyText(src?.summary);
   const line = statusLine(src?.summary);
@@ -236,7 +238,7 @@ export function InboxView({ api, toast, onStatus, refresh }: { api: Client; toas
           reader wide={wide} open={!!open} label="Message" empty="Select a message to read it." onBack={() => setSel(null)}
           list={(
             <>
-              <ul class="in-list">{main.map((r) => row(r, false))}</ul>
+              <ul class="in-list">{main.map((r) => rowOf(r, false))}</ul>
               {junk.length > 0 && (
                 <Fold id="inbox-junk" title="Junk" count={junk.length} aside={(
                   <form class="in-junk-form" onSubmit={(e) => { e.preventDefault(); void clear(((e as SubmitEvent).submitter as HTMLButtonElement | null)?.value === 'unsubscribe-archive' ? 'unsubscribe-archive' : 'archive'); }}>
@@ -245,7 +247,7 @@ export function InboxView({ api, toast, onStatus, refresh }: { api: Client; toas
                   </form>
                 )}>
                   <p class="in-junk-note">Spam, cold outreach and newsletters. Stack never deletes mail.</p>
-                  <ul class="in-list">{junk.map((r) => row(r, true))}</ul>
+                  <ul class="in-list">{junk.map((r) => rowOf(r, true))}</ul>
                 </Fold>
               )}
             </>
