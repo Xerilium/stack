@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { dateTag, mockApi, seed } from './mock';
+import { dateTag, mockApi, seed, workHours } from './mock';
 
 const rows = (page: Page) => page.locator('.row .title');
 const shot = (page: Page, name: string, info: { project: { name: string } }) => page.screenshot({ path: `e2e/screenshots/${name}-${info.project.name}.png`, fullPage: false });
@@ -72,6 +72,7 @@ const KEYBOARD = 'keyboard';
 const selectRow = async (page: Page, ref: string) => { await page.locator(`.row[data-ref="${ref}"] .title`).click(); await page.keyboard.press('x'); };
 
 test.describe('now view', () => {
+  test.beforeEach(({ page }) => workHours(page));
   // @req FR:web-app/now.focus @req FR:web-app/ux.responsive
   // @req FR:web-app/home3.now @req FR:web-app/home3.context @req FR:web-app/home3.rows
   test('shows the focus task quietly (title, one context line, Start, Done, …), Active rows below, and no horizontal scroll', async ({ page }, info) => {
@@ -184,6 +185,7 @@ test.describe('now view', () => {
 });
 
 test.describe('focus mode', () => {
+  test.beforeEach(({ page }) => workHours(page));
   // @req FR:web-app/now.focusmode
   test('opens from the Focus button, shows notes and a subtask checklist, and closes', async ({ page }, info) => {
     const m = await mockApi(page);
@@ -736,7 +738,7 @@ test.describe('feedback and mobile', () => {
 
   // @req FR:web-app/ux.responsive
   test('layout switches between rail and tab bar', async ({ page }, info) => {
-    const d = new Date(); d.setHours(10, 0, 0, 0); await page.clock.setFixedTime(d); // Home's buttons follow the time you have
+    await workHours(page); // Home's buttons follow the time you have
     await mockApi(page);
     await page.goto('/#/home');
     if (info.project.name === 'mobile') {
@@ -787,6 +789,7 @@ test.describe('feedback and mobile', () => {
 });
 
 test.describe('now view sections', () => {
+  test.beforeEach(({ page }) => workHours(page));
   const mk = (n: number, text: string, extra: Partial<import('./mock').MockTask> = {}) => ({ ref: `gamma:${n}`, text, project: 'gamma', section: '🔄 Active', done: false, depth: 0, notes: [] as string[], ...extra });
   const dateIn = (days: number) => { const d = new Date(Date.now() + days * 864e5); return `${d.toLocaleString('en-US', { month: 'short' })} ${d.getDate()}, ${d.getFullYear()}`; };
 

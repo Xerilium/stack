@@ -1,6 +1,8 @@
 /** One ranking, the CoS's Needs you, and a quiet Home. */
 import { expect, test } from '@playwright/test';
-import { mockApi, type MockNeed } from './mock';
+import { mockApi, workHours, type MockNeed } from './mock';
+
+test.beforeEach(({ page }) => workHours(page));
 
 const need = (over: Partial<MockNeed> = {}): MockNeed => ({ id: 'pay-bills', title: 'Pay bills tonight', recommendation: 'Pay USAA first', default: 'I wait until Monday', link: 'https://example.test/bills', project: 'alpha', ...over });
 
@@ -145,7 +147,6 @@ test.describe('Quiet Home', () => {
   // @req FR:web-app/home3.context
   test('the context line says late only when overdue', async ({ page }) => {
     const m = await mockApi(page);
-    const ten = new Date(); ten.setHours(10, 0, 0, 0); await page.clock.setFixedTime(ten); // fit follows the clock; CI runs in UTC, past the work day
     const t = m.tasks.find((x) => x.ref === 'alpha:6')!;
     await page.goto('/#/home');
     await expect(page.getByTestId('now-context')).not.toContainText('late');

@@ -27,6 +27,9 @@ const EMOJI = { status: ['🚧', '⏸️', '👀', '⏳', '⛔️'], priority: [
 export const dateTag = (days = 0) => { const d = new Date(Date.now() + days * 864e5); return `${d.toLocaleString('en-US', { month: 'short' })} ${d.getDate()}`; };
 const vs = (s: string) => s.replace(/️/g, '');
 
+/** Home picks NOW by the time left in the day (FR:home/home.window): pin 10:00 local so a run after the work day sees the same NOW. */
+export const workHours = (page: Page) => { const d = new Date(); d.setHours(10, 0, 0, 0); return page.clock.setFixedTime(d); };
+
 export const seed = (): MockTask[] => [
   { ref: 'alpha:6', text: `‼️ 📅 ${dateTag()}: Ship the **web app** 🟡`, project: 'alpha', section: '🔄 Active', done: false, depth: 0, notes: ['see [spec](https://example.test/spec)'] },
   { ref: 'alpha:7', text: 'Write docs 🟢', project: 'alpha', section: '🔄 Active', done: false, depth: 1, notes: [] },

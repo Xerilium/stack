@@ -1,6 +1,8 @@
 /** Home, round 3: priority-ordered projects, "only have 5 min", fold, inline expand, one cursor, Defer everywhere, animated Done, × close, Stack [DEMO]. */
 import { expect, test, type Page } from '@playwright/test';
-import { mockApi, seed, type MockTask } from './mock';
+import { mockApi, seed, workHours, type MockTask } from './mock';
+
+test.beforeEach(({ page }) => workHours(page));
 
 const KEYBOARD = 'keyboard';
 const mk = (ref: string, text: string, project: string, extra: Partial<MockTask> = {}): MockTask => ({ ref, text, project, section: '🔄 Active', done: false, depth: 0, notes: [], ...extra });
