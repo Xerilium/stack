@@ -12,7 +12,7 @@ export const MAX_ITEMS = 500;
 type ChatSource = 'teams' | 'slack';
 
 /** Read, change, write; a version conflict re-reads and tries again, up to 3 times. */
-async function update(ctx: LifecycleContext, change: (cur: InboxItem[]) => InboxItem[]): Promise<void> {
+export async function updateInbox(ctx: LifecycleContext, change: (cur: InboxItem[]) => InboxItem[]): Promise<void> {
   for (let i = 0; ; i++) {
     try { await writeInbox(ctx.storage, orderItems(change(await readInbox(ctx.storage))).slice(0, MAX_ITEMS)); return; } catch (e) { if (!(e instanceof ConflictError) || i >= 2) throw e; }
   }
@@ -22,7 +22,8 @@ async function update(ctx: LifecycleContext, change: (cur: InboxItem[]) => Inbox
 export async function syncInbox(ctx: LifecycleContext, o: { account: string; results: TriageResult[] }): Promise<number> {
   const fresh = o.results.map((r) => fromTriage(r, o.account));
   const ids = new Set(fresh.map((i) => i.id));
-  await update(ctx, (cur) => [...cur.filter((i) => !ids.has(i.id)), ...fresh]);
+  // A restored item stays restored when a pass replaces it. @req FR:inbox-page/junk.restore.keep
+  await updateInbox(ctx, (cur) => { const kept = new Set(cur.filter((i) => i.notJunk).map((i) => i.id)); return [...cur.filter((i) => !ids.has(i.id)), ...fresh.map((i) => (kept.has(i.id) ? { ...i, notJunk: true } : i))]; });
   return fresh.length;
 }
 
@@ -34,7 +35,7 @@ export async function runInbox(ctx: LifecycleContext, o: { connectors: Partial<R
     try { got.set(src, (await c.unread()).filter((i) => i.source === src)); } catch { failed.push(src); }
   }
   const fresh = [...got.values()].flat();
-  await update(ctx, (cur) => [...cur.filter((i) => !got.has(i.source as ChatSource)), ...fresh]);
+  await updateInbox(ctx, (cur) => [...cur.filter((i) => !got.has(i.source as ChatSource)), ...fresh]);
   for (const i of fresh) await putAsk(ctx, i.id, chatToAsk(i as never), 'inbox');
   return { chats: fresh.length, failed };
 }

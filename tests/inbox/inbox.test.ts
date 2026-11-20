@@ -38,7 +38,7 @@ describe('order', () => {
 // @req FR:inbox-page/action.catalog @req FR:inbox-page/action.missing
 describe('catalog', () => {
   it('lists ready and missing actions', () => {
-    expect(ACTIONS.filter((a) => a.ready).map((a) => a.id).sort()).toEqual(['ask-me-later', 'create-task', 'mark-done', 'reply-draft', 'snooze']);
+    expect(ACTIONS.filter((a) => a.ready).map((a) => a.id).sort()).toEqual(['ask-me-later', 'create-task', 'mark-done', 'not-junk', 'reply-draft', 'snooze']);
     expect(ACTIONS.filter((a) => !a.ready).map((a) => a.id).sort()).toEqual(['archive', 'delegate', 'forward-draft', 'schedule', 'unsubscribe']);
   });
   it('a missing action runs nothing', async () => {

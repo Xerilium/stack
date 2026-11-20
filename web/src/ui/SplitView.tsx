@@ -15,6 +15,7 @@ export function SplitView({
   label,
   empty,
   onBack,
+  reader = false,
 }: {
   wide: boolean;
   open: boolean;
@@ -23,6 +24,8 @@ export function SplitView({
   label: string;
   empty: string;
   onBack: () => void;
+  /** A reading layout: the detail takes the larger share of the width. @req FR:ui-kit/split.reader */
+  reader?: boolean;
 }) {
   const h = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -30,7 +33,7 @@ export function SplitView({
   }, [open, wide]);
   const show = !wide && open;
   return (
-    <div class={`ui-split${wide ? " wide" : ""}`}>
+    <div class={`ui-split${wide ? " wide" : ""}${reader ? " reader" : ""}`}>
       <div class="ui-split-list" hidden={show}>
         {list}
       </div>

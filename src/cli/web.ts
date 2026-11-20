@@ -24,6 +24,9 @@ import { dirname, extname, join, normalize, relative, resolve, sep } from 'path'
 import { createApiHandler } from '../api/handler';
 import type { AppUpdater } from '../core/app-update';
 import { createClaudeJson } from '../email/llm';
+import { createJunkMailboxes } from '../inbox/junk-mailbox';
+import { createMailReaders } from '../inbox/readers';
+import type { MailReader } from '../inbox/detail';
 import { createGitHubPrs, githubRepos } from '../api/github';
 import { createLazyPrPage, createPrPage } from '../api/pr-page';
 import { createPrServers } from '../api/pr-server';
@@ -83,6 +86,9 @@ export function prepareDemo(repo: string, dest: string, reset = false): void {
 }
 
 /** What the UI header shows at all times. */
+/** Mailbox writers for the API. A demo copy gets none: it never writes to a real mailbox. @req FR:inbox-page/junk.never.demo */
+export const mailWrites = (demo: boolean) => (demo ? {} : { junkMailbox: createJunkMailboxes() });
+
 export interface RepoInfo { mode: 'demo' | 'live'; repo: string; branch: string }
 export interface WebOpts {
   dir: string; port: number; webDir: string; label?: string; info?: RepoInfo; watch?: { debounceMs?: number; heartbeatMs?: number; onRaw?: (file: string) => void; watchFn?: WatchOptions['watchFn'] };
@@ -104,6 +110,8 @@ export interface WebOpts {
   delivery?: Partial<Pick<DeliveryDeps, 'run' | 'isRepo' | 'store'>> & { intervalMs?: number; login?: () => Promise<{ started: boolean; step?: string }> | { started: boolean; step?: string } } | false;
   /** This machine's inbox sign-ins for `GET /inbox-sources`; default the cached local probe. @req FR:inbox-page/api.sources */
   inboxProbe?: (o?: { fresh: true }) => Promise<SourceProbe>;
+  /** Reads a mailbox for the Inbox item detail; default: this machine's sign-ins. @req FR:inbox-page/detail.read */
+  mailReader?: (account: string) => Promise<MailReader | undefined>;
   /** The live report store; default `~/.stack` (or `STACK_HOME`). @req FR:status-ingest/api.put */
   reports?: ReportStore;
   /** `loopback` (default): 127.0.0.1 only. `tailnet`: also each Tailscale address, paired devices only. @req FR:tailnet-access/bind.tailnet */
@@ -348,7 +356,7 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
     ...(agents && inventory ? { leads: { runs: agents, inventory, readDef: async (p: string) => { const f = resolve(o.dir, p); if (!f.startsWith(resolve(o.dir) + sep)) return null; try { return readFileSync(f, 'utf8'); } catch { return null; } } } } : {}) };
   const deliveryLoop = dd && dd.settings.mode === 'claude' ? startDeliveryLoop(dd, { intervalMs: o.delivery ? o.delivery.intervalMs : undefined, onError: (e) => console.error(`delivery: ${e instanceof Error ? e.message : 'error'}`) }) : undefined;
   const delivery = dd ? { status: (ref: string) => deliveryStatus(dd, ref, inventory), summary: () => ({ mode: dd.settings.mode, login: dd.store.read().login.state }), login: () => (o.delivery && o.delivery.login ? o.delivery.login() : startLogin()) } : undefined;
-  const apiDeps = { storage, config, reports, inventory, agentScan, delivery, pris, prPriority, feedback, qm, designReview: o.designReview ?? createDesignReview({ filer: ghIssueFiler() }), ...(prPage ?? {}), ...(prServers ? { prServers } : {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), onError: (e: unknown) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe({ health }), ...(o.app ? { app: o.app } : {}), ...(connect ? { connect } : {}) };
+  const apiDeps = { storage, config, reports, inventory, agentScan, delivery, pris, prPriority, feedback, qm, designReview: o.designReview ?? createDesignReview({ filer: ghIssueFiler() }), ...(prPage ?? {}), ...(prServers ? { prServers } : {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), onError: (e: unknown) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe({ health }), mailReader: o.mailReader ?? createMailReaders(), ...mailWrites(o.info?.mode === 'demo'), ...(o.app ? { app: o.app } : {}), ...(connect ? { connect } : {}) };
   const api = createApiHandler({ ...apiDeps, authorize: () => true });
   // Device self endpoints (push subscription) run as the device token through the auth-security hook; no owner list, so no session ever matches. @req FR:tailnet-access/gate.scope
   const auth = remoteAuth ? createAuth({ owners: [], tokens: remoteAuth.tokens, devices: remoteAuth.devices, vapidPublicKey: process.env.STACK_VAPID_PUBLIC_KEY?.trim() || undefined }) : undefined;

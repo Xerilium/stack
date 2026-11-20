@@ -5,7 +5,7 @@
 import { createReplyRequest } from './draft';
 import { createGraphGuard, GRAPH_BASE, type GraphGuard, type Transport } from './guard';
 import type { MailActions } from './hygiene';
-import type { MailProvider, Message } from './types';
+import type { Address, MailMessage, MailProvider, MailThread, Message } from './types';
 import type { SentMessage } from './voice';
 
 const SELECT = 'id,conversationId,subject,from,receivedDateTime,bodyPreview,webLink,isRead';
@@ -90,19 +90,23 @@ export function htmlToText(html: string, max = 200_000): string {
 interface GraphBody { contentType?: unknown; content?: unknown }
 const bodyText = (b?: GraphBody) => { const c = str(b?.content); return str(b?.contentType).toLowerCase() === 'html' ? htmlToText(c) : c; };
 
+/** Graph header list to a map. Only the first Authentication-Results counts: the receiving server writes it; later ones may come from the sender. */
+export function headerMap(list: unknown): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const h of Array.isArray(list) ? (list as { name?: unknown; value?: unknown }[]).slice(0, 200) : []) {
+    const k = str(h?.name); if (!k) continue;
+    if (k.toLowerCase() === 'authentication-results' && Object.keys(headers).some((x) => x.toLowerCase() === 'authentication-results')) continue;
+    headers[k] = headers[k] ? `${headers[k]}; ${str(h?.value)}` : str(h?.value);
+  }
+  return headers;
+}
+
 /** Headers, the message's own text, and read state, in one guarded GET. @req FR:email-runner/graph.details */
 export async function messageDetails(o: { transport: Transport; guard?: GraphGuard }, id: string): Promise<Pick<Message, 'headers' | 'body' | 'isRead'>> {
   const guard = o.guard ?? createGraphGuard();
   const url = `${GRAPH_BASE}/me/messages/${encodeURIComponent(id)}?${new URLSearchParams({ $select: 'internetMessageHeaders,uniqueBody,isRead' }).toString()}`;
   const d = (await guard.call({ method: 'GET', url }, o.transport)) as { internetMessageHeaders?: { name?: unknown; value?: unknown }[]; uniqueBody?: GraphBody; isRead?: unknown };
-  const headers: Record<string, string> = {};
-  for (const h of Array.isArray(d?.internetMessageHeaders) ? d.internetMessageHeaders.slice(0, 200) : []) {
-    const k = str(h?.name); if (!k) continue;
-    // The receiving server writes the first Authentication-Results; later ones may come from the sender, so they are dropped.
-    if (k.toLowerCase() === 'authentication-results' && Object.keys(headers).some((x) => x.toLowerCase() === 'authentication-results')) continue;
-    headers[k] = headers[k] ? `${headers[k]}; ${str(h?.value)}` : str(h?.value);
-  }
-  return { headers, body: bodyText(d?.uniqueBody).slice(0, BODY_CHARS), ...(typeof d?.isRead === 'boolean' ? { isRead: d.isRead } : {}) };
+  return { headers: headerMap(d?.internetMessageHeaders), body: bodyText(d?.uniqueBody).slice(0, BODY_CHARS), ...(typeof d?.isRead === 'boolean' ? { isRead: d.isRead } : {}) };
 }
 
 /** Sent items for voice learning: guarded pages of 50, at most `pages`. @req FR:email-runner/graph.sent */
@@ -132,4 +136,47 @@ export function createGraphActions(o: { transport: Transport; approvedMoves: Rea
       await guard.call({ method: 'POST', url: `${GRAPH_BASE}/me/messages/${encodeURIComponent(id)}/move`, body: { destinationId } }, o.transport);
     },
   };
+}
+
+/** The longest message text the detail returns. */
+export const DETAIL_CHARS = 100_000;
+export const THREAD_FOLDERS = ['inbox', 'sentitems', 'archive'] as const;
+const THREAD_TOP = 25;
+interface GraphPerson { emailAddress?: { name?: unknown; address?: unknown } }
+interface GraphMail { id?: unknown; conversationId?: unknown; subject?: unknown; from?: GraphPerson; toRecipients?: unknown; ccRecipients?: unknown; receivedDateTime?: unknown; body?: GraphBody; uniqueBody?: GraphBody }
+const person = (r?: GraphPerson): Address => ({ ...(str(r?.emailAddress?.name) ? { name: str(r?.emailAddress?.name) } : {}), address: str(r?.emailAddress?.address) });
+const people = (v: unknown): Address[] => (Array.isArray(v) ? (v as GraphPerson[]).slice(0, 50).map(person).filter((a) => a.address) : []);
+
+/**
+ * One message with its thread, for the item detail. GET only, through the guard in observe mode; nothing is stored.
+ * The thread is found by conversation in Inbox, Sent Items and Archive; a folder that fails is left out.
+ * @req FR:inbox-page/detail.read @req FR:inbox-page/detail.read.thread @req FR:inbox-page/detail.read.partial
+ */
+export async function readThread(o: { transport: Transport; account: string; guard?: GraphGuard }, id: string): Promise<MailThread> {
+  const guard = o.guard ?? createGraphGuard({ mode: 'observe' });
+  if (!FOLDER.test(id)) throw new Error('Invalid message id');
+  const me = o.account.trim().toLowerCase();
+  const shape = (g: GraphMail, sent: boolean, max: number): MailMessage => {
+    const from = person(g.from);
+    return { id: str(g.id), from, to: [...people(g.toRecipients), ...people(g.ccRecipients)], subject: str(g.subject), receivedAt: str(g.receivedDateTime), body: bodyText(g.uniqueBody ?? g.body).slice(0, max), mine: sent || (!!me && from.address.toLowerCase() === me) };
+  };
+  const main = (await guard.call({ method: 'GET', url: `${GRAPH_BASE}/me/messages/${encodeURIComponent(id)}?${new URLSearchParams({ $select: 'id,conversationId,subject,from,toRecipients,ccRecipients,receivedDateTime,body' }).toString()}` }, o.transport)) as GraphMail;
+  if (!main || typeof main !== 'object' || !str(main.id)) throw new Error('Bad message');
+  const message = shape(main, false, DETAIL_CHARS);
+  const conversation = str(main.conversationId);
+  const seen = new Set([message.id]);
+  const thread: MailMessage[] = [];
+  if (conversation) {
+    const query = new URLSearchParams({ $filter: `conversationId eq '${conversation.replace(/'/g, "''")}'`, $select: 'id,subject,from,toRecipients,receivedDateTime,uniqueBody', $top: String(THREAD_TOP) }).toString();
+    for (const folder of THREAD_FOLDERS) {
+      const page = (await guard.call({ method: 'GET', url: `${GRAPH_BASE}/me/mailFolders/${folder}/messages?${query}` }, o.transport).catch(() => null)) as { value?: unknown } | null;
+      if (!page || !Array.isArray(page.value)) continue;
+      for (const g of (page.value as GraphMail[]).slice(0, THREAD_TOP)) {
+        const m = shape(g, folder === 'sentitems', BODY_CHARS);
+        if (m.id && !seen.has(m.id)) { seen.add(m.id); thread.push(m); }
+      }
+    }
+  }
+  thread.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+  return { message, thread };
 }

@@ -1,6 +1,6 @@
 /** @req FR:inbox-page/web.view */
 import { describe, expect, it } from 'vitest';
-import { actionsFor, doneText, emptyText, SOURCE, statusLine, tomorrow, type ActionInfo, type InboxRow, type SourcesSummary } from '../src/inbox';
+import { actionsFor, isJunk, junkActions, junkReason, junkToast, splitJunk, openLabel, person, when, doneText, emptyText, SOURCE, statusLine, tomorrow, type ActionInfo, type InboxRow, type SourcesSummary } from '../src/inbox';
 
 const cat: ActionInfo[] = [{ id: 'reply-draft', label: 'Draft reply', ready: true }, { id: 'mark-done', label: 'Mark done', ready: true }, { id: 'unsubscribe', label: 'Unsubscribe', ready: false }];
 const row = (o: Partial<InboxRow>): InboxRow => ({ id: 'mail-a', source: 'email', account: 'a', from: 'x', subject: 's', receivedAt: '2026-01-01', unread: true, summary: '', suggested: 'unsubscribe', actions: ['unsubscribe', 'reply-draft', 'mark-done'], ...o });
@@ -50,5 +50,44 @@ describe('inbox toast words', () => {
   // @req FR:inbox-page/web.toast.other
   it('says Done for an action it does not know', () => {
     expect(doneText({ id: 'archive', label: 'Archive', ready: true })).toBe('Done');
+  });
+});
+
+/** @req FR:inbox-page/detail.head @req FR:inbox-page/detail.thread.mine @req FR:inbox-page/detail.offline */
+describe('inbox detail helpers', () => {
+  it('names a person with the address, and the owner as You', () => {
+    expect(person({ name: 'Ann', address: 'ann@x.test' })).toBe('Ann <ann@x.test>');
+    expect(person({ address: 'ann@x.test' })).toBe('ann@x.test');
+    expect(person({ name: 'Me', address: 'me@x.test' }, true)).toBe('You');
+  });
+  it('names the open link by source', () => {
+    expect(openLabel('email')).toBe('Open in Outlook');
+    expect(openLabel('teams')).toBe('Open in Teams');
+  });
+  it('formats a time, and keeps a bad one as it is', () => {
+    expect(when('2026-10-28T16:00:00Z')).toMatch(/Oct 28/);
+    expect(when('soon')).toBe('soon');
+  });
+});
+
+/** @req FR:inbox-page/junk.class @req FR:inbox-page/junk.class.restore @req FR:inbox-page/junk.group @req FR:inbox-page/junk.group.reason @req FR:inbox-page/junk.restore.web */
+describe('inbox junk', () => {
+  const news = row({ id: 'mail-n', kind: 'newsletter' }); const spam = row({ id: 'mail-s', kind: 'spam' }); const real = row({ id: 'mail-r', kind: 'needs_reply' });
+  it('is email of kind spam or newsletter that was not restored', () => {
+    expect([news, spam, real, row({ kind: 'spam', notJunk: true }), row({ kind: 'spam', source: 'slack' })].map(isJunk)).toEqual([true, true, false, false, false]);
+    expect(splitJunk([news, real, spam])).toEqual({ main: [real], junk: [news, spam] });
+    expect([junkReason(news), junkReason(spam)]).toEqual(['Newsletter', 'Spam or cold outreach']);
+  });
+  it('a junk row leads with Not junk', () => {
+    const c: ActionInfo[] = [...cat, { id: 'not-junk', label: 'Not junk', ready: true }];
+    const a = junkActions(row({ kind: 'newsletter', actions: ['unsubscribe', 'not-junk', 'mark-done'] }), c);
+    expect(a.primary?.id).toBe('not-junk');
+    expect(a.more.map((x) => x.id)).toEqual(['unsubscribe', 'mark-done']);
+  });
+  // @req FR:inbox-page/junk.archive.readonly
+  it('says what a Junk action did', () => {
+    expect(junkToast({ archived: 12, unsubscribed: 0, kept: 1 })).toBe('Archived 12. 1 stays: Stack cannot move that mail.');
+    expect(junkToast({ archived: 12, unsubscribed: 4, kept: 3 })).toBe('Unsubscribed from 4. Archived 12. 3 stay: Stack cannot move that mail.');
+    expect(junkToast({ archived: 0, unsubscribed: 0, kept: 2 })).toBe('Nothing was archived. 2 stay: Stack cannot move that mail.');
   });
 });

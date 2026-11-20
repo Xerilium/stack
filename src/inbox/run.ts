@@ -1,10 +1,11 @@
-/** Runs one inbox action. Nothing here sends: the only mail write is a reply draft. @req FR:inbox-page/action.reply @req FR:inbox-page/action.done @req FR:inbox-page/action.missing */
+/** Runs one inbox action. Nothing here sends: the only mail write is a reply draft. @req FR:inbox-page/action.reply @req FR:inbox-page/action.done @req FR:inbox-page/action.missing @req FR:inbox-page/junk.restore */
 import { answerAsk, handleAsk } from '../core/asks';
 import type { LifecycleContext } from '../core/lifecycle';
 import { taskTitle } from '../core/inbox';
 import { NotFoundError } from '../core/storage';
 import type { MailProvider } from '../email/types';
 import { actionInfo } from './actions';
+import { updateInbox } from './runner';
 import type { ActionId, InboxItem } from './types';
 
 export interface Deps { ctx: LifecycleContext; mail?: Pick<MailProvider, 'createDraft'>; addTask?: (text: string) => Promise<unknown> }
@@ -41,6 +42,10 @@ export async function runAction(item: InboxItem, req: { action: ActionId; text?:
     case 'create-task':
       if (!d.addTask) throw new Error('No task writer');
       await d.addTask(plainTask(`${item.source === 'email' ? 'Reply to' : 'Follow up with'} ${item.from}: ${item.subject}`));
+      return { ok: true };
+    case 'not-junk':
+      // @req FR:inbox-page/junk.restore
+      await updateInbox(d.ctx, (cur) => cur.map((i) => (i.id === item.id ? { ...i, notJunk: true } : i)));
       return { ok: true };
     default:
       return { ok: false, missing: true };

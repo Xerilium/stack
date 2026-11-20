@@ -19,19 +19,20 @@ Triage must be part of normal Stack work. One page lists all mail, unread Teams 
 - The module never sends anything. No `Mail.Send`, no Teams post, no Slack post. A reply is a `createReply` draft that the owner sends.
 - Message text is data. It is clipped and redacted before it reaches an ask.
 - Teams and Slack are read only.
+- Stack never deletes mail. Junk moves only to Archive, and only when the owner clicks.
 
 ## Scenarios
 
 ### FR:item: Items
 
-- **FR:item.shape** (P1): An `InboxItem` has `id`, `source` (`email`, `teams`, `slack`), `account`, `from`, `subject`, `receivedAt`, `unread`, `summary`, `suggested` (an action id), `actions` (action ids), and optional `link`, `draft`.
+- **FR:item.shape** (P1): An `InboxItem` has `id`, `source` (`email`, `teams`, `slack`), `account`, `from`, `subject`, `receivedAt`, `unread`, `summary`, `suggested` (an action id), `actions` (action ids), and optional `link`, `draft`, `notJunk`.
 - **FR:item.email** (P1): Each triage result becomes one item, including quiet classes. `summary` falls back to the reason, then the preview. `suggested` follows the class: `needs_reply` is `reply-draft`, `needs_decision` and `sensitive` are `ask-me-later`, `newsletter` is `unsubscribe`, `calendar` is `schedule`, `receipt`, `fyi`, `skip` and `spam` are `mark-done`.
 - **FR:item.order** (P1): Items sort by unread first, then urgency, then newest.
 - **FR:item.ask** (P1): `needs_reply`, `needs_decision` and `sensitive` mail already becomes an ask (`FR:email-triage/ask.*`). An unread Teams or Slack item that is not from the owner becomes a `go-do` ask keyed `chat-<hash>`, with a clipped summary and a link. One ask per conversation.
 
 ### FR:action: Actions
 
-- **FR:action.catalog** (P1): The catalog lists: `reply-draft`, `mark-done`, `snooze`, `ask-me-later`, `create-task` (ready), and `archive`, `unsubscribe`, `delegate`, `schedule`, `forward-draft` (missing). Each entry has `id`, `label`, `ready`.
+- **FR:action.catalog** (P1): The catalog lists: `reply-draft`, `mark-done`, `snooze`, `ask-me-later`, `create-task`, `not-junk` (ready), and `archive`, `unsubscribe`, `delegate`, `schedule`, `forward-draft` (missing). Each entry has `id`, `label`, `ready`.
 - **FR:action.reply** (P1): `reply-draft` calls `MailProvider.createDraft` with the edited text and returns the Outlook link. It works for email only. Nothing is sent.
 - **FR:action.done** (P1): `mark-done` resolves the item's ask. `snooze` and `ask-me-later` defer the ask (`until`, default next morning). `create-task` adds a Stack task from the subject.
 - **FR:action.missing** (P1): A missing action returns `{ ok: false, missing: true }` and runs nothing.
@@ -105,6 +106,60 @@ The owner needs to scan mail and act on it. Inbox holds mail and messages only. 
   - **FR:web.nocmd.fields** (P1): From the sources reply, the page reads `summary` and each source's `connect` flag. `needs`, `command` and `doc` serve the CLI (`FR:cli.sources`).
 - **FR:web.dot** (P1): The Inbox rail item, and on a phone the More tab, carry a dot when `attention` is true. The dot has an accessible name ("Inbox: an account needs attention").
 
+### FR:detail: Item detail
+
+The owner needs to read a whole message with its thread in Stack so that the Inbox works as a mail reader.
+
+- **FR:detail.web** (P1): Interface: a click on a row subject on `#/inbox` opens the detail pane of that item.
+- **FR:detail.api** (P1): Interface: `GET /inbox-items/{id}/detail` returns `{ item, live, message?, thread? }`.
+  - **FR:detail.api.owner** (P1): API MUST answer 403 to a token.
+  - **FR:detail.api.missing** (P1): API MUST answer 404 for an id that is not in the item file.
+- **FR:detail.split** (P1): Page MUST show the list and the detail side by side at 900 px width and more.
+  - **FR:detail.split.phone** (P1): Page MUST replace the list with the detail and a `Back` button below 900 px.
+- **FR:detail.head** (P1): Detail MUST show the subject, the sender name and address, the account and the received time.
+- **FR:detail.body** (P1): Detail MUST show the full plain text of the message.
+- **FR:detail.thread** (P1): Detail MUST list the other messages of the thread, newest first, each with its sender and time.
+  - **FR:detail.thread.mine** (P1): Detail MUST name the sender `You` on a message the owner sent.
+  - **FR:detail.thread.fold** (P2): Detail MUST fold each other message until the owner opens it.
+- **FR:detail.read** (P1): Reader MUST read the message and its thread with `GET` requests that pass the email guard in `observe` mode.
+  > - @req FR:email-triage/safe.allowlist
+  - **FR:detail.read.thread** (P1): Reader MUST find the thread by `conversationId` in Inbox, Sent Items and Archive, at most 25 messages per folder.
+  - **FR:detail.read.partial** (P1): Reader MUST return the message without a thread when a thread read fails.
+- **FR:detail.private** (P1): API MUST return the message text without a write to the data repo.
+- **FR:detail.offline** (P1): Detail MUST show the summary and an `Open in Outlook` link when `live` is false.
+  - **FR:detail.offline.cause** (P1): API MUST answer `live: false` when the host cannot read the mailbox of the item.
+- **FR:detail.safe** (P1): Detail MUST render message text as plain text.
+
+### FR:junk: Junk
+
+The owner needs obvious junk out of the way, with one click to clear it, so that the Inbox shows only mail that needs him.
+
+- **FR:junk.web** (P1): Interface: `#/inbox` shows a `Junk` section under the list.
+- **FR:junk.api** (P1): Interface: `POST /inbox-junk` takes `{ action, ids }` (`archive` or `unsubscribe-archive`; `ids`: the junk rows the owner sees) and returns `{ archived, unsubscribed, kept }`.
+  - **FR:junk.api.owner** (P1): API MUST answer 403 to a token.
+- **FR:junk.class** (P1): Inbox MUST treat an email item of kind `spam` or `newsletter` as junk.
+  > - @req FR:email-runner/model.classify
+  - **FR:junk.class.restore** (P1): Inbox MUST NOT treat an item with `notJunk` as junk.
+- **FR:junk.group** (P1): Page MUST show junk items in one `Junk` section with their count, below the other items.
+  - **FR:junk.group.fold** (P1): Page MUST keep the `Junk` section closed until the owner opens it.
+  - **FR:junk.group.count** (P1): Page MUST leave junk items out of the unread count.
+  - **FR:junk.group.reason** (P2): Page MUST show the reason on each junk row: `Newsletter`, or `Spam or cold outreach`.
+- **FR:junk.restore** (P1): Action `not-junk` MUST set `notJunk` on the item.
+  - **FR:junk.restore.keep** (P1): Runner MUST keep `notJunk` when a later pass replaces the item.
+  - **FR:junk.restore.web** (P1): Page MUST show `Not junk` as the first action of a junk row.
+- **FR:junk.archive** (P1): `Archive all` MUST move each junk mail to Archive and remove its item.
+  > - @req FR:email-inbox-zero/gate.guard
+  - **FR:junk.archive.ids** (P1): Mailbox MUST approve a move for the ids of the clicked junk items only.
+  - **FR:junk.archive.shown** (P1): API MUST leave alone a junk item that is not in `ids`.
+  - **FR:junk.archive.readonly** (P1): API MUST keep the junk items of an account that it cannot write to, and count them in `kept`.
+  - **FR:junk.archive.failed** (P1): API MUST keep an item whose move failed.
+- **FR:junk.unsubscribe** (P1): `Unsubscribe and archive all` MUST send the one-click unsubscribe for each junk newsletter before it archives.
+  > - @req FR:email-inbox-zero/sub.unsubscribe
+  - **FR:junk.unsubscribe.other** (P1): Mailbox MUST NOT unsubscribe a newsletter that has no one-click target.
+- **FR:junk.never** (P1): Stack MUST NOT delete mail.
+  - **FR:junk.never.auto** (P1): Stack MUST NOT move junk mail without a click by the owner.
+  - **FR:junk.never.demo** (P1): Demo copy MUST NOT write to a mailbox.
+
 ### FR:api: API
 
 - **FR:api.read** (P1): `GET /inbox-items` returns `{ items, actions, sources, summary }`.
@@ -113,7 +168,7 @@ The owner needs to scan mail and act on it. Inbox holds mail and messages only. 
 
 ## Interfaces
 
-`InboxStore { read(): Promise<InboxItem[]>; write(items): Promise<void> }`, `ChatConnector`, `IssueFiler { file(issue): Promise<{ url }> }`, `InboxSource`, `SyncRecord`, `SourcesSummary`, `SourceProbe { emails, github, clientId? }`.
+`InboxStore { read(): Promise<InboxItem[]>; write(items): Promise<void> }`, `ChatConnector`, `IssueFiler { file(issue): Promise<{ url }> }`, `InboxSource`, `SyncRecord`, `SourcesSummary`, `SourceProbe { emails, github, clientId? }`, `JunkMailbox { archive(ids): Promise<string[]>; unsubscribe(id): Promise<boolean> }`, `MailReader { thread(messageId): Promise<{ message, thread }> }` (`MailMessage`: `id`, `from`, `to`, `subject`, `receivedAt`, `body`, `mine`).
 
 ## Dependencies
 

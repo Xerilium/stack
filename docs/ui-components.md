@@ -21,6 +21,8 @@ Every view builds on the components in `web/src/ui/`. Read this page before you 
 | `FilterPills` | `web/src/ui/FilterPills.tsx` | Toggle pills that filter a list (`aria-pressed`, any number on), each with an optional quiet count. Never an action. |
 | `SplitView` | `web/src/ui/SplitView.tsx` | A list with a detail pane: side by side when wide, one at a time on a phone. |
 | `DayGrid` | `web/src/ui/DayGrid.tsx` | A day as rows of 30 minutes: each item sits at its start time, with a height for its length. |
+| `ThreadMessage` | `web/src/ui/ThreadMessage.tsx` | One message of a mail or chat thread: sender, time and the text as plain text. `fold` closes it under a summary line. |
+| `Fold` | `web/src/ui/Fold.tsx` | A group that stays closed until opened: a heading button with a count, and controls beside it while open. |
 | `MessageBox` | `web/src/ui/MessageBox.tsx` | One message from a detail pane: a heading, a text box and one button, `Send to <name>`. Start text waits in the box until you send it. |
 | `LinkList` | `web/src/ui/LinkList.tsx` | One labelled line of links that wrap. Web links open in a new tab. |
 | `SourceLink` | `web/src/ui/SourceLink.tsx` | A link to where an item came from, named by its kind (PR, issue, session, email, site). |

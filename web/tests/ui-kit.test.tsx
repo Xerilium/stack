@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ActionBar, ActionMenu, type ActionItem } from '../src/ui/ActionMenu';
 import { DayGrid, placeItems } from '../src/ui/DayGrid';
 import { FilterPills } from '../src/ui/FilterPills';
+import { Fold } from '../src/ui/Fold';
 import { Flag } from '../src/ui/Flag';
 import { MessageBox } from '../src/ui/MessageBox';
 import { LinkList } from '../src/ui/LinkList';
@@ -16,6 +17,7 @@ import { EmptyState, ErrorState, Loading } from '../src/ui/States';
 import { CountBadge } from '../src/ui/CountBadge';
 import { MoreButton } from '../src/ui/MoreButton';
 import { SelectCard } from '../src/ui/SelectCard';
+import { ThreadMessage } from '../src/ui/ThreadMessage';
 import { SourceLink, sourceOf } from '../src/ui/SourceLink';
 import { Skeleton } from '../src/ui/Skeleton';
 import { ServerStatus } from '../src/ui/ServerStatus';
@@ -567,5 +569,58 @@ describe('NavItem and NavIcon', () => {
   it('App.tsx draws no nav icon by hand', () => {
     const app = readFileSync('src/App.tsx', 'utf8');
     for (const one of ['function Bell', 'function Gear', 'function TabIcon', 'class="nav-bell"', 'class="set-gear"', 'class="tab-ic"']) expect(app, one).not.toContain(one);
+  });
+});
+
+// @req FR:ui-kit/thread.show @req FR:ui-kit/thread.fold @req FR:ui-kit/thread.meta
+describe('ThreadMessage', () => {
+  it('shows the sender, the time and the text as plain text', () => {
+    const r = mount(<ThreadMessage from="Ann" when="Oct 28, 9:00 AM" meta="To: me@example.test" body={'Hi,\n<b>not bold</b>'} />);
+    const m = r.querySelector('.ui-tmsg')!;
+    expect(m.tagName).toBe('ARTICLE');
+    expect(m.querySelector('.ui-tmsg-from')?.textContent).toBe('Ann');
+    expect(m.querySelector('.ui-tmsg-when')?.textContent).toBe('Oct 28, 9:00 AM');
+    expect(m.querySelector('.ui-tmsg-meta')?.textContent).toBe('To: me@example.test');
+    expect(m.querySelector('.ui-tmsg-body')?.textContent).toBe('Hi,\n<b>not bold</b>');
+    expect(m.querySelector('b')).toBeNull();
+    expect(mount(<ThreadMessage from="Ann" when="now" body="x" />).querySelector('.ui-tmsg-meta')).toBeNull();
+  });
+  it('fold: the text sits under a summary line until opened', () => {
+    const r = mount(<ThreadMessage from="You" when="Oct 27" body="My answer" fold />);
+    const d = r.querySelector('details.ui-tmsg') as HTMLDetailsElement;
+    expect(d.open).toBe(false);
+    expect(d.querySelector('summary')?.textContent).toBe('YouOct 27');
+    expect(d.querySelector('.ui-tmsg-body')?.textContent).toBe('My answer');
+  });
+});
+
+// @req FR:ui-kit/split.reader
+describe('SplitView reader', () => {
+  it('marks the split so the detail takes the larger share', () => {
+    const r = mount(<SplitView wide open reader list={<p>L</p>} detail={<h3>D</h3>} label="X" empty="Pick" onBack={() => {}} />);
+    expect(r.querySelector('.ui-split')?.className).toBe('ui-split wide reader');
+    expect(mount(<SplitView wide open list={<p>L</p>} detail={<h3>D</h3>} label="X" empty="Pick" onBack={() => {}} />).querySelector('.ui-split')?.className).toBe('ui-split wide');
+  });
+});
+
+// @req FR:ui-kit/fold.show @req FR:ui-kit/fold.toggle @req FR:ui-kit/fold.aside
+describe('Fold', () => {
+  it('is closed at first; the heading button opens it and shows the aside', () => {
+    const r = mount(<Fold id="f1" title="Junk" count={3} aside={<button type="button">Archive all</button>}><p>rows</p></Fold>);
+    const b = r.querySelector<HTMLButtonElement>('.ui-fold-btn')!;
+    expect(b.closest('h2')).not.toBeNull();
+    expect(b.textContent).toBe('›Junk3');
+    expect(b.getAttribute('aria-expanded')).toBe('false');
+    expect(b.getAttribute('aria-controls')).toBe('f1');
+    expect(r.querySelector('#f1')?.hasAttribute('hidden')).toBe(true);
+    expect(r.querySelector('.ui-fold-aside')).toBeNull();
+    expect(r.textContent).not.toContain('rows');
+    act(() => { b.click(); });
+    expect(b.getAttribute('aria-expanded')).toBe('true');
+    expect(r.querySelector('#f1')?.hasAttribute('hidden')).toBe(false);
+    expect(r.querySelector('#f1')?.textContent).toBe('rows');
+    expect(r.querySelector('.ui-fold-aside button')?.textContent).toBe('Archive all');
+    act(() => { b.click(); });
+    expect(r.querySelector('.ui-fold-aside')).toBeNull();
   });
 });

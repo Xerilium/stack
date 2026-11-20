@@ -51,7 +51,7 @@ import { editTask, moveTask } from './edit';
 import { readMeetings } from '../core/meetings';
 import { answerNeed, readNeeds } from '../core/needs-you';
 import type { MailProvider } from '../email/types';
-import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, loadSources, readInbox, readInboxChecked, requestAction, runAction, type ActionId, type IssueFiler, type SourceProbe } from '../inbox';
+import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, clearJunk, type JunkMailbox, loadSources, readInbox, readInboxChecked, requestAction, runAction, type ActionId, type IssueFiler, type MailReader, type SourceProbe } from '../inbox';
 import { createBriefCache } from './brief';
 import type { ClaudeJson } from '../email/llm';
 import { IDLE_MINUTES, UPDATE_MODES, UpdateRefused, type AppUpdater, type UpdateMode } from '../core/app-update';
@@ -94,6 +94,10 @@ export interface ApiDeps {
   agents?: AgentRuns;
   /** Mail drafts for the Inbox page; absent means reply drafts answer 409. Never sends. @req FR:inbox-page/api.act */
   mail?: Pick<MailProvider, 'createDraft'>;
+  /** Reads one mailbox for the item detail; absent (or no reader for the account) means the detail shows the summary only. Read only. @req FR:inbox-page/detail.read */
+  mailReader?: (account: string) => Promise<MailReader | undefined>;
+  /** Writes for the Inbox Junk actions (move to Archive, one-click unsubscribe); absent, or no mailbox for the account, means its junk stays. @req FR:inbox-page/junk.archive.readonly */
+  junkMailbox?: (account: string) => Promise<JunkMailbox | undefined>;
   /** This machine's inbox sign-ins (Graph caches, GitHub); absent on the hosted app, which uses sync records only. `fresh` skips any cache. @req FR:inbox-page/api.sources */
   inboxProbe?: (o?: { fresh: true }) => Promise<SourceProbe>;
   /** Agent delivery on this machine: per-message state for a row and the Claude sign-in; absent means /inbox/delivery is 404. @req FR:agent-delivery/state.api */
@@ -333,6 +337,10 @@ const PRS_REC_BODY = {
 const INBOX_ACTION_BODY = {
   schema: { action: { t: 'enum', values: ACTION_IDS }, text: { t: 'str', max: 5000 }, until: { t: 'str', max: 40, line: true }, request: { t: 'bool' } } satisfies Record<string, Spec>,
   required: ['action'],
+};
+const INBOX_JUNK_BODY = {
+  schema: { action: { t: 'enum', values: ['archive', 'unsubscribe-archive'] }, ids: { t: 'strs', max: 500 } } satisfies Record<string, Spec>,
+  required: ['action', 'ids'],
 };
 const ASK_HANDLE_BODY = {
   schema: { outcome: { t: 'enum', values: ASK_OUTCOMES }, note: { t: 'str', max: 500, line: true }, reply: { t: 'str', max: 1000, line: true } } satisfies Record<string, Spec>,
@@ -1215,6 +1223,31 @@ export const ROUTES: Route[] = [
       const src = await inboxSources(c, false);
       // Fresh syncs say nothing about an item file that is missing or unreadable: no zero claim off that. @req FR:inbox-page/src.summary
       return json(200, { items, actions: INBOX_ACTIONS, ...src, summary: { ...src.summary, canClaimZero: src.summary.canClaimZero && verified } });
+    },
+  },
+  {
+    // The text is read live and returned; nothing is stored. @req FR:inbox-page/detail.api @req FR:inbox-page/detail.private
+    method: 'GET', doc: '/inbox-items/{id}/detail', name: 'inboxItems.detail',
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can read the inbox'); // @req FR:inbox-page/detail.api.owner
+      const item = (await readInbox(c.deps.storage)).find((i) => i.id === c.params[0]);
+      if (!item) throw new ApiError('not_found', 'Inbox item not found'); // @req FR:inbox-page/detail.api.missing
+      // Any failure reads as "not live": the page falls back to the summary. No error text leaves the host. @req FR:inbox-page/detail.offline.cause
+      const read = item.source === 'email' && item.messageId && c.deps.mailReader
+        ? await c.deps.mailReader(item.account).then((r) => r?.thread(item.messageId!)).catch(() => undefined)
+        : undefined;
+      return json(200, read ? { item, live: true, message: read.message, thread: read.thread } : { item, live: false });
+    },
+  },
+  {
+    // The owner's click is the approval; junk moves to Archive only and nothing is deleted. @req FR:inbox-page/junk.api @req FR:inbox-page/junk.never
+    method: 'POST', doc: '/inbox-junk', name: 'inboxJunk.clear', body: INBOX_JUNK_BODY,
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can act on the inbox'); // @req FR:inbox-page/junk.api.owner
+      const b = validate<{ action: 'archive' | 'unsubscribe-archive'; ids: string[] }>(await readBody(c.req), INBOX_JUNK_BODY.schema, INBOX_JUNK_BODY.required);
+      return json(200, await clearJunk(c.life, { ids: b.ids, unsubscribe: b.action === 'unsubscribe-archive', mailbox: c.deps.junkMailbox ?? (async () => undefined) }));
     },
   },
   {

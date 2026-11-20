@@ -66,6 +66,11 @@ export interface TriageResult {
   draft?: { text: string; webLink: string; reused?: boolean; voice?: DraftVoice };
 }
 
+/** One message of a thread, for a reader. `body` is plain text and untrusted data. `mine`: the owner sent it. @req FR:inbox-page/detail.thread.mine */
+export interface MailMessage { id: string; from: Address; to: Address[]; subject: string; receivedAt: string; body: string; mine: boolean }
+/** A message and the other messages of its thread, newest first. */
+export interface MailThread { message: MailMessage; thread: MailMessage[] }
+
 export interface MailProvider {
   /** Messages changed since `cursor`, plus the next cursor. */
   delta(cursor?: string): Promise<{ messages: Message[]; cursor: string }>;
