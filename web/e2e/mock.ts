@@ -248,7 +248,11 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     if (path === '/brief/summary') return json(route, 200, m.brief ?? { configured: false });
     if (path === '/asks') {
       const st = url.searchParams.get('state') ?? 'open';
-      const items = m.asks.filter((a) => (st === 'snoozed' ? a.state === 'open' && !!a.snoozedUntil : st === 'open' ? a.state === 'open' && !a.snoozedUntil : a.state === st)).sort((a, b) => b.score - a.score).map((a, i) => (st === 'open' ? { ...a, rank: i + 1 } : a))
+      // `turn` alone lists that side's live asks (open or answered, not snoozed), ranked, like the server. @req FR:ask-routing/turn.list
+      const turn = url.searchParams.get('turn');
+      const turnOf = (a: MockAsk) => (a.state === 'done' ? 'none' : (a.state === 'open') === (a.from === 'owner') ? 'agent' : 'owner');
+      const ranked = st === 'open' || !!turn;
+      const items = m.asks.filter((a) => (turn && !url.searchParams.has('state') ? a.state !== 'done' && !a.snoozedUntil && turnOf(a) === turn : st === 'snoozed' ? a.state === 'open' && !!a.snoozedUntil : st === 'open' ? a.state === 'open' && !a.snoozedUntil : a.state === st)).sort((a, b) => b.score - a.score).map((a, i) => (ranked ? { ...a, rank: i + 1, turn: turnOf(a) } : a))
         .map((a) => (a.flow ? { ...a, flowDone: m.asks.filter((x) => x.flow === a.flow && x.state !== 'open').length } : a)); // progress like the server
       return json(route, 200, { items, total: items.length, latest: m.asks.map((a) => a.updated).sort().pop(), snoozed: m.asks.filter((a) => a.state === 'open' && a.snoozedUntil).length });
     }
