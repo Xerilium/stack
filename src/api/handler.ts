@@ -865,7 +865,7 @@ export const ROUTES: Route[] = [
       const b = validate<{ text: string; agent?: string }>(await readBody(c.req), ASK_REPLY_BODY.schema, ASK_REPLY_BODY.required);
       const actor = caller(c.req).actor;
       const name = actor.startsWith('token:') ? (c.token?.name ?? 'agent') : actor;
-      return json(200, await replyAsk(c.life, c.params[0], b, name));
+      return json(200, await replyAsk(c.life, c.params[0], b, name, actor.startsWith('token:') ? { writer: `token:${name}` } : {}));
     },
   },
   {

@@ -120,7 +120,7 @@ export const TOOLS: ToolDef[] = [
 
   // ---- asks. No answer tool: agents never answer. @req FR:mcp-server/tools.asks
   // @req FR:ask-routing/addr.context: every put says why, so the owner never has to ask what it is.
-  { name: 'asks_put', route: 'asks.put', method: 'POST', path: '/asks/{key}', pathArg: 'key', required: ['key', 'why'], pipeArgs: ['options', 'applies'],
+  { name: 'asks_put', route: 'asks.put', method: 'POST', path: '/asks/{key}', pathArg: 'key', required: ['key', 'from', 'why'], pipeArgs: ['options', 'applies'],
     description: 'Put an ask for the owner (stable key; same key updates). Stack wakes your session with the answer.',
     props: {
       key: str('Stable ask key, a-z 0-9 . _ -'), ask: str('One decision, 200 chars max'), kind: enumOf(ASK_KINDS), from: str('Your agent name'), project: str('Project'),

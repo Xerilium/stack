@@ -46,6 +46,10 @@ export function createMcpServer(opts: McpServerOptions): Server {
       if (e instanceof ArgError) return fail(errorText('invalid', [{ field: e.field, message: e.message }]));
       throw e;
     }
+    // @req FR:ask-routing/ask.put: an agent never asks as the owner, also on the stdio server that writes as the owner session.
+    // Without `from` the stdio server's owner session would name the ask; every agent names itself.
+    if (t.name === 'asks_put' && (typeof args['from'] !== 'string' || !args['from'].trim())) return fail(errorText('invalid', [{ field: 'from', message: 'Required' }]));
+    if (t.name === 'asks_put' && args['from'] === 'owner') { emit({ kind: 'deny', tool: t.name, status: 403 }); return fail(errorText('forbidden')); }
     if ((t.name === 'asks_put' || t.name === 'asks_reply') && args['agent'] === undefined && opts.link) {
       const l = opts.link(typeof args['from'] === 'string' ? args['from'] : 'agent');
       if (l) args = { ...args, agent: l };

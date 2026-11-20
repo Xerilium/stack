@@ -70,8 +70,8 @@ The owner needs each ask tied to the session that waits on it so that the answer
 
 - **FR:addr.link** (P1): An ask row MAY have `> agent: [Name](#<session id>)` (`FR:goal-model/agent.link`). It names the agent side of the thread
 - **FR:addr.env** (P1): `stack asks put` and `stack asks reply` MUST set `agent` from the caller's environment when `--agent` is absent: `CLAUDE_CODE_HOST_SESSION_ID` when it starts `local_`, else `local_<CLAUDE_CODE_SESSION_ID>`. The name is `--from`. No ID: no link. The session that writes last is the one that waits, so each write sets the link
-- **FR:addr.api** (P1): `POST /asks/{key}`, `POST /asks/{key}/reply`, and the MCP `asks_put` and `asks_reply` accept `agent` as a link string. A value that is not a link is `422`. The stdio MCP server fills it from its own environment (`FR:addr.env`) when absent
-- **FR:addr.context** (P1): A new ask from an agent (CLI, API token) MUST have `why`, else `422` with `why is required: say what you need and why in one line`. The MCP `asks_put` requires `why` on every call (the stdio server writes as the owner)
+- **FR:addr.api** (P1): `POST /asks/{key}`, `POST /asks/{key}/reply`, and the MCP `asks_put` and `asks_reply` accept `agent` as a link string. A value that is not a link is `422`. A token MUST NOT set it (`403`): a token's session is not on this host, and its link could make Stack prompt any local session. The stdio MCP server fills it from its own environment (`FR:addr.env`) when absent
+- **FR:addr.context** (P1): A new ask from an agent (CLI, API token) MUST have `why`, else `422` with `why is required: say what you need and why in one line`. The MCP `asks_put` requires `from` and `why` on every call (the stdio server writes as the owner session)
 
 ### FR:turn: Whose turn it is
 
@@ -86,8 +86,9 @@ The owner needs to see only the threads where he must act so that nothing waits 
 
 The owner needs to ask one agent one question in its own thread so that no other chat can bury it.
 
-- **FR:ask.put** (P1): The owner MAY put an ask with `from: owner`, `kind: answer`, the question as `ask`, and `agent` (required). Only the owner may write `from: owner`: a token is `403`
+- **FR:ask.put** (P1): The owner MAY put an ask with `from: owner`, `kind: answer`, the question as `ask`, and `agent` (required). Only the owner page may write `from: owner`: a token, the CLI, and MCP are refused (`403`)
 - **FR:ask.follow** (P1): On an owner question with `turn: owner`, the owner's `reply` or `ask` answer adds `- <iso> you: <text>` to the thread and gives the turn back to the agent (`open`). His `done` answer closes it (`done`)
+- **FR:ask.close** (P1): Only the owner closes or reopens his own question: `handle` by anyone else is `403`
 
 ### FR:reply: The agent replies in the thread
 
@@ -98,23 +99,24 @@ The agent needs one command to answer in the thread so that its answer lands whe
   - Agent ask, `answered`: reopens it (`FR:ask-queue/flow.handle` `reopen`).
   - Agent ask, `open`: adds the line only (more context).
   - `done`: `409`.
-- **FR:reply.surfaces** (P1): CLI `stack asks reply <key> --from <agent> --text "…"`, API `POST /asks/{key}/reply` (`tasks:write`, a token or the owner), MCP `asks_reply`
+  - A token replies only on asks it wrote, never on an owner question (`403`).
+- **FR:reply.surfaces** (P1): CLI `stack asks reply <key> --from <agent> --text "…"`, API `POST /asks/{key}/reply` (`tasks:write`), MCP `asks_reply`
 
 ### FR:deliver: Stack carries each turn to the session
 
 The owner needs every answer to reach and wake the asker so that he never relays and the agent never polls.
 
 - **FR:deliver.pick** (P1): A courier pass MUST pick each ask with `turn: agent`, an `agent` link, and neither `delivered` nor `undelivered`
-- **FR:deliver.reset** (P1): Every write that gives the turn to the agent MUST remove `delivered` and `undelivered`
-- **FR:deliver.find** (P1): The session is the inventory session whose ID is the link ID, or whose Claude Code ID is the link ID without `local_` (`sessionAlive`). None: write `undelivered: Session gone` and the thread line `- <iso> stack: not delivered (Session gone)`. The wake file stays (`FR:ask-queue/wake.write`)
-- **FR:deliver.busy** (P1): A session that is `running` or `active`, or that refuses with `SessionBusy`, is skipped this pass and tried on the next. Stack never writes to a session another client is writing
-- **FR:deliver.wake** (P1): Else Stack resumes the session (`AgentRuns.prompt({sessionId})`) with the delivery prompt, then writes `delivered: <iso>` and `- <iso> stack: delivered to <Name>`. Any other error writes `undelivered: <reason>` (one line, 200 characters)
+- **FR:deliver.reset** (P1): Every write that gives the turn to the agent, reopens a done ask, or changes `agent` MUST remove `delivered` and `undelivered`
+- **FR:deliver.find** (P1): The session is the inventory session whose ID is the link ID, or whose Claude Code ID is the link ID without `local_` (`sessionAlive`). None: write `undelivered: Session gone` and the thread line `- <iso> stack: not delivered (Session gone)`. The wake file stays (`FR:ask-queue/wake.write`). A session with no Claude Code ID is `undelivered: Session has no Claude Code id`: a desktop ID never resumes
+- **FR:deliver.busy** (P1): A session that is `running`, has a Stack run in flight, shows an open dialog (reason `question` or `permission`), or refuses with `SessionBusy`, is skipped this pass and tried on the next. A busy check writes nothing. A session that waits on the owner after its turn (`waiting`, reason `blocked`) is the main target and is resumed
+- **FR:deliver.wake** (P1): Else Stack resumes the session (`AgentRuns.prompt({sessionId})`) with the delivery prompt and `allowedTools` `Bash(stack asks handle:*)` and `Bash(stack asks reply:*)` (the loop-closing commands; every other tool still becomes a permission ask, `FR:agent-sessions/perm.ask`), then writes `delivered: <iso>` and `- <iso> stack: delivered to <Name>`. Any other error writes `undelivered: <reason>` (one line, 200 characters)
 - **FR:deliver.prompt** (P1): The prompt is fixed text plus the ask:
-  - Agent ask: `Stack: the owner answered your ask <key> ("<ask>"): <answer word>[: <text>]. Act on it now, then run: stack asks handle <key> --outcome handled --note "<what you did>". To ask back: stack asks reply <key> --text "…". Never ask in chat.`
-  - Owner question: `Stack: the owner asks you (<key>): <question>[ Thread: <last 5 lines>]. Answer in one reply: stack asks reply <key> --text "…". Never answer in chat.`
-- **FR:deliver.fallback** (P1): When the run for an owner question ends and the ask still has `turn: agent`, Stack posts the run's final text (one line, 1000 characters) as the agent's reply (`FR:reply.cmd`). An empty text posts nothing
+  - Agent ask: `Stack: the owner answered your ask <key> ("<ask>"): <answer word>[: "<text>"]. Act on it now, then run: stack asks handle <key> --outcome handled --note "<what you did>". To ask back: stack asks reply <key> --text "…". Never ask in chat.`
+  - Owner question: `Stack: the owner asks you (<key>): "<question>"[ Thread: "<last 5 lines>"]. Answer in one reply: stack asks reply <key> --text "…". Never answer in chat.`
+- **FR:deliver.fallback** (P1): When the run for an owner question ends and the ask is still in the same turn (`delivered` unchanged), Stack posts the run's final text (one line, 1000 characters) as the agent's reply (`FR:reply.cmd`). An empty text posts nothing
 - **FR:deliver.loop** (P1): `stack web` runs a pass every 15 s and once at start, only when it has agent runs and an inventory, never in demo mode. Passes never overlap
-- **FR:deliver.once** (P1): One ask is delivered at most once per turn, also with two hosts or a host and the CLI: the `delivered` write uses the row's version and a conflict skips the ask
+- **FR:deliver.once** (P1): One ask is delivered at most once per turn, also with two writers on one repo: the claim (`delivered`) is written before the prompt, under the repo write lock and the row's version, and only the writer that set it prompts
 
 ### FR:doc: Agents ask there and nowhere else
 
@@ -138,7 +140,10 @@ New ask row metadata (all `> key: value`, `FR:task-asks/format.fields`):
 - **Turn, not new states**: the three ask states stay. `turn` is derived, so old rows need no migration.
 - **Owner questions are ask rows**: one store and one page for both directions. 🙋 still marks a human step: the owner reads each answer.
 - **Fallback reply**: an agent that forgets `stack asks reply` still answers, because its final text is posted.
+- **Follow-up**: a resumed run keeps the dashboard's permission rules, so a tool call beyond `stack asks` waits for a permission ask. Running it in the session's own permission mode is the next slice.
+- **Known limit**: a host that stops between the claim and the prompt loses that turn's delivery; the wake file still has it.
 - **Known limit**: resuming a session that is open but idle in the desktop app adds the turn to its transcript. The app may show it only after a reload.
+- **Live check (Nov 19)**: a throwaway terminal session put an ask; the owner's `go` on `stack web` resumed it 3 s later with the prompt above, and the agent ran `stack asks handle`.
 
 ## Architecture Constraints
 

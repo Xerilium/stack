@@ -18,7 +18,7 @@ function mk(o: { state?: string; sessions?: { id: string; cli?: string; state: s
   const deps: CourierDeps = {
     ctx,
     runs: {
-      prompt: o.prompt ?? (async (r) => { prompts.push(r); return { runId: `run-${prompts.length}`, sessionId: r.sessionId ?? null }; }),
+      prompt: o.prompt ?? (async (r) => { prompts.push(r as never); return { runId: `run-${prompts.length}`, sessionId: r.sessionId ?? null }; }),
       subscribe: (key, on) => { subs.set(key, on); return () => undefined; },
       running: () => false,
     },
@@ -39,6 +39,8 @@ describe('courier pass', () => {
     expect(prompts[0].sessionId).toBe('cli-abc');
     expect(prompts[0].text).toContain('the owner answered your ask a1 ("Approve merging PR 879"): Approved');
     expect(prompts[0].text).toContain('stack asks handle a1 --outcome handled');
+    // the loop-closing commands run without a permission ask; every other tool still asks
+    expect((prompts[0] as { options?: { allowedTools?: string[] } }).options?.allowedTools).toEqual(['Bash(stack asks handle:*)', 'Bash(stack asks reply:*)']);
     const a = (await readAsk(ctx, 'a1'))!.ask;
     expect(a.delivered).toBe(NOW.toISOString());
     expect(a.thread.at(-1)).toBe(`- ${NOW.toISOString()} stack: delivered to Stack architect`);
@@ -55,8 +57,8 @@ describe('courier pass', () => {
   });
   it('builds the owner-question prompt with the thread tail', () => {
     const t = deliveryPrompt({ key: 'q1', ask: 'Status?', from: 'owner', state: 'open', thread: ['- t you: first'] } as never);
-    expect(t).toContain('the owner asks you (q1): Status?');
-    expect(t).toContain('Thread: you: first');
+    expect(t).toContain('the owner asks you (q1): "Status?"');
+    expect(t).toContain('Thread: "you: first"');
     expect(t).toContain('stack asks reply q1 --text');
   });
 });
@@ -179,6 +181,18 @@ describe('safety', () => {
     expect(await courierPass(deps)).toEqual([{ key: 'a1', result: 'failed' }]);
     expect(prompts).toHaveLength(0);
     expect((await readAsk(ctx, 'a1'))!.ask.undelivered).toBe('Session has no Claude Code id');
+  });
+  // @req FR:ask-routing/deliver.find
+  it('finds a terminal session (not in the app store) through the agent runs; an active one is busy', async () => {
+    const { ctx, deps, prompts } = mk({ sessions: [] });
+    let state = 'active';
+    deps.runs.sessions = async () => ({ items: [{ id: 'cli-xyz', state } as never], total: 1, indexing: 0 });
+    await putAsk(ctx, 'a1', { ...base, agent: '[Term](#local_cli-xyz)' }, 'x');
+    await answerAsk(ctx, 'a1', { answer: 'go' });
+    expect(await courierPass(deps)).toEqual([{ key: 'a1', result: 'busy' }]);
+    state = 'idle';
+    expect(await courierPass(deps)).toEqual([{ key: 'a1', result: 'delivered' }]);
+    expect(prompts[0].sessionId).toBe('cli-xyz');
   });
   // @req FR:ask-routing/deliver.fallback
   it('a run that ends after the owner followed up posts nothing', async () => {

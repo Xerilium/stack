@@ -11,10 +11,10 @@ import type { AgentRuns } from './runs';
 import { SessionBusy } from './driver';
 
 /** A session the courier can find: the inventory id (`local_…`), its Claude Code id, and its state. */
-export interface CourierSession { id: string; cli?: string; state?: string }
+export interface CourierSession { id: string; cli?: string; state?: string; reason?: string }
 export interface CourierDeps {
   ctx: LifecycleContext;
-  runs: Pick<AgentRuns, 'prompt' | 'subscribe' | 'running'>;
+  runs: Pick<AgentRuns, 'prompt' | 'subscribe' | 'running'> & Partial<Pick<AgentRuns, 'sessions'>>;
   /** The local session list (the session inventory). */
   inventory: () => { sessions: CourierSession[] };
   /** Called when a delivered owner question's run ends: `posted` says whether its final text became the reply. */
@@ -22,6 +22,10 @@ export interface CourierDeps {
 }
 export type CourierResult = 'delivered' | 'busy' | 'gone' | 'failed';
 
+/** Inventory reasons that mean a dialog is open in the app (`FR:session-inventory/state.waiting`). */
+const OPEN_DIALOG = new Set(['question', 'permission']);
+/** The commands that close the loop run without a permission ask; every other tool asks as on the dashboard. @req FR:ask-routing/deliver.wake */
+const CLOSE_TOOLS = ['Bash(stack asks handle:*)', 'Bash(stack asks reply:*)'];
 const WORD: Record<string, string> = { go: 'Approved', no: 'Rejected', option: 'Chose', reply: 'Replied', ask: 'Asked', done: 'Done' };
 const threadTail = (a: Pick<Ask, 'thread'>) => a.thread.slice(-5).map((l) => l.replace(/^- \S+ /, '')).join(' | ');
 
@@ -29,10 +33,10 @@ const threadTail = (a: Pick<Ask, 'thread'>) => a.thread.slice(-5).map((l) => l.r
 export function deliveryPrompt(a: Pick<Ask, 'key' | 'ask' | 'from' | 'state' | 'thread' | 'answer' | 'text'>): string {
   if (a.from === OWNER) {
     const tail = threadTail(a);
-    return `Stack: the owner asks you (${a.key}): ${a.ask}${tail ? ` Thread: ${tail}` : ''}. Answer in one reply: stack asks reply ${a.key} --text "…". Never answer in chat.`;
+    return `Stack: the owner asks you (${a.key}): "${a.ask}"${tail ? ` Thread: "${tail}"` : ''}. Answer in one reply: stack asks reply ${a.key} --text "…". Never answer in chat.`;
   }
   const word = WORD[a.answer ?? ''] ?? 'Answered';
-  return `Stack: the owner answered your ask ${a.key} ("${a.ask}"): ${word}${a.text ? `: ${a.text}` : ''}. Act on it now, then run: stack asks handle ${a.key} --outcome handled --note "<what you did>". To ask back: stack asks reply ${a.key} --text "…". Never ask in chat.`;
+  return `Stack: the owner answered your ask ${a.key} ("${a.ask}"): ${word}${a.text ? `: "${a.text}"` : ''}. Act on it now, then run: stack asks handle ${a.key} --outcome handled --note "<what you did>". To ask back: stack asks reply ${a.key} --text "…". Never ask in chat.`;
 }
 
 /** The Claude Code id that resumes the linked session, or null when it is not on this machine. @req FR:ask-routing/deliver.find */
@@ -46,27 +50,29 @@ async function deliver(d: CourierDeps, a: ListedAsk, sessions: CourierSession[])
   const link = parseAgentLink(a.agent);
   if (!link) return null;
   const s = findSession(link.id, sessions);
-  const cli = s ? s.cli ?? link.id.replace(/^local_/, '') : '';
-  // @req FR:ask-routing/deliver.busy: never write to a session another client is writing; a busy check writes nothing.
-  if (s && (s.state === 'running' || d.runs.running(cli))) return 'busy';
+  const cli = s?.cli ?? '';
+  // @req FR:ask-routing/deliver.busy: never write to a session another client is writing or that shows an open dialog; a busy check writes nothing.
+  if (s && (s.state === 'running' || OPEN_DIALOG.has(s.reason ?? '') || (cli && d.runs.running(cli)))) return 'busy';
   if (!(await markDelivery(d.ctx, a.key, { claim: true }))) return null;
   if (!s) { await markDelivery(d.ctx, a.key, { failed: 'Session gone' }); return 'gone'; }
+  // A desktop id is not a Claude Code id: without the inventory's `cli` there is nothing to resume.
+  if (!cli) { await markDelivery(d.ctx, a.key, { failed: 'Session has no Claude Code id' }); return 'failed'; }
   const full = (await readAsk(d.ctx, a.key))?.ask;
   if (!full) return null;
   let runId: string;
-  try { ({ runId } = await d.runs.prompt({ sessionId: cli, text: deliveryPrompt(full) })); }
+  try { ({ runId } = await d.runs.prompt({ sessionId: cli, text: deliveryPrompt(full), options: { allowedTools: CLOSE_TOOLS } })); }
   catch (e) {
     if (e instanceof SessionBusy) { await markDelivery(d.ctx, a.key, { release: true }); return 'busy'; }
     await markDelivery(d.ctx, a.key, { failed: e instanceof Error && e.message ? e.message : 'failed' });
     return 'failed';
   }
   await markDelivery(d.ctx, a.key, { sent: link.name });
-  if (full.from === OWNER) fallback(d, a.key, runId, link.name);
+  if (full.from === OWNER && full.delivered) fallback(d, a.key, runId, link.name, full.delivered);
   return 'delivered';
 }
 
 /** An owner question the agent did not answer with `stack asks reply` gets the run's final text as the reply. @req FR:ask-routing/deliver.fallback */
-function fallback(d: CourierDeps, key: string, runId: string, name: string): void {
+function fallback(d: CourierDeps, key: string, runId: string, name: string, claim: string): void {
   let stop: (() => void) | null = null;
   stop = d.runs.subscribe(runId, (u) => {
     if (u.type !== 'done') return;
@@ -74,7 +80,8 @@ function fallback(d: CourierDeps, key: string, runId: string, name: string): voi
     const text = oneLine(u.text ?? '').slice(0, 1000);
     void (async () => {
       const cur = text ? (await readAsk(d.ctx, key))?.ask : undefined;
-      if (!cur || askTurn(cur) !== 'agent') return false;
+      // the same turn only: a follow-up during the run is a new turn, delivered on its own
+      if (!cur || askTurn(cur) !== 'agent' || cur.delivered !== claim) return false;
       await replyAsk(d.ctx, key, { text }, name);
       return true;
     })().then((posted) => d.onFallback?.(key, posted), () => d.onFallback?.(key, false));
@@ -87,6 +94,14 @@ export async function courierPass(d: CourierDeps): Promise<{ key: string; result
   if (!due.length) return [];
   let sessions: CourierSession[];
   try { sessions = d.inventory().sessions; } catch { return []; } // no session list: try again next pass, never mark gone
+  // A terminal session is not in the app store; the agent runs list every transcript (as the lead restart does). Read only when needed.
+  const missing = due.some((a) => { const l = parseAgentLink(a.agent); return l && !findSession(l.id, sessions); });
+  if (missing && d.runs.sessions) {
+    try {
+      const more = (await d.runs.sessions({ limit: 1000 })).items;
+      sessions = [...sessions, ...more.map((s) => ({ id: s.id, cli: s.id, state: s.state === 'running' || s.state === 'active' ? 'running' : 'idle' }))];
+    } catch { return []; }
+  }
   const out: { key: string; result: CourierResult }[] = [];
   for (const a of due) {
     const r = await deliver(d, a, sessions);

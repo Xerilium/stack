@@ -34,17 +34,18 @@ describe('ask routing routes', () => {
     expect(ROUTES.some((r) => r.name === 'asks.reply' && r.method === 'POST')).toBe(true);
     expect(readFileSync(join(__dirname, '../../docs/api/openapi.yaml'), 'utf8')).toContain('/asks/{key}/reply:');
   });
-  it('a token puts an ask with an agent link; a bad link is 400', async () => {
+  it('a token cannot link a session; a local caller can; a bad link is 422', async () => {
     const { call } = await mk();
-    expect((await call('token', 'POST', '/asks/a1', BODY)).status).toBe(200);
-    expect((await call('token', 'POST', '/asks/a2', { ...BODY, agent: 'not a link' })).status).toBe(422);
+    expect((await call('token', 'POST', '/asks/a1', BODY)).status).toBe(403);
+    expect((await call('owner', 'POST', '/asks/a1', { ...BODY, from: 'cos' })).status).toBe(200);
+    expect((await call('owner', 'POST', '/asks/a2', { ...BODY, from: 'cos', agent: 'not a link' })).status).toBe(422);
     const list = await call('owner', 'GET', '/asks?state=all');
     expect(list.json.items[0]).toMatchObject({ key: 'a1', agent: LINK, turn: 'owner' });
   });
   // @req FR:ask-routing/addr.context
   it('a new token ask without why is 422', async () => {
     const { call } = await mk();
-    const noWhy = { ...BODY, why: undefined };
+    const noWhy = { ...BODY, why: undefined, agent: undefined };
     const r = await call('token', 'POST', '/asks/a1', noWhy);
     expect(r.status).toBe(422);
     expect(JSON.stringify(r.json)).toContain('why is required');
@@ -57,14 +58,18 @@ describe('ask routing routes', () => {
     expect((await call('owner', 'GET', '/asks?state=all&turn=agent')).json.items.map((i: { key: string }) => i.key)).toEqual(['q1']);
     expect((await call('owner', 'GET', '/asks?state=all&turn=owner')).json.items).toEqual([]);
   });
-  it('the agent replies with its token; the owner sees the reply as his turn', async () => {
+  it('a local agent replies to an owner question; a token replies only in its own threads', async () => {
     const { call } = await mk();
     await call('owner', 'POST', '/asks/q1', { ask: 'Status?', from: 'owner', agent: LINK });
-    const r = await call('token', 'POST', '/asks/q1/reply', { text: 'Green' });
+    expect((await call('token', 'POST', '/asks/q1/reply', { text: 'Green' })).status).toBe(403);
+    // the local MCP server and page call as the owner session
+    const r = await call('owner', 'POST', '/asks/q1/reply', { text: 'Green' });
     expect(r.status).toBe(200);
     expect(r.json).toEqual({ changed: true });
     const item = (await call('owner', 'GET', '/asks?state=all')).json.items[0];
     expect(item).toMatchObject({ key: 'q1', state: 'answered', text: 'Green', turn: 'owner' });
-    expect((await call('token', 'POST', '/asks/q1/reply', {})).status).toBe(422); // text is required;
+    expect((await call('token', 'POST', '/asks/a1', { ...BODY, agent: undefined })).status).toBe(200);
+    expect((await call('token', 'POST', '/asks/a1/reply', { text: 'More context' })).status).toBe(200);
+    expect((await call('token', 'POST', '/asks/a1/reply', {})).status).toBe(422); // text is required
   });
 });

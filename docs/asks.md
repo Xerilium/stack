@@ -27,7 +27,7 @@ stack asks put pr-879-approve \
   --priority high --effort 2m --blocks 3 [--detail-file notes.md]
 ```
 
-- `--dir <repo folder>` points at the served folder (`stack web` prints it). Over HTTP: `POST /api/asks/<key>` with the same fields and an API token (`tasks:write`); `from` defaults to the token's name.
+- `--dir <repo folder>` points at the served folder (`stack web` prints it). Over HTTP: `POST /api/asks/<key>` with the same fields and an API token (`tasks:write`); `from` defaults to the token's name. A token cannot set `agent` (`403`): Stack wakes only sessions on its own machine, so remote agents read answers with `GET /api/asks?state=answered`.
 - The key is yours and stable. Writing it again updates the ask. The key is the row's `> id:`. A `done` ask needs `--reopen` to open again.
 - `ask` is one line, at most 200 characters, a decision not a topic ("Approve X", "Pick Y or Z", "Review draft to Dana").
 - `kind`: `approve` (yes/no), `decide` (give `--options "A|B"`, recommend one), `review` (open the link, then "Looks good" or "Needs changes"), `go-do` (a human-only step), `answer` (you need a fact in words).

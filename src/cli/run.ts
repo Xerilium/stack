@@ -15,7 +15,7 @@ import {
 import { parseProject } from '../core/parser';
 import { checkTask } from '../core/quality';
 import { formatCount, formatIssue, isError, lintProject, lintRow, lintTitle, type LintIssue } from '../core/task-lint';
-import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, envLink, handleAsk, importAsks, listAsks, OWNER, putAsk, replyAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
+import { archiveAsks, ASK_KINDS, ASK_PRIORITIES, envLink, handleAsk, importAsks, listAsks, putAsk, replyAsk, type AskPut, type HandleInput, LIST_STATES } from '../core/asks';
 import { pidAlive, readHostFile, ReportInvalid, ReportStore, stackHome } from '../core/reports';
 import { defaultSessionsDir, runInventory } from '../core/session-inventory';
 import { lintAgents, readFolderAgents, type LocalSession } from '../core/goal-model';
@@ -390,9 +390,9 @@ async function asksCmd(ctx: LifecycleContext, p: ReturnType<typeof parseArgs>): 
       };
       for (const k of Object.keys(input) as (keyof AskPut)[]) if (input[k] === undefined) delete input[k];
       // @req FR:ask-routing/addr.env: the session that writes the ask is the one that waits for the answer.
-      const agent = s('agent') ?? (input.from !== OWNER ? envLink(input.from!, process.env) : undefined);
+      const agent = s('agent') ?? envLink(input.from!, process.env);
       if (agent) input.agent = agent;
-      const r = await putAsk(ctx, key, input, actor, { agent: input.from !== OWNER });
+      const r = await putAsk(ctx, key, input, actor, { agent: true }); // the CLI is an agent surface: never the owner
       return { json: { ok: true, ...r }, text: r.key };
     }
     case 'reply': {

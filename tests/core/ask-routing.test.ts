@@ -204,6 +204,8 @@ describe('CLI', () => {
     expect(readFileSync(join(d, 'tasks/asks.md'), 'utf8')).toContain('> agent: [Stack architect](#local_abc-123)');
     expect(await go('asks', 'put', 'a2', '--ask', 'Approve Y', '--kind', 'approve', '--from', 'cos')).not.toBe(0);
     expect(out).toContain('why is required');
+    // @req FR:ask-routing/ask.put: the CLI is an agent surface, so it never asks as the owner
+    expect(await go('asks', 'put', 'q1', '--ask', 'Status?', '--kind', 'answer', '--from', 'owner', '--why', 'w')).not.toBe(0);
     expect(await go('asks', 'reply', 'a1', '--from', 'Stack architect', '--text', 'More context')).toBe(0);
     expect(readFileSync(join(d, 'tasks/asks.md'), 'utf8')).toMatch(/> - \S+ Stack architect: More context/);
   });

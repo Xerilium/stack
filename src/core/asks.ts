@@ -596,7 +596,9 @@ export async function putAsk(ctx: LifecycleContext, key: string, input: AskPut, 
   asksPath(key);
   const fields = checkPut(input);
   // @req FR:ask-routing/ask.put: only the owner asks as the owner, and an owner question names the agent that must answer.
-  if (fields.from === OWNER && opts.writer) throw new AskDenied('Only the owner can ask as the owner');
+  if (fields.from === OWNER && (opts.writer || opts.agent)) throw new AskDenied('Only the owner can ask as the owner');
+  // @req FR:ask-routing/addr.api: a token's session is not on this host, and a link it wrote would let it prompt any local session.
+  if (fields.agent && opts.writer) throw new AskDenied('A token cannot link a session');
   if (fields.from === OWNER && !fields.kind) fields.kind = 'answer';
   if (fields.ref !== undefined) { try { fields.refText = (await readRow(ctx, parseTaskRef(fields.ref))).row[3]; } catch (e) { if (e instanceof NotFoundError) throw e; throw new LifecycleError(`ref: ${e instanceof Error ? e.message : 'no such row'}`); } }
   const now = clock(ctx).toISOString();
@@ -626,6 +628,8 @@ export async function putAsk(ctx: LifecycleContext, key: string, input: AskPut, 
       next.state = 'open';
       for (const k of ['answer', 'text', 'answered', 'outcome', 'handled', 'note', 'snoozed'] as const) delete next[k];
     }
+    // @req FR:ask-routing/deliver.reset: a reopen or a new session link starts the delivery again.
+    if (old.state === 'done' || (fields.agent && fields.agent !== old.agent)) { delete next.delivered; delete next.undelivered; }
     return { next, message: `Ask: ${key}`, result: { key, created: false } };
   });
 }
@@ -730,6 +734,8 @@ export async function handleAsk(ctx: LifecycleContext, key: string, input: Handl
   let from = '';
   const res = await mutate<{ changed: boolean }>(ctx, key, (cur) => {
     if (!cur) throw new NotFoundError(`Ask not found: ${key}`);
+    // @req FR:ask-routing/ask.close
+    if (cur.ask.from === OWNER && actor !== OWNER) throw new AskDenied('Only the owner closes his own question');
     from = cur.ask.from;
     const a = { ...cur.ask };
     if (input.outcome === 'reopen') {
@@ -770,16 +776,19 @@ const threadName = (actor: string) => oneLine(actor).replace(/[:[\]]/g, '').slic
  * The agent's reply in the thread: answers an owner question, reopens an answered agent ask, or adds context to an open one.
  * @req FR:ask-routing/reply.cmd
  */
-export async function replyAsk(ctx: LifecycleContext, key: string, input: { text: string; agent?: string }, actor: string): Promise<{ changed: boolean }> {
+export async function replyAsk(ctx: LifecycleContext, key: string, input: { text: string; agent?: string }, actor: string, opts: { /** A token caller: replies only on asks it wrote, never links a session. */ writer?: string } = {}): Promise<{ changed: boolean }> {
   asksPath(key);
   const text = line('text', input.text, MAX_TEXT, false)!;
   const link = input.agent === undefined ? undefined : checkPut({ agent: input.agent }).agent;
+  if (link && opts.writer) throw new AskDenied('A token cannot link a session');
   const who = threadName(actor);
   const nowD = clock(ctx);
   const now = nowD.toISOString();
   let from = '';
   const res = await mutate<{ changed: boolean }>(ctx, key, (cur) => {
     if (!cur) throw new NotFoundError(`Ask not found: ${key}`);
+    // @req FR:ask-routing/reply.cmd: a token answers only in its own threads (security M5).
+    if (opts.writer && (cur.ask.from === OWNER || (cur.ask.writer && cur.ask.writer !== opts.writer))) throw new AskDenied('Only the agent that wrote this ask can reply');
     if (cur.ask.state === 'done') throw new ConflictError('Ask is done');
     const a = { ...cur.ask, updated: now, thread: [...cur.ask.thread, `- ${now} ${who}: ${text}`] };
     if (link) a.agent = link;
