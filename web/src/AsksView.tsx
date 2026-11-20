@@ -6,8 +6,13 @@
 import { Avatar } from './AgentAvatar';
 import { nameBeside } from './avatar';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { actionsFor, CONTEXT_ASK, needsContext, reasonOf, sessionOf, whoOf, deadline, freshness, ifSilent, loudRow, rowActions, splitTop, type Action, type AskItem, type RowAction } from './asks';
+import { actionsFor, agentOf, CONTEXT_ASK, deliveryChip, isOwnerQ, needsContext, reasonOf, sessionOf, whoOf, deadline, freshness, ifSilent, loudRow, rowActions, splitTop, type Action, type AgentPick, type AskItem, type RowAction } from './asks';
 import { ActionMenu } from './ui/ActionMenu';
+import { CollapseGroup } from './ui/CollapseGroup';
+import { PickMessageBox } from './ui/PickMessageBox';
+import { SelectCard } from './ui/SelectCard';
+import { StatusChip } from './ui/StatusChip';
+import { ThreadLines } from './ui/ThreadLines';
 import { SourceButton, SourceLink } from './ui/SourceLink';
 import { blockedHelp } from './notify';
 import { Md } from './parts';
@@ -82,7 +87,9 @@ function Row({ a, n, now, fresh, leaving, loud, onPick, onAct, onOpenTask, onOpe
   const verb = verbOf(a);
   const taskRef = a.source === 'task' ? a.ref : a.row;
   const session = sessionOf(a); // @req FR:notifications/list.source.session
-  const reason = reasonOf(a);
+  // His own question, answered: who replied and what. @req FR:ask-routing/ui.mine
+  const mine = isOwnerQ(a);
+  const reason = mine ? a.text ?? null : reasonOf(a);
   const ctx = `ask-ctx-${a.key}`;
   return (
     <li class={`ask-li ask-li-row${fresh ? ' fresh' : ''}${leaving ? ' leaving' : ''}`} data-key={a.key}>
@@ -92,7 +99,7 @@ function Row({ a, n, now, fresh, leaving, loud, onPick, onAct, onOpenTask, onOpe
         <span class="row-meta"><span class="verb">{verb ?? ''}</span>{a.by ? <DeadlineChip by={a.by} now={now} quiet={!loud} /> : <span class="dl empty" aria-hidden="true" />}<span class="proj">{a.project ?? ''}</span></span>
       </button>
       <p class="ask-ctx" onClick={(e) => { if (!(e.target as HTMLElement).closest('a, button')) onPick(); }}>
-        <span class="ask-who" id={`${ctx}-who`}>{whoOf(a)}</span>
+        <span class="ask-who" id={`${ctx}-who`}>{mine ? `${agentOf(a)} replied` : whoOf(a)}</span>
         <span class={`ask-ctx-why${reason ? '' : ' none'}`} id={`${ctx}-why`}>{reason ? <Md text={reason} project={a.project} links={false} /> : 'No reason given'}</span>
         {a.source !== 'task' && <SourceLink href={a.link} />}
         {taskRef && onOpenTask && <SourceButton label="Task" onOpen={() => onOpenTask(taskRef)} />}
@@ -127,7 +134,10 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
   const [text, setText] = useState('');
   useEffect(() => { if (asks.panel !== 'reply') setText(''); else setText((t) => t || asks.takeDraft(a.key)); }, [asks.panel, a.key]); // Edit reopens with the previous text
   const choices = asks.deferChoices();
-  const isAnswer = a.kind === 'answer';
+  // His own question: Reply and Done, the reply box only after Reply. @req FR:ask-routing/ui.reply
+  const mine = isOwnerQ(a);
+  const isAnswer = a.kind === 'answer' && !mine;
+  const to = agentOf(a);
   const flow = flowOf(a);
   const replying = (asks.panel === 'reply' || isAnswer) && asks.panel !== 'defer';
   return (
@@ -136,7 +146,7 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
         <div class="ask-eyebrow">
           {flow ? <span class="of flow" data-testid="flow-step">Quick triage · {flow.step} of {flow.total}</span> : <span class="of" aria-hidden="true">{n} of {total}</span>}
           {a.project && <span class="proj">{a.project}</span>}
-          {!talk?.chip(a) && <span class="from"><Avatar who={{ slug: a.from, name: a.from }} size={20} />{nameBeside({ slug: a.from, name: a.from })}</span>}
+          {!talk?.chip(a) && <span class="from"><Avatar who={{ slug: mine ? to : a.from, name: mine ? to : a.from }} size={20} />{nameBeside({ slug: mine ? to : a.from, name: mine ? to : a.from })}</span>}
           {talk?.chip(a)}
           {asks.fresh.has(a.key) && <span class="new">New</span>}
           <span class="grow" />
@@ -150,11 +160,14 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
         {a.why && <p class="ask-why"><Md text={a.why} project={a.project} /></p>}
         {a.refText && <p class="ask-row-target" title="The task this answer changes">on <span>{a.refText}</span></p>}
         {a.agentReply && <p class="ask-reply"><strong>{a.from}</strong>{a.agentReply}</p>}
+        {mine && a.text && <p class="ask-reply"><strong>{to} replied:</strong> {a.text}</p>}
+        {/* The thread, newest 5 lines; Stack's own lines are muted. @req FR:ask-routing/ui.thread */}
+        {a.thread?.length ? <div class="ask-thread"><ThreadLines label="Thread" lines={a.thread.map((l) => ({ ...l, muted: l.who === 'stack' }))} /></div> : null}
         {talk?.render(a)}
-        <dl class="ask-facts">
+        {!mine && <dl class="ask-facts">
           {showRec && <div><dt>Recommend</dt><dd><Md text={a.recommend!} project={a.project} /></dd></div>}
           <div class={silent.waits ? 'waits' : ''}><dt class="sr-only">Default</dt><dd class="silent">{Icon.hourglass}<span>{silent.text}</span></dd></div>
-        </dl>
+        </dl>}
         {asks.panel === 'defer' ? (
           <div class="ask-defer" role="group" aria-label="Defer until">
             <span class="lbl">Defer until</span>
@@ -166,8 +179,8 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
             <div class="ask-actions">
               {actions.map((x) => <Btn key={x.id} a={x} act={a} run={run} panel={asks.panel} />)}
               <span class="grow" />
-              <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd aria-hidden="true">z</kbd></button>
-              <button type="button" class="btn quiet" onClick={() => asks.setPanel(asks.panel === 'reply' ? 'none' : 'reply')} aria-expanded={asks.panel === 'reply'}>Reply<kbd aria-hidden="true">r</kbd></button>
+              {!mine && <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd aria-hidden="true">z</kbd></button>}
+              {!mine && <button type="button" class="btn quiet" onClick={() => asks.setPanel(asks.panel === 'reply' ? 'none' : 'reply')} aria-expanded={asks.panel === 'reply'}>Reply<kbd aria-hidden="true">r</kbd></button>}
               {/* The selected notification has the row's actions too. @req FR:notifications/list.rowactions.card */}
               {needsContext(a) && <button type="button" class="btn quiet" onClick={() => { setText(CONTEXT_ASK); asks.setPanel('reply'); }}>Ask for context</button>}
             </div>
@@ -176,10 +189,11 @@ function Card({ a, n, total, asks, run, talk }: { a: AskItem; n: number; total: 
         {replying && (
           <>
             <form class="ask-reply-box" onSubmit={(e) => { e.preventDefault(); void asks.reply(a, text); }}>
-              <input ref={(el) => { replyRef.current = el; if (el && asks.panel === 'reply' && document.activeElement !== el) el.focus(); }} type="text" value={text} maxLength={1000} aria-label={isAnswer ? `Answer ${a.from}` : `Reply to ${a.from}`} placeholder={isAnswer ? `Answer ${a.from}` : `Reply to ${a.from}`}
+              <input ref={(el) => { replyRef.current = el; if (el && asks.panel === 'reply' && document.activeElement !== el) el.focus(); }} type="text" value={text} maxLength={1000} aria-label={isAnswer ? `Answer ${to}` : `Reply to ${to}`} placeholder={isAnswer ? `Answer ${to}` : `Reply to ${to}`}
                 onInput={(e) => setText((e.target as HTMLInputElement).value)}
                 onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); (e.target as HTMLElement).blur(); asks.setPanel('none'); } }} />
-              <button type="submit" class="btn primary send" disabled={!text.trim()}>Send<kbd aria-hidden="true">⏎</kbd></button>
+              {/* The button names the effect. @req FR:ask-routing/ui.reply @req FR:ui-kit/send.box.label */}
+              <button type="submit" class="btn primary send" disabled={!text.trim()} title={`Send to ${to}`}><span class="btn-label">Send to {to}</span><kbd aria-hidden="true">⏎</kbd></button>
               {isAnswer && <button type="button" class="btn quiet" onClick={() => asks.setPanel('defer')}>Defer<kbd aria-hidden="true">z</kbd></button>}
               {isAnswer && a.source === 'task' && <button type="button" class="btn quiet" onClick={() => run({ id: 'open', label: 'Details', key: 'o', open: true })} aria-keyshortcuts="o">Details<kbd aria-hidden="true">o</kbd></button>}
             </form>
@@ -227,6 +241,52 @@ function StaleGroup({ n, open, onToggle, children }: { n: number; open: boolean;
 }
 
 /**
+ * One ask that waits on its agent: the agent, one delivery chip, the ask. Selected, it shows what he sent and the thread.
+ * Nothing here asks him to act; an answer he sent keeps Edit and Undo (`FR:ask-queue/web.answered`).
+ * @req FR:ask-routing/ui.waiting @req FR:ask-routing/ui.thread @req FR:ask-routing/ui.kit
+ */
+function WaitCard({ a, now, open, onToggle, onEdit, onUndo }: { a: AskItem; now: Date; open: boolean; onToggle: () => void; onEdit: () => void; onUndo: () => void }) {
+  const chip = deliveryChip(a, now);
+  const agent = agentOf(a);
+  const sent = !isOwnerQ(a) && a.answer ? `${ANSWER_WORD[a.answer] ?? 'Sent'}${a.text ? `: ${a.text}` : ''}` : '';
+  return (
+    <SelectCard
+      selected={open}
+      onSelect={onToggle}
+      label={`${a.ask}, ${agent}, ${chip.label}`}
+      data={{ key: a.key }}
+      top={<><span class="ask-agent">{agent}</span><StatusChip label={chip.label} tone={chip.tone} /></>}
+      title={a.ask}
+      sub={open ? (
+        <span class="ask-wait-detail">
+          {sent && <span class="ask-wait-sent">You: {sent}</span>}
+          {a.thread?.length ? <ThreadLines label={`Thread with ${agent}`} lines={a.thread.map((l) => ({ ...l, muted: l.who === 'stack' }))} /> : null}
+          {sent && <span class="ask-wait-tools"><button type="button" class="link" onClick={onEdit}>Edit</button><button type="button" class="link" onClick={onUndo}>Undo</button></span>}
+        </span>
+      ) : undefined}
+    />
+  );
+}
+
+/** Ask an agent: a live session and one question, sent only by `Send to <Agent>`. @req FR:ask-routing/ui.ask @req FR:ask-routing/ui.kit */
+function AskAgent({ asks }: { asks: Asks }) {
+  const [picks, setPicks] = useState<AgentPick[] | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let live = true;
+    asks.agentPicks().then((p) => { if (live) setPicks(p); }, (e: unknown) => { if (live) { setPicks([]); setError(e instanceof Error && e.message ? e.message : 'Cannot read sessions'); } });
+    return () => { live = false; };
+  }, []);
+  const empty = picks === null ? 'Loading sessions…' : error ? `Cannot list sessions: ${error}` : 'No live sessions';
+  return (
+    <section class="ask-agent-form" data-testid="ask-agent" aria-label="Ask an agent">
+      <PickMessageBox heading="Your question" pickLabel="Agent" options={(picks ?? []).map((p) => ({ id: p.id, label: p.title }))} empty={empty} max={200}
+        onSend={(id, text) => asks.askAgent(picks!.find((p) => p.id === id)!, text)} />
+    </section>
+  );
+}
+
+/**
  * Notifications: only the things that need the owner to act. No Priorities, no Sessions.
  * @req FR:notifications/list.what @req FR:notifications/list.not @req FR:notifications/list.actions @req FR:notifications/list.empty
  */
@@ -235,7 +295,8 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
   const { cursor } = asks;
   const items = asks.items; // the main list; stale CoS items render in their own group @req FR:ask-queue/needs.web.stale.group
   const unreachable = asks.errorCode === 'network'; // a 404/500 is Stack answering, not Stack gone
-  const [openSent, setOpenSent] = useState(false);
+  const [openWait, setOpenWait] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
   const [openSnoozed, setOpenSnoozed] = useState(false);
   const { shown, more } = splitTop(items, TOP, asks.showAll);
   const loud = loudRow(shown.filter((a) => a.key !== cursor), asks.now);
@@ -332,6 +393,8 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
     <section class={`asks-view${offline ? ' offline' : ''}`} aria-label="Notifications">
       <header class="asks-head">
         <h1 class="h1">Notifications{asks.countReady && asks.total + (signin ? 1 : 0) > 0 && <span class="count" aria-label={`${asks.total + (signin ? 1 : 0)} open`}>{asks.total + (signin ? 1 : 0)}</span>}</h1>
+        <span class="grow" />
+        <button type="button" class="btn ask-agent-btn" aria-expanded={asking} onClick={() => setAsking(!asking)}>Ask an agent</button>
         <LiveBadge a={asks} unreachable={unreachable} onSignIn={onSignIn} />
         {notify?.supported && (
           <button type="button" class={`notify-btn${notify.on ? ' on' : ''}${notify.blocked && !notify.on ? ' blocked' : ''}`} aria-pressed={notify.on} aria-label={notify.blocked && !notify.on ? 'Notifications blocked' : notify.on ? 'Notifications on' : 'Notify me'} title={notify.blocked && !notify.on ? blockedHelp() : notify.on ? 'Notifications are on: tap to turn off' : 'Get a notification when an agent needs you'} onClick={notify.toggle}>
@@ -340,6 +403,7 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
           </button>
         )}
       </header>
+      {asking && <AskAgent asks={asks} />}
       <p class="sr-only" role="status" aria-live="polite">{announce}</p>
       {!offline && (asks.phase === 'loading' || (asks.phase === 'ready' && !asks.countReady && items.length === 0)) && <Skeleton />}
       {offline && asks.phase !== 'ready' && <div class="asks-error offline" role="status"><p>Offline. Asks load when you're back online.</p></div>}
@@ -372,20 +436,16 @@ export function AsksView({ asks, notify, offline = false, onSignIn, talk }: { as
           {asks.stale.map((a) => (a.key === cursor ? <Card key={a.key} a={a} n={a.rank ?? 0} total={asks.stale.length} asks={asks} run={run} talk={talk} /> : <Row key={a.key} a={a} n={a.rank ?? 0} now={asks.now} fresh={false} onPick={() => { asks.setCursor(a.key); asks.setPanel('none'); asks.setDetail(false); }} onAct={(x) => act(a, x)} onOpenTask={asks.openTask} onOpenSession={asks.openSession} />))}
         </StaleGroup>
       )}
-      {(asks.sent.length > 0 || asks.snoozed.length > 0) && (
+      {/* What waits on the agents, collapsed under his list. @req FR:ask-routing/ui.waiting */}
+      {asks.waiting.length > 0 && (
+        <CollapseGroup label="Waiting on agents" count={asks.waiting.length} testid="waiting">
+          <ul class="ui-cards asks-waiting">
+            {asks.waiting.map((w) => <WaitCard key={w.key} a={w} now={asks.now} open={openWait === w.key} onToggle={() => setOpenWait(openWait === w.key ? null : w.key)} onEdit={() => void asks.edit(w)} onUndo={() => void asks.retract(w)} />)}
+          </ul>
+        </CollapseGroup>
+      )}
+      {asks.snoozed.length > 0 && (
         <footer class="asks-foot">
-          {asks.sent.length > 0 && (
-            <div>
-              <button type="button" class="foot-btn" aria-expanded={openSent} onClick={() => setOpenSent(!openSent)}>Answered · {asks.sent.length}<span class="hint"> waiting on the agent</span></button>
-              {openSent && (
-                <ul class="foot-list">
-                  {[...asks.sent].reverse().map((s) => (
-                    <li key={s.key}><span class="f-t">{s.ask}</span><span class="f-what">{ANSWER_WORD[s.answer ?? ''] ?? 'Sent'}{s.text ? `: ${s.text}` : ''} · {s.from}</span><button type="button" class="link" onClick={() => void asks.edit(s)}>Edit</button><button type="button" class="link" onClick={() => void asks.retract(s)}>Undo</button></li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
           {asks.snoozed.length > 0 && (
             <div>
               <button type="button" class="foot-btn" aria-expanded={openSnoozed} onClick={() => setOpenSnoozed(!openSnoozed)}>Deferred · {asks.snoozed.length}</button>

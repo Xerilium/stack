@@ -872,6 +872,7 @@ export function buildOpenApi(): J {
             score: { type: 'integer' }, rank: { type: 'integer' }, overdue: { type: 'boolean' }, snoozedUntil: { type: 'string', format: 'date-time' }, agentReply: { type: 'string' },
             flow: { type: 'string' }, seq: { type: 'integer' }, ref: ref('Ref'), apply: { type: 'string' }, applies: { type: 'array', items: { type: 'string' } }, flowTotal: { type: 'integer' }, flowDone: { type: 'integer' }, refText: { type: 'string' }, writer: { type: 'string', description: 'Who created the ask; only that token or the owner updates it' }, turn: { type: 'string', enum: ['owner', 'agent', 'none'], description: 'Whose move it is' }, agent: { type: 'string', description: 'The agent session link, [Name](#local_<id>)' }, delivered: { type: 'string', format: 'date-time', description: 'When Stack woke the agent session for this turn' }, undelivered: { type: 'string', description: 'Why Stack could not wake the agent session' },
             row: ref('Ref'), task: { type: 'string' },
+            thread: { type: 'array', description: 'The ask thread, oldest first; absent when empty', items: { type: 'object', properties: { at: { type: 'string', format: 'date-time' }, who: { type: 'string' }, text: { type: 'string' } } } },
           },
         },
         TeamAgent: {

@@ -73,7 +73,7 @@ test('a file written by an agent appears by itself; the answer lands back in the
 
   // owner approves with Enter: the file records the answer
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('button', { name: /Answered · 1/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Waiting on agents (1)' })).toBeVisible();
   // the ask is a 🙋 row in tasks/asks.md; an answer without [x] reads as answered
   await expect.poll(() => readFileSync(join(repo, 'tasks/asks.md'), 'utf8')).toContain('  > answer: go');
   const waiting = JSON.parse(cli('asks', 'list', '--state', 'answered', '--json'));

@@ -13,9 +13,9 @@ import ts from 'typescript';
  */
 export const SENDERS: readonly string[] = [
   // The API client (`web/src/api.ts`).
-  'api.promptSession', 'api.newSession', 'api.send', 'api.assign', 'api.review', 'api.answerAsk', 'api.answerNeed', 'api.decideRec', 'api.inboxAct', 'api.inboxJunk', 'api.prAck', 'api.prRec', 'api.feedback', 'api.designReview',
+  'api.promptSession', 'api.newSession', 'api.send', 'api.assign', 'api.review', 'api.answerAsk', 'api.putAsk', 'api.answerNeed', 'api.decideRec', 'api.inboxAct', 'api.inboxJunk', 'api.prAck', 'api.prRec', 'api.feedback', 'api.designReview',
   // Hooks and props that pass a send on.
-  'team.assign', 'team.review', 'team.start', 'th.ask', 'th.assign', 'th.answer', 'asks.answer', 'asks.reply', 's.send', 's.start', 'onSend', 'onAsk', 'onDo', 'onAnswer', 'onAccept', 'onReply', 'sendToSession',
+  'team.assign', 'team.review', 'team.start', 'th.ask', 'th.assign', 'th.answer', 'asks.answer', 'asks.reply', 'asks.askAgent', 's.send', 's.start', 'onSend', 'onAsk', 'onDo', 'onAnswer', 'onAccept', 'onReply', 'sendToSession',
 ];
 
 export interface SendFinding { file: string; line: number; /** The element and event: `button onClick`. */ at: string; /** The sender it calls. */ call: string }

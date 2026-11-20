@@ -156,6 +156,23 @@ describe('agent reply', () => {
   });
 });
 
+// @req FR:ask-routing/ui.thread
+describe('listed thread', () => {
+  it('lists each thread line as time, who and text, oldest first; a row with no thread has none', async () => {
+    const { ctx } = mk();
+    await putAsk(ctx, 'q1', { ask: 'Status?', from: 'owner', agent: LINK }, 'owner');
+    await putAsk(ctx, 'a1', base, 'allyte-cos');
+    await markDelivery(ctx, 'q1', { claim: true });
+    await markDelivery(ctx, 'q1', { failed: 'Session gone' });
+    await replyAsk(ctx, 'q1', { text: 'Blocked on CI: lint' }, 'Stack architect');
+    const items = (await listAsks(ctx, { turn: 'owner' })).items;
+    const q = items.find((i) => i.key === 'q1')!;
+    expect(q.thread!.map(({ who, text }) => [who, text])).toEqual([['stack', 'not delivered (Session gone)'], ['Stack architect', 'Blocked on CI: lint']]);
+    expect(q.thread!.every((l) => !Number.isNaN(Date.parse(l.at)))).toBe(true);
+    expect(items.find((i) => i.key === 'a1')!.thread).toBeUndefined();
+  });
+});
+
 // @req FR:ask-routing/deliver.reset @req FR:ask-routing/deliver.once
 describe('delivery marks', () => {
   it('a claim wins once per turn; a new agent turn clears it', async () => {

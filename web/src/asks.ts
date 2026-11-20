@@ -2,6 +2,8 @@
  * Pure logic for the Asks view: deadline wording, actions per kind, defer choices, cursor and diff helpers.
  * @req FR:ask-queue/web.home @req FR:ask-queue/web.card @req FR:ask-queue/web.actions @req FR:ask-queue/web.optimistic @req FR:ask-queue/web.empty @req FR:ask-queue/live.quiet
  */
+import type { Inventory } from './inventory';
+
 export type AskKind = 'approve' | 'decide' | 'review' | 'go-do' | 'answer';
 export type AnswerKind = 'go' | 'no' | 'option' | 'reply' | 'ask' | 'done' | 'defer' | 'retract';
 export interface AskItem {
@@ -18,7 +20,11 @@ export interface AskItem {
   decide?: string;
   /** Quick triage: the flow and its progress; what Stack applies on the answer. @req FR:quick-triage/web.stepper */
   flow?: string; seq?: number; flowTotal?: number; flowDone?: number; apply?: string; applies?: string[]; refText?: string;
+  /** Ask routing: whose move it is, the agent side of the thread, the delivery state, and the thread. @req FR:ask-routing/ui.mine */
+  turn?: 'owner' | 'agent' | 'none'; agent?: string; delivered?: string; undelivered?: string; thread?: ThreadLine[];
 }
+/** One thread line. @req FR:ask-routing/ui.thread */
+export interface ThreadLine { at: string; who: string; text: string }
 export interface AskList { items: AskItem[]; total: number; latest?: string }
 export interface Send { answer: AnswerKind; text?: string; until?: string }
 
@@ -83,7 +89,9 @@ export function approveLabel(recommend: string | undefined): string {
 }
 
 /** Buttons for an ask by kind. `Enter` is always the primary action. */
-export function actionsFor(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source'>): Action[] {
+export function actionsFor(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source'> & { from?: string }): Action[] {
+  // His own question, answered: reply in the thread (a box he sends), or close it. @req FR:ask-routing/ui.reply
+  if (isOwnerQ(a)) return [{ id: 'reply', label: 'Reply', key: 'Enter', primary: true, reply: true }, { id: 'done', label: 'Done', key: 'd', send: { answer: 'done' } }];
   const open: Action[] = a.link ? [{ id: 'open', label: 'Open', key: 'o', open: true }] : [];
   const rec = a.recommend?.trim().toLowerCase();
   // A CoS escalation: go with her recommendation, or open the link; Defer and Reply stay as for any ask. @req FR:ask-queue/needs.web.card
@@ -145,9 +153,10 @@ export interface RowAction { id: string; label: string; action?: Action; panel?:
  * An ask with no reason, no link and no detail can ask the sender for context.
  * @req FR:notifications/list.rowactions.items
  */
-export function rowActions(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source' | 'why' | 'detail'>): RowAction[] {
+export function rowActions(a: Pick<AskItem, 'kind' | 'recommend' | 'options' | 'link' | 'source' | 'why' | 'detail'> & { from?: string }): RowAction[] {
   const out: RowAction[] = actionsFor(a).map((x) => (x.reply ? { id: x.id, label: x.label, panel: 'reply' as const } : { id: x.id, label: x.label, action: x }));
-  out.push({ id: 'reply', label: a.kind === 'answer' ? 'Answer' : 'Reply', panel: 'reply' }, { id: 'defer', label: 'Defer', panel: 'defer' });
+  if (!isOwnerQ(a)) out.push({ id: 'reply', label: a.kind === 'answer' ? 'Answer' : 'Reply', panel: 'reply' });
+  out.push({ id: 'defer', label: 'Defer', panel: 'defer' });
   if (needsContext(a)) out.push({ id: 'context', label: 'Ask for context', context: true });
   return out;
 }
@@ -194,4 +203,44 @@ export function freshness(iso: string | undefined, now: Date): string {
   if (s < 3600) return `${Math.max(1, Math.round(s / 60))} min ago`;
   if (s < 86400) return `${Math.round(s / 3600)} h ago`;
   return `${Math.round(s / 86400)} d ago`;
+}
+
+// ---- ask routing: his turns, the agent side, delivery, his own questions
+
+/** The owner's own questions to an agent carry this `from`. @req FR:ask-routing/ui.mine */
+export const OWNER = 'owner';
+export const isOwnerQ = (a: { from?: string }): boolean => a.from === OWNER;
+const AGENT_LINK = /^\[([^\]\n]+)\]\(#(local_[A-Za-z0-9_-]+)\)$/;
+/** The agent side of a thread, by name: the agent link's name, else who sent the ask. @req FR:ask-routing/ui.mine @req FR:ask-routing/ui.waiting */
+export function agentOf(a: Pick<AskItem, 'from'> & { agent?: string }): string {
+  const name = AGENT_LINK.exec(a.agent?.trim() ?? '')?.[1].trim();
+  if (name) return name;
+  return isOwnerQ(a) ? 'the agent' : whoOf(a);
+}
+/** One status chip for an ask that waits on its agent. @req FR:ask-routing/ui.waiting */
+export function deliveryChip(a: { delivered?: string; undelivered?: string }, now: Date): { label: string; tone: 'ok' | 'bad' | 'neutral' } {
+  if (a.undelivered) return { label: `Not delivered: ${a.undelivered}`, tone: 'bad' };
+  if (a.delivered) return { label: `Delivered ${freshness(a.delivered, now)}`, tone: 'ok' };
+  return { label: 'Sending…', tone: 'neutral' };
+}
+const rand16 = (): number => { const b = new Uint16Array(1); globalThis.crypto.getRandomValues(b); return b[0]; };
+/** A new owner question key: `q-<yyyymmdd>-<4 hex>` (local date). @req FR:ask-routing/ui.ask */
+export function questionKey(now: Date, rand: () => number = rand16): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `q-${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${(rand() & 0xffff).toString(16).padStart(4, '0')}`;
+}
+/** A session the owner can ask. */
+export interface AgentPick { id: string; title: string }
+/** Live sessions for the picker: not done, not archived, newest first. @req FR:ask-routing/ui.ask */
+export function liveSessions(inv: Pick<Inventory, 'sessions' | 'archive'>): AgentPick[] {
+  const gone = new Set(inv.archive.map((s) => s.id));
+  const t = (iso: string) => { const v = Date.parse(iso); return Number.isFinite(v) ? v : -Infinity; };
+  return inv.sessions.filter((s) => s.state !== 'done' && !gone.has(s.id) && AGENT_LINK.test(`[x](#${s.id})`))
+    .sort((a, b) => t(b.lastActivityAt) - t(a.lastActivityAt))
+    .map((s) => ({ id: s.id, title: s.title }));
+}
+/** The owner question `POST /asks/{key}` takes: the question, from owner, kind answer, the session as a link. @req FR:ask-routing/ui.ask */
+export function questionBody(p: AgentPick, text: string): { ask: string; from: 'owner'; kind: 'answer'; agent: string } {
+  const name = p.title.replace(/[[\]()]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Agent';
+  return { ask: text.replace(/\s+/g, ' ').trim(), from: OWNER, kind: 'answer', agent: `[${name}](#${p.id})` };
 }

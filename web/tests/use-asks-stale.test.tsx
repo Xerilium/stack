@@ -8,7 +8,7 @@ import type { AskItem } from '../src/asks';
 import { useAsks, type Asks } from '../src/useAsks';
 
 const ask = (key: string): AskItem => ({ key, kind: 'approve', ask: key, from: 'cos', state: 'open', reversible: true, priority: 'high', blocks: 0, created: '', updated: '', score: 1000, overdue: true } as AskItem);
-const api = { asks: async () => ({ items: [], total: 0 }), sync: async () => ({}) } as unknown as Client;
+const api = { asks: async () => ({ items: [], total: 0 }), asksTurn: async () => ({ items: [], total: 0 }), sync: async () => ({}) } as unknown as Client;
 
 let root: HTMLElement;
 let last: Asks;

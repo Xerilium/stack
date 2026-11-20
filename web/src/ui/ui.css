@@ -21,7 +21,7 @@
 .ui-card:hover .ui-card-chev, .ui-card[data-selected="true"] .ui-card-chev { background: rgb(127 127 127 / 10%); color: var(--ui-ink, var(--ink)); }
 /* With `label`: title and sub line outside the button, so their links stay links above the stretched target. */
 .ui-card-body { grid-area: open; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "sub"; gap: 4px 8px; align-items: center; min-width: 0; }
-.ui-card-body a { position: relative; z-index: 1; }
+.ui-card-body a, .ui-card-body button:not(.ui-card-open) { position: relative; z-index: 1; }
 /* The button holds only the chevron: it takes no room of its own; its stretched target covers the card. */
 .ui-card-open.ui-card-chev-btn { grid-area: 1 / 1 / -1 / -1; display: block; }
 .ui-card-tools { grid-area: tools; position: relative; z-index: 1; display: flex; flex-direction: column; gap: 4px; align-items: center; }
@@ -96,6 +96,34 @@
 .ui-msg-hint { font-size: 12px; line-height: 16px; color: var(--ink2); overflow-wrap: anywhere; }
 .ui-msg-hint.bad { color: var(--ink); font-weight: 600; }
 
+/* Message to a picked recipient: a picker over a message box. @req FR:ask-routing/ui.ask */
+.ui-pick { display: flex; flex-direction: column; gap: 10px; }
+.ui-pick .ui-msg { margin: 0; padding: 0; border: 0; }
+.ui-pick-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.ui-pick-label { font-size: 13px; font-weight: 650; color: var(--ink); }
+.ui-pick-select { min-height: 32px; min-width: 0; max-width: 100%; flex: 1 1 200px; padding: 4px 8px; border: 1px solid var(--line); border-radius: var(--fl-r-md); background: var(--bg); color: var(--ink); font: inherit; }
+.ui-pick-select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* Thread: who said what, oldest first; system lines quieter. @req FR:ask-routing/ui.thread */
+.ui-thread-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.ui-thread { list-style: none; margin: 0; padding: 0 0 0 10px; border-left: 2px solid var(--line); display: flex; flex-direction: column; gap: 6px; width: 100%; box-sizing: border-box; }
+.ui-thread li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 13px; line-height: 18px; color: var(--ink); overflow-wrap: anywhere; min-width: 0; }
+.ui-thread-say { min-width: 0; flex: 1 1 auto; }
+.ui-thread-who { font-weight: 600; }
+.ui-thread time { font-size: 12px; color: var(--ink2); white-space: nowrap; }
+.ui-thread li.muted, .ui-thread li.muted .ui-thread-who { color: var(--ink2); font-weight: 400; }
+.ui-thread-more { position: relative; z-index: 1; border: 0; background: none; padding: 4px 0; min-height: 28px; color: var(--accent-fg); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.ui-thread-more:hover { text-decoration: underline; }
+.ui-thread-more:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+
+/* Collapsed group under a list. @req FR:ask-routing/ui.waiting */
+.ui-group { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+.ui-group-head { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 10px 4px 6px; border: 0; border-radius: var(--fl-r-md); background: none; color: var(--ink2); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
+.ui-group-head::before { content: '›'; display: inline-block; width: 12px; font-size: 16px; line-height: 1; transition: transform var(--fl-fast) var(--fl-ease); }
+.ui-group-head[aria-expanded="true"]::before { transform: rotate(90deg); }
+.ui-group-head:hover { background: rgb(127 127 127 / 10%); color: var(--ink); }
+.ui-group-head:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
 /* Count badge: the count on a nav item or an icon button. A view places it. @req FR:ui-kit/badge */
 .badge { font-size: 11px; font-weight: 650; line-height: 1; color: var(--accent-ink); background: var(--accent); border-radius: 999px; padding: 3px 6px; min-width: 18px; text-align: center; }
 
@@ -106,7 +134,7 @@
 
 /* Touch: 44 px targets. */
 @media (pointer: coarse), (max-width: 719px) {
-  .ui-tool, .ui-more-btn, .ui-menu .menu-item, .ui-bar .fl-btn, .ui-msg .fl-btn, .ui-server .fl-btn { min-height: var(--tap); min-width: var(--tap); }
+  .ui-tool, .ui-more-btn, .ui-menu .menu-item, .ui-bar .fl-btn, .ui-msg .fl-btn, .ui-server .fl-btn, .ui-group-head, .ui-thread-more, .ui-pick-select { min-height: var(--tap); min-width: var(--tap); }
   .ui-card-open { min-height: var(--tap); }
 }
 

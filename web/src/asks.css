@@ -106,6 +106,20 @@ a.btn.primary { color: #fff; }
 .foot-list .link { color: var(--accent); font-weight: 600; text-decoration: none; padding: 0 8px; }
 .foot-list .f-what .dl { color: inherit; font-weight: 400; }
 
+/* ask routing: Ask an agent, the thread on a card, the waiting group. @req FR:ask-routing/ui.kit */
+.asks-head { align-items: center; flex-wrap: wrap; }
+.asks-head .grow { min-width: 0; }
+.ask-agent-btn { min-height: 34px; font-weight: 600; color: var(--ink); }
+.ask-agent-form { margin: 0 0 18px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--fl-r-xl); background: var(--panel); }
+.ask-thread { margin: 12px 0 0; }
+.asks-waiting .ask-agent { font-weight: 600; color: var(--ink2); }
+.asks-waiting .ui-card-title { font-weight: 500; }
+.ask-wait-detail { display: flex; flex-direction: column; gap: 8px; width: 100%; padding-top: 6px; font-size: 13px; color: var(--ink2); }
+.ask-wait-tools { display: flex; gap: 4px; }
+.ask-wait-tools .link { padding: 4px 8px 4px 0; min-height: 28px; border: 0; background: none; color: var(--accent-fg); font: inherit; font-weight: 600; cursor: pointer; }
+.ask-reply-box .send { max-width: 60%; min-width: 0; }
+.ask-reply-box .send .btn-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* empty, error, loading */
 .asks-empty { text-align: center; padding: 88px 16px 72px; color: var(--muted); }
 .asks-empty .tick-art { color: var(--ok); opacity: .9; margin-bottom: 14px; animation: ask-in .3s var(--ease) both; }
