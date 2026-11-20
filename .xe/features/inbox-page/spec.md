@@ -119,7 +119,7 @@ The owner needs to read a whole message with its thread in Stack so that the Inb
 - **FR:detail.body** (P1): Detail MUST show the full plain text of the message.
 - **FR:detail.thread** (P1): Detail MUST list the other messages of the thread, newest first, each with its sender and time.
   - **FR:detail.thread.mine** (P1): Detail MUST name the sender `You` on a message the owner sent.
-  - **FR:detail.thread.fold** (P2): Detail MUST fold each earlier message until the owner opens it.
+  - **FR:detail.thread.fold** (P2): Detail MUST fold each other message until the owner opens it.
 - **FR:detail.read** (P1): Reader MUST read the message and its thread with `GET` requests that pass the email guard in `observe` mode.
   > - @req FR:email-triage/safe.allowlist
   - **FR:detail.read.thread** (P1): Reader MUST find the thread by `conversationId` in Inbox, Sent Items and Archive, at most 25 messages per folder.

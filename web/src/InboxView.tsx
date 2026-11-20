@@ -129,7 +129,7 @@ function Detail({ row, api }: { row: InboxRow; api: Client }) {
       )}
       {thread.length > 0 && (
         <section class="in-thread" aria-labelledby={`th-${row.id}`}>
-          <h4 class="in-thread-h" id={`th-${row.id}`}>Earlier in this thread ({thread.length})</h4>
+          <h4 class="in-thread-h" id={`th-${row.id}`}>Other messages in this thread ({thread.length})</h4>
           {thread.map((t) => <ThreadMessage key={t.id} fold from={person(t.from, t.mine)} when={when(t.receivedAt)} body={t.body} />)}
         </section>
       )}

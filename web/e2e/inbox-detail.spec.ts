@@ -38,7 +38,7 @@ test('a row opens the full message with sender, account and thread', async ({ pa
   // Mail text is data: markup shows as text and never becomes an element.
   await expect(d.locator('.ui-tmsg-body').first()).toContainText('<img src=x onerror=alert(1)>');
   await expect(d.locator('img')).toHaveCount(0);
-  await expect(d.getByRole('heading', { name: 'Earlier in this thread (2)' })).toBeVisible();
+  await expect(d.getByRole('heading', { name: 'Other messages in this thread (2)' })).toBeVisible();
   const earlier = d.locator('details.ui-tmsg');
   await expect(earlier).toHaveCount(2);
   await expect(earlier.first().locator('summary')).toContainText('You');
