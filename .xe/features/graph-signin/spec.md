@@ -46,7 +46,7 @@ The calendar and mail adapters (`FR:day-inputs/*`) need a Graph token. The owner
 
 - **FR:cli.login** (P1): `stack graph login --client-id <guid> [--tenant t] [--account addr] [--with calendar,mail,drafts] [--cache path]` (default `--with calendar`, tenant `organizations`) prints the sign-in message (URL and code; on stderr with `--json`), polls, and saves the cache. It prints the granted scopes and the cache path, never a token
 - **FR:cli.login.account** (P1): `--account addr` signs in one more inbox: the cache is `accountCachePath(addr)` (unless `--cache` is given), the default tenant is `tenantFor(addr)` (so a personal Outlook.com mailbox uses `consumers`), and the address is saved in the cache as `account`. `status` and `logout` accept the same flag. The app registration must allow personal accounts and work accounts
-- **FR:cli.login.nosend** (P1): No `--with` value ever requests a send scope; a cache that names one is refused by `FR:scope.never`
+- **FR:cli.login.nosend** (P1): No `--with` value ever requests a send scope, and the CLI login never saves one that Microsoft grants
 - **FR:cli.status** (P1): `stack graph status` prints `signed in` with tenant, scopes, and access-token expiry, or `not signed in`; exit code 0 or 4 (none). `--json` gives the same fields. With no `--account` or `--cache` and no default cache file, it lists every per-mailbox sign-in (`FR:cache.accounts`) as `accounts` (account, tenant, scopes, expiry; an unreadable cache is listed with its error); exit 4 when none is readable. No token is printed
 - **FR:cli.logout** (P1): `stack graph logout` deletes the cache file; it is not an error when there is none
 

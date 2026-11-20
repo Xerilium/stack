@@ -31,6 +31,16 @@ describe('no code path sends mail but the owner\'s click on Send', () => {
     }
   });
 
+  // @req FR:email-send/send.approve
+  it('only reply-send.ts builds a reply request or an approval', () => {
+    const root = path.join(__dirname, '../../src');
+    for (const f of walk(root)) {
+      const code = fs.readFileSync(f, 'utf8').split('\n').filter((l) => !/^\s*(\/\/|\/?\*)/.test(l)).join('\n').replace(/FR:[\w-]+\/[\w.$-]+/g, '');
+      const own = f.endsWith(path.join('email', 'reply-send.ts')) || f.endsWith(path.join('email', 'guard.ts'));
+      expect([f, /approvedSends|messages\/[^\n]*\/reply\b/.test(code)]).toEqual([f, own]);
+    }
+  });
+
   it('sign-in accepts the plain send scope only; the CLI never offers it', () => {
     for (const s of [SEND_SCOPE, SEND_SCOPE.toLowerCase(), `https://graph.microsoft.com/${SEND_SCOPE}`]) { expect(() => assertSafeScopes(['Mail.Read', s], { send: true })).not.toThrow(); expect(() => assertSafeScopes(['Mail.Read', s])).toThrow(/unsafe_scope/); }
     for (const s of [`${SEND_SCOPE}.Shared`, 'Mail.Send.Shared'.toLowerCase(), `${SEND_SCOPE}.All`, 'MailboxSettings.ReadWrite', `https://outlook.office.com/${SEND_SCOPE}`]) {

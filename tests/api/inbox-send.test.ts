@@ -20,7 +20,7 @@ function fakeBox(o: { canSend?: boolean; fail?: boolean } = {}) {
   const sent: [string, string][] = [];
   const box: ReplyBox = {
     canSend: o.canSend ?? true, get: (id) => drafts.get(id), save: (id, messageId, text) => { drafts.set(id, { messageId, text, at: 'y' }); }, remove: (id) => { drafts.delete(id); },
-    send: async (messageId, text) => { if (o.fail) throw new Error('graph 503 secret'); sent.push([messageId, text]); },
+    send: async (messageId, text) => { if (o.fail) throw Object.assign(new Error('graph 503 secret'), { status: 503 }); sent.push([messageId, text]); },
   };
   return { box, drafts, sent };
 }
@@ -80,6 +80,23 @@ describe('POST /inbox-items/{id}/send', () => {
     expect(f.drafts.has(ID)).toBe(true);
     expect((await call('GET', '/inbox-items')).json.items).toHaveLength(2);
     expect((await readAsk({ storage }, ID))!.ask.state).toBe('open');
+  });
+  // @req FR:email-send/send.once @req FR:email-send/send.once.unsure
+  it('one send per item at a time; a send with no answer is reported as not confirmed', async () => {
+    let release: () => void = () => undefined;
+    const sent: string[] = [];
+    const slow: ReplyBox = { ...fakeBox().box, send: (id) => new Promise<void>((ok) => { sent.push(id); release = ok; }) };
+    const { call } = await mk(async () => slow);
+    const first = call('POST', `/inbox-items/${ID}/send`, { text: 'Yes.' });
+    await new Promise((r) => setTimeout(r, 20));
+    expect((await call('POST', `/inbox-items/${ID}/send`, { text: 'Yes.' })).status).toBe(409);
+    release();
+    expect((await first).json).toEqual({ ok: true });
+    expect(sent).toEqual(['AAMk1']);
+    const timeout: ReplyBox = { ...fakeBox().box, send: async () => { throw Object.assign(new Error('aborted'), { status: 0 }); } };
+    expect((await (await mk(async () => timeout)).call('POST', `/inbox-items/${ID}/send`, { text: 'Yes.' })).json.error.message).toBe('Stack could not confirm the send. Look in Sent Items before you send again.');
+    const refused: ReplyBox = { ...fakeBox().box, send: async () => { throw Object.assign(new Error('x'), { status: 403 }); } };
+    expect((await (await mk(async () => refused)).call('POST', `/inbox-items/${ID}/send`, { text: 'Yes.' })).json.error.message).toBe('Could not send. The draft is kept.');
   });
   // @req FR:email-send/send.api.off @req FR:email-send/send.optin @req FR:email-send/send.demo
   it('answers 409 when Send is off, the mailbox is not connected here, or the item is a chat', async () => {

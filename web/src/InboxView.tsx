@@ -115,7 +115,8 @@ function Reply({ row, draft, api, toast, onSent }: { row: InboxRow; draft: Reply
   const [saved, setSaved] = useState(draft.text);
   const [busy, setBusy] = useState(false);
   const save = async () => {
-    if (text === saved) return;
+    // Never after Send: the item may be gone, and its draft must not be written again.
+    if (text === saved || sending.current) return;
     try { await api.inboxDraft(row.id, text); setSaved(text); } catch { /* the text stays in the box; Send carries it */ }
   };
   /** A send in flight: a ref, so a second click in the same frame cannot send twice. */

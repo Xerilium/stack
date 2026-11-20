@@ -32,7 +32,7 @@ Repeat for every inbox. The cache is one file per address in `~/.config/stack/`,
 1. Work or school inbox: `stack graph login --client-id <app id> --account you@company.com --with mail,drafts`.
 2. Personal inbox (outlook.com, hotmail.com, live.com, msn.com): use the same command with the personal address. Stack picks the `consumers` tenant for these domains. Add `--tenant consumers` to force it.
 3. Open the printed URL, enter the code, and sign in as that address. Approve the permissions.
-4. Run `stack graph status --account <address>`. Check the scopes: `Mail.ReadWrite`, no send.
+4. Run `stack graph status --account <address>`. Check the scopes: `Mail.ReadWrite`. The send scope shows only for an account with Send on.
 5. If login says `unsafe_scope`, remove the named permission from the app and revoke the consent already granted (Entra ID > Enterprise applications > the app > Permissions). Then log in again.
 
 ## Human: first pass, then voice

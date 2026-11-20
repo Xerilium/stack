@@ -52,7 +52,7 @@ describe('POST /inbox-junk', () => {
   // @req FR:inbox-page/junk.never.demo
   it('a demo copy gets no mailbox writer', () => {
     expect(mailWrites(true)).toEqual({});
-    expect(Object.keys(mailWrites(false))).toEqual(['junkMailbox']);
+    expect(Object.keys(mailWrites(false))).toEqual(['junkMailbox', 'replies']); // @req FR:email-send/send.demo
   });
   // @req FR:inbox-page/junk.restore
   it('not-junk runs through the action route', async () => {

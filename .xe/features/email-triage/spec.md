@@ -2,7 +2,7 @@
 id: email-triage
 title: Email Triage Module
 author: flanakin
-description: "Inbound email triage as a Stack module: reads a mailbox, decides what needs the owner, drafts replies (never sends), and writes asks into the ask queue. Plan: https://github.com/flanakin/todo/pull/93"
+description: "Inbound email triage as a Stack module: reads a mailbox, decides what needs the owner, drafts replies (the module never sends), and writes asks into the ask queue. Plan: https://github.com/flanakin/todo/pull/93"
 dependencies: [ask-queue, ai-triage-assist]
 ---
 
@@ -12,7 +12,7 @@ dependencies: [ask-queue, ai-triage-assist]
 
 ## Purpose
 
-Mail is the biggest source of interruptions. This module reads a mailbox on a schedule, settles most mail with rules, classifies the rest with models, drafts replies for what needs one, and gives the owner only the decisions, as asks in the live ask queue (`FR:ask-queue/*`). It never sends mail. The architecture, cost, and risk analysis is in the email assistant plan (todo PR 93); this spec fits that plan into Stack and covers what this repository ships first.
+Mail is the biggest source of interruptions. This module reads a mailbox on a schedule, settles most mail with rules, classifies the rest with models, drafts replies for what needs one, and gives the owner only the decisions, as asks in the live ask queue (`FR:ask-queue/*`). It never sends mail: the one send is the owner's click in the Inbox (`FR:email-send/send.click`). The architecture, cost, and risk analysis is in the email assistant plan (todo PR 93); this spec fits that plan into Stack and covers what this repository ships first.
 
 ## Scope
 

@@ -51,7 +51,7 @@ import { editTask, moveTask } from './edit';
 import { readMeetings } from '../core/meetings';
 import { answerNeed, readNeeds } from '../core/needs-you';
 import type { MailProvider } from '../email/types';
-import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, replyDraft, type ReplyBox, SendFailed, sendItemReply, SendOff, clearJunk, type JunkMailbox, loadSources, readInbox, readInboxChecked, requestAction, runAction, type ActionId, type IssueFiler, type MailReader, type SourceProbe } from '../inbox';
+import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, replyDraft, type ReplyBox, SendBusy, SendFailed, sendItemReply, SendOff, clearJunk, type JunkMailbox, loadSources, readInbox, readInboxChecked, requestAction, runAction, type ActionId, type IssueFiler, type MailReader, type SourceProbe } from '../inbox';
 import { createBriefCache } from './brief';
 import type { ClaudeJson } from '../email/llm';
 import { IDLE_MINUTES, UPDATE_MODES, UpdateRefused, type AppUpdater, type UpdateMode } from '../core/app-update';
@@ -1293,6 +1293,7 @@ export const ROUTES: Route[] = [
       const box = item.source === 'email' && c.deps.replies ? await c.deps.replies(item.account).catch(() => undefined) : undefined;
       try { return json(200, await sendItemReply(c.life, item, b.text, box)); } catch (e) {
         if (e instanceof SendOff) throw new ApiError('conflict', 'Send is off for this account. Turn it on in Settings.'); // @req FR:email-send/send.api.off
+        if (e instanceof SendBusy) throw new ApiError('conflict', e.message);
         if (e instanceof SendFailed) throw new ApiError('bad_gateway', e.message);
         throw e;
       }

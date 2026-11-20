@@ -35,11 +35,11 @@ Repeat for each account. Outlook.com, Hotmail and Live accounts are personal; Mi
 
 ## Reply drafts
 
-Each account is read-only by default. Turn on **Reply drafts** to let Stack save reply drafts in that mailbox. Microsoft asks you to accept once. Stack sends only when you click Send: you send each draft yourself from Outlook. Turn it off to go back to read scopes. Turning it off does not remove the consent you gave Microsoft: to remove it, see account.live.com/consent/Manage (personal) or myapps.microsoft.com (work or school).
+Each account is read-only by default. Turn on **Reply drafts** to let Stack save reply drafts in that mailbox. Microsoft asks you to accept once. Drafts never sends: you send each draft yourself from Outlook, or with Send (below). Turn it off to go back to read scopes. Turning it off does not remove the consent you gave Microsoft: to remove it, see account.live.com/consent/Manage (personal) or myapps.microsoft.com (work or school).
 
 ## Send
 
-Send is off by default. Open the **More** menu of an account and turn on **Let Stack send replies when I click Send**. Microsoft asks you to accept once. After that, the Inbox shows a **Send** button on a reply draft. Stack sends one reply for each click, and nothing else. The runner never sends. With Send on, reply drafts stay on this computer until you send them. Turn it off to remove the permission from that account in Stack.
+Send is off by default. Open the **More** menu of an account and turn on **Let Stack send replies when I click Send**. Microsoft asks you to accept once. After that, the Inbox shows a **Send** button on a reply draft. Stack sends one reply for each click, and nothing else. The runner never sends. Turning Send off removes the permission from the account in Stack; it does not remove the consent you gave Microsoft. To remove that too, see account.live.com/consent/Manage (personal) or myapps.microsoft.com (work or school). With Send on, reply drafts stay on this computer until you send them. Turn it off to remove the permission from that account in Stack.
 
 ## Live calendar
 

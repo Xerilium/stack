@@ -51,7 +51,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/inbox-items` | GET all mail, unread Teams, Slack and GitHub items with summaries and suggested actions, plus source status (Inbox page; owner session only) |
 | `/connect` | GET whether the one-time Stack app registration exists, and each connected Microsoft account (type, mail, calendar, drafts, state). Local host only; never a token (owner session only) |
 | `/connect/setup` | POST run the one-time app registration (Az PowerShell); returns a state code (owner session only) |
-| `/connect/sign-in` | POST start a Microsoft sign-in: browser (PKCE, loopback) or device code; read-only scopes, drafts opt-in, never send (owner session only) |
+| `/connect/sign-in` | POST start a Microsoft sign-in: browser (PKCE, loopback) or device code; read-only scopes; drafts and Send are opt-in (owner session only) |
 | `/connect/sign-in/{id}` | GET a sign-in session: waiting, done, or error (owner session only) |
 | `/connect/drafts` | POST turn reply drafts on (new sign-in) or off for an account (owner session only) |
 | `/connect/remove` | POST disconnect an account: deletes its token file (owner session only) |
@@ -61,7 +61,7 @@ Send `Authorization: Bearer stk_...` (or `X-Stack-Token` if a proxy rewrites Aut
 | `/inbox-items/{id}/send` | POST send this text as the reply to the item: the owner clicked Send; 409 when Send is off for the account (owner session only) |
 | `/connect/send` | POST turn Send on or off for an account; off by default (owner session only) |
 | `/inbox-junk` | POST clear the Inbox junk: move it to Archive, with an optional one-click unsubscribe first; never deletes (owner session only) |
-| `/inbox-items/{id}/action` | POST run an inbox action; reply-draft makes a draft and never sends (owner session only) |
+| `/inbox-items/{id}/action` | POST run an inbox action; reply-draft makes a draft and sends nothing (owner session only) |
 | `/brief/summary` | GET the AI daily brief (owner only; `refresh=1` bypasses the cache) |
 | `/asks` | GET ranked asks for the owner (`state=open|answered|done|snoozed|all`) |
 | `/asks/{key}` | POST create or update an ask (agents) |

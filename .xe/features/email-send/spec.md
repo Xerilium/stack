@@ -46,6 +46,8 @@ The owner needs one click to send a reply, and no other way for mail to leave, s
   - **FR:send.guard.body** (P1): Guard MUST refuse a reply body that has a field other than `comment`.
   - **FR:send.guard.rest** (P1): Guard MUST refuse `send`, `sendMail`, `forward`, `replyAll` and each `create` form of them in every case.
 - **FR:send.approve** (P1): Sender MUST approve one message id and one text for each click.
+- **FR:send.once** (P1): API MUST answer 409 to a send for an item that has a send in flight.
+  - **FR:send.once.unsure** (P1): API MUST say that the send is not confirmed when no answer came back from the mailbox.
 - **FR:send.text** (P1): Sender MUST send the text without the AI draft marker.
   - **FR:send.text.empty** (P1): Sender MUST refuse an empty text.
 - **FR:send.done** (P1): API MUST remove the stored draft and the item, and resolve the ask, after a send.
