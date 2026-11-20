@@ -20,7 +20,7 @@ async function open(page: Page, o: { scheme?: 'light' | 'dark' } = {}) {
   m.events = [SYNC] as never;
   await page.route('**/api/schedule?**', async (r) => {
     const q = Date.parse(new URL(r.request().url()).searchParams.get('at') ?? '');
-    const plus = Math.round((q - at(12).getTime()) / 864e5);
+    const plus = Math.ceil((q - at(12).getTime()) / 864e5); // just after bed is the next waking day
     await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(Number.isFinite(plus) ? schedule(plus) : m.schedule) });
   });
   await page.goto('/#/today');
@@ -144,6 +144,75 @@ test.describe('My day grid', () => {
     await page.getByRole('button', { name: 'Today', exact: true }).click();
     await expect(page.locator('.dg-date')).not.toContainText('Tomorrow');
     await expect(page.getByRole('button', { name: 'Today', exact: true })).toBeDisabled();
+  });
+
+  // @req FR:my-day-grid/view.nav
+  test('Previous day shows its meetings only, nothing to place', async ({ page }) => {
+    const m = await open(page);
+    m.events = [SYNC, { ...SYNC, id: 'e0', subject: 'Old sync', start: at(11, 0, -1).toISOString(), end: at(12, 0, -1).toISOString() }] as never;
+    await page.getByRole('button', { name: 'Previous day' }).click();
+    await expect(page.getByTestId('dg-meeting')).toContainText('Old sync');
+    await expect(page.getByTestId('dg-free')).toHaveCount(0);
+    await expect(page.getByTestId('dg-task')).toHaveCount(0);
+  });
+
+  // @req FR:my-day-grid/grid.place @req FR:my-day-grid/view.nav
+  test('a task placed on tomorrow is saved under tomorrow', async ({ page }) => {
+    await open(page);
+    await page.getByRole('button', { name: 'Next day' }).click();
+    await expect(page.locator('.dg-date')).toContainText('Tomorrow');
+    await page.getByRole('button', { name: 'Place a task at 2:00p' }).click();
+    await page.getByTestId('dg-place').getByRole('button', { name: /Stack fix/ }).click();
+    const saved = JSON.parse((await page.evaluate(() => localStorage.getItem('stack.placed'))) ?? '{}') as Record<string, Record<string, unknown>>;
+    expect(Object.keys(saved)).toEqual([ymd(at(0, 0, 1))]);
+    expect(Object.keys(saved[ymd(at(0, 0, 1))])).toEqual(['stack:1']);
+  });
+
+  // @req FR:my-day-grid/detail.side
+  test('wide: a meeting opens beside the grid and its block is marked', async ({ page }, info) => {
+    test.skip(info.project.name !== 'desktop', 'side panel is for 1100 px and up');
+    await open(page);
+    await page.getByTestId('dg-meeting').locator('.dg-open').click();
+    const d = page.getByTestId('meeting-detail');
+    await expect(d).toHaveAttribute('aria-modal', 'false');
+    expect((await d.boundingBox())!.x).toBeGreaterThan(page.viewportSize()!.width / 2);
+    await expect(grid(page)).toBeInViewport();
+    await expect(page.getByTestId('dg-meeting')).toHaveClass(/\bon\b/);
+  });
+
+  // @req FR:my-day-grid/view.default @req FR:my-day-grid/detail.side
+  test('Agenda keeps the full-page task detail, also after a switch from Grid', async ({ page }, info) => {
+    test.skip(info.project.name !== 'desktop', 'the side panel only shows at 1100 px and up');
+    await open(page);
+    await page.getByTestId('dg-task').filter({ hasText: 'Allyte deck' }).locator('.dg-open').click();
+    await expect(page.getByRole('dialog', { name: 'Task detail' })).toHaveAttribute('aria-modal', 'false');
+    await page.getByRole('radio', { name: 'Agenda' }).click(); // the panel was open beside the grid
+    await expect(page.getByRole('dialog', { name: 'Task detail' })).toHaveAttribute('aria-modal', 'true');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('plan')).toBeVisible();
+    await page.getByTestId('plan').getByText('Allyte deck').first().click();
+    const d = page.getByRole('dialog', { name: 'Task detail' });
+    await expect(d).toBeVisible();
+    await expect(d).toHaveAttribute('aria-modal', 'true');
+    expect(Math.round((await d.boundingBox())!.width)).toBe(page.viewportSize()!.width);
+  });
+
+  // @req FR:my-day-grid/look.fluent
+  test('axe clean with the place list and with the detail open', async ({ page }) => {
+    await open(page);
+    const check = async () => {
+      await page.waitForFunction(() => document.getAnimations().every((x) => x.playState !== 'running')); // axe reads colors mid-fade otherwise
+      const { violations } = await new AxeBuilder({ page }).analyze();
+      const bad = violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').flatMap((v) => v.nodes.map((n) => `${v.id} ${n.target.join(' ')}`));
+      expect(bad, bad.join('\n')).toEqual([]);
+    };
+    await page.getByRole('button', { name: 'Place a task at 2:00p' }).click();
+    await expect(page.getByTestId('dg-place')).toBeVisible();
+    await check();
+    await page.keyboard.press('Escape');
+    await page.getByTestId('dg-task').filter({ hasText: 'Allyte deck' }).locator('.dg-open').click();
+    await expect(page.getByRole('dialog', { name: 'Task detail' })).toBeVisible();
+    await check();
   });
 
   // @req FR:my-day-grid/look.fluent

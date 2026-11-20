@@ -319,6 +319,7 @@ export interface TodayProps {
   message?: { name: (t: Task) => string; open: (ref: string) => void };
   /** The grid: every calendar event of the shown day, day navigation, the open task, placing, closing the task detail. @req FR:my-day-grid/view.nav */
   events?: CalEvent[]; nav?: { offset: number; go: (n: number) => void }; selected?: string | null; onPlace?: (ref: string, at: number) => void; onCloseTask?: () => void;
+  /** Grid or Agenda, owned by the app so the task detail knows where it opens. @req FR:my-day-grid/view.default */ mode?: DayView; onMode?: (v: DayView) => void;
 }
 export interface DayChange { wake?: string; bed?: string; every?: boolean; reset?: boolean }
 
@@ -357,7 +358,8 @@ function DayTimes({ day, weekday, onSave }: { day: Day; weekday: string; onSave?
  */
 export function TodayView(t: TodayProps) {
   const [replying, setReplying] = useState<string | null>(null);
-  const [mode, setMode] = useState<DayView>(() => loadView(store()));
+  const [own, setOwn] = useState<DayView>(() => loadView(store()));
+  const mode = t.mode ?? own;
   const [moreNeeds, setMoreNeeds] = useState(false);
   const [queuedOpen, setQueuedOpen] = useState(false);
   const nowMin = nowMinutes(t.now, t.day); // @req FR:home/day.frame
@@ -420,7 +422,7 @@ export function TodayView(t: TodayProps) {
     );
   };
   // @req FR:my-day-grid/view.default: Grid by default, Agenda on request, kept per device.
-  const pick = (v: DayView) => { setMode(v); saveView(store(), v); };
+  const pick = (v: DayView) => { setOwn(v); saveView(store(), v); t.onMode?.(v); };
   const switcher = (
     <div class="fl-seg dg-switch" role="radiogroup" aria-label="Day view" data-testid="day-view">
       {(['grid', 'agenda'] as const).map((v) => <button type="button" key={v} role="radio" aria-checked={mode === v} onClick={() => pick(v)}>{v === 'grid' ? 'Grid' : 'Agenda'}</button>)}

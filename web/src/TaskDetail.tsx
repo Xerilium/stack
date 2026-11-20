@@ -141,6 +141,17 @@ const plainSection = (name: string) => name.replace(/[\p{Extended_Pictographic}�
 /** The full-screen detail (focus mode): one task, its properties, actions, subtasks, then the thread. */
 /** Wide enough for the detail beside My day. */
 export const SIDE = '(min-width: 1100px)';
+/** True while the window is wide enough for SIDE; follows a resize. */
+export function useWide(): boolean {
+  const [wide, setWide] = useState(() => matchMedia(SIDE).matches);
+  useEffect(() => {
+    const q = matchMedia(SIDE);
+    const on = () => setWide(q.matches);
+    q.addEventListener('change', on);
+    return () => q.removeEventListener('change', on);
+  }, []);
+  return wide;
+}
 export function TaskDetail({ task, all, busy, project, onToggle, onAct, onSave, onSet, onBack, extra, side }: {
   /** My day: a right-hand panel at 1100 px or more (not modal), else the full page. @req FR:my-day-grid/detail.side */
   side?: boolean;
@@ -151,6 +162,7 @@ export function TaskDetail({ task, all, busy, project, onToggle, onAct, onSave, 
   const r = parseRow(task.text);
   const subs = children(all, task.ref);
   const box = useRef<HTMLDivElement>(null);
+  const wide = useWide();
   // Read the opener during the first render: the composer may take focus (autoFocus) before this component's effect runs.
   const [opener] = useState(() => document.activeElement as HTMLElement | null);
   useLayoutEffect(() => {
@@ -180,7 +192,7 @@ export function TaskDetail({ task, all, busy, project, onToggle, onAct, onSave, 
   }, []);
   const status = r.status ? { '🚧': 'In progress', '⏸': 'Paused', '👀': 'In review', '⏳': 'Waiting', '⛔': 'Blocked' }[r.status.replace(/️/g, '')] : undefined;
   return (
-    <div ref={box} tabIndex={-1} class={`focus-mode fl${side ? ' side' : ''}`} role="dialog" aria-modal={!(side && matchMedia(SIDE).matches)} aria-label="Task detail">
+    <div ref={box} tabIndex={-1} class={`focus-mode fl${side ? ' side' : ''}`} role="dialog" aria-modal={!(side && wide)} aria-label="Task detail">
       <button type="button" class="close" aria-label="Close" title="Close" onClick={onBack}><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg></button>
       <div class="focus-inner">
         <p class="fl-facts">{project ?? task.project} · {plainSection(task.section)}{status ? ` · ${status}` : ''}</p>

@@ -10,7 +10,7 @@ import { clock, estimate, nowMinutes, span, type Day, type Plan } from './plan';
 import type { CalEvent } from './meetings';
 import { parseRow } from './row';
 import type { Task } from './types';
-import { SIDE } from './TaskDetail';
+import { SIDE, useWide } from './TaskDetail';
 import './daygrid.css';
 
 export const ROW = 48;
@@ -32,7 +32,7 @@ function MeetingDetail({ e, start, end, onClose }: { e: CalEvent; start: number;
   const box = useRef<HTMLDivElement>(null);
   const [opener] = useState(() => document.activeElement as HTMLElement | null);
   useLayoutEffect(() => { box.current?.focus(); return () => { if (opener?.isConnected) opener.focus(); }; }, []);
-  const wide = matchMedia(SIDE).matches;
+  const wide = useWide();
   // Full page: a modal, so Tab stays inside. Beside the grid: Tab moves on to the page.
   useEffect(() => {
     const key = (k: KeyboardEvent) => {

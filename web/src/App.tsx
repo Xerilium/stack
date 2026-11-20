@@ -169,6 +169,7 @@ export function App() {
   const [ahead, setAhead] = useState<{ sched: DaySched; events: CalEvent[]; offset: number } | null>(null);
   const [placedTick, setPlacedTick] = useState(0); // @req FR:my-day-grid/grid.place
   const daySeq = useRef(0);
+  const [dayMode, setDayMode] = useState(() => loadView(store())); // Grid or Agenda: the task detail opens beside Grid only
   /** "I have N min" from Home: memory only, runs out after N minutes. @req FR:home/home.have */
   const [have, setHaveRaw] = useState<{ minutes: number; at: number } | null>(null);
   const haveChord = useRef(0);
@@ -1018,7 +1019,7 @@ export function App() {
         {phase === 'ready' && view === 'today' && (
           <TodayView allDay={allDay(tmr?.events ?? events)} calError={calError} onEmail={() => go('asks')} now={tmr?.now ?? clockNow} plan={tmr?.plan ?? plan} day={tmr?.day ?? day} budget={tmr?.budget ?? budget} onBudget={tmr ? undefined : setBudget}
             onTimes={sched ? saveTimes : undefined} calendar={calOn} tomorrow={{ offer: offerTomorrow, on: tmr?.offset === 1, toggle: () => void goDay(tmr?.offset === 1 ? 0 : 1) }}
-            events={tmr?.events ?? events} nav={{ offset: tmr?.offset ?? 0, go: (n) => void goDay(n) }} selected={focusRef} onPlace={placeTask} onCloseTask={() => setFocusRef(null)} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
+            events={tmr?.events ?? events} nav={{ offset: tmr?.offset ?? 0, go: (n) => void goDay(n) }} selected={focusRef} onPlace={placeTask} onCloseTask={() => setFocusRef(null)} mode={dayMode} onMode={setDayMode} decisions={decisions} agents={agentItems} agentsError={agentsError} onRetryAgents={() => void loadSide()} inbox={inbox} p={rowProps} busy={busy} tops={tops} tileAgent={tileAgent} onProject={(p) => go('list', { ...filters, project: p, q: '', state: 'open' })}
             message={{ name: (t) => { const a = taskAgent(t); return a ? displayName(a) : 'the agent'; }, open: (r) => { setComposeRef(r); setFocusRef(r); } }}
             onAct={rowAct} onReply={(t, text, ok) => sendReply(t, text, 'reply', ok)} onAccept={(d) => void accept(d)} />
         )}
@@ -1054,7 +1055,7 @@ export function App() {
             ? <button type="button" key="more" class="tab" onClick={() => setPalette(true)} aria-label={`More: open command palette${inboxAttention ? '. Inbox needs setup' : ''}`}><TabIcon v="more" /><span>More</span>{inboxDot}</button>
             : <button type="button" key={slot} class={`tab${view === slot ? ' on' : ''}`} aria-current={view === slot ? 'page' : undefined} onClick={() => go(slot)}><TabIcon v={slot} /><span>{LABEL[slot]}</span>{badge(slot)}</button>)}
       </nav>
-      {focusTask && <TaskDetail side={view === 'today' && loadView(store()) === 'grid'} task={focusTask} all={tasks} busy={busy} project={titles.get(focusTask.project)} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onSave={(next, prev, label) => saveText(focusTask.ref, next, prev, label)} onSet={(props, prev, label) => setProps(focusTask.ref, focusTask.text, props, prev, label)} onBack={() => { setFocusRef(null); setComposeRef(null); }} extra={<ThreadView t={focusTask} th={thread} team={team} now={clockNow} focus={composeRef === focusTask.ref} />} />}
+      {focusTask && <TaskDetail side={view === 'today' && dayMode === 'grid'} task={focusTask} all={tasks} busy={busy} project={titles.get(focusTask.project)} onToggle={(t) => { void toggleDone(t); if (t.ref === focusRef && !t.done) setFocusRef(null); }} onAct={(a) => (a === 'defer' ? openDefer() : void doAct(a))} onSave={(next, prev, label) => saveText(focusTask.ref, next, prev, label)} onSet={(props, prev, label) => setProps(focusTask.ref, focusTask.text, props, prev, label)} onBack={() => { setFocusRef(null); setComposeRef(null); }} extra={<ThreadView t={focusTask} th={thread} team={team} now={clockNow} focus={composeRef === focusTask.ref} />} />}
       {picker && <Picker groups={picker.groups} count={picker.refs.length} onClose={() => setPicker(null)} onChoose={(g, e) => void applyPick(picker.refs, g, e)} />}
       {deferRefs && (
         <Dialog title="Defer until" onClose={() => setDeferRefs(null)}>
