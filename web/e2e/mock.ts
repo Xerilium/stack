@@ -117,7 +117,7 @@ export async function mockApi(page: Page, opts: { tasks?: MockTask[]; agents?: M
     if (path === '/inbox-items') return json(route, 200, { items: m.inboxItems, actions: INBOX_CATALOG, ...m.inboxSources });
     if (path === '/inbox-sources') { m.sourceQueries.push(new URL(req.url()).search); return json(route, 200, m.inboxSources); }
     if (path === '/inbox-junk' && req.method() === 'POST') {
-      const junk = m.inboxItems.filter((i) => i.source === 'email' && (i.kind === 'spam' || i.kind === 'newsletter') && i.notJunk !== true);
+      const junk = m.inboxItems.filter((i) => (body.ids as string[]).includes(i.id as string) && i.source === 'email' && (i.kind === 'spam' || i.kind === 'newsletter') && i.notJunk !== true);
       const stay = junk.filter((i) => i.account === 'readonly@example.test');
       m.inboxItems = m.inboxItems.filter((i) => !junk.includes(i) || stay.includes(i));
       return json(route, 200, { archived: junk.length - stay.length, unsubscribed: body.action === 'unsubscribe-archive' ? junk.filter((i) => i.kind === 'newsletter' && !stay.includes(i)).length : 0, kept: stay.length });

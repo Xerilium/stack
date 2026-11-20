@@ -175,7 +175,7 @@ export function InboxView({ api, toast, onStatus, refresh }: { api: Client; toas
   /** One click clears the junk: the server moves it to Archive (never deletes) and answers the counts. @req FR:inbox-page/junk.archive @req FR:inbox-page/junk.unsubscribe */
   const clear = async (action: 'archive' | 'unsubscribe-archive') => {
     setClearing(true);
-    try { toast(junkToast(await api.inboxJunk(action))); await load(); } catch (e) { toast(e instanceof ApiFailure ? e.message : 'Could not clear Junk. Try again.', 'err'); }
+    try { toast(junkToast(await api.inboxJunk(action, junk.map((i) => i.id)))); await load(); } catch (e) { toast(e instanceof ApiFailure ? e.message : 'Could not clear Junk. Try again.', 'err'); }
     setClearing(false);
   };
   /** Not junk keeps the row and moves it to the list; every other action removes the row. */
@@ -198,14 +198,13 @@ export function InboxView({ api, toast, onStatus, refresh }: { api: Client; toas
           reader wide={wide} open={!!open} label="Message" empty="Select a message to read it." onBack={() => setSel(null)}
           list={(
             <>
-              {main.length === 0 && <p class="in-status" role="status">No mail needs you.</p>}
               <ul class="in-list">{main.map((r) => row(r, false))}</ul>
               {junk.length > 0 && (
                 <Fold id="inbox-junk" title="Junk" count={junk.length} aside={(
-                  <>
-                    <button type="button" class="btn" disabled={clearing} onClick={() => void clear('archive')}>Archive all</button>
-                    <button type="button" class="btn" disabled={clearing} onClick={() => void clear('unsubscribe-archive')}>Unsubscribe and archive all</button>
-                  </>
+                  <form class="in-junk-form" onSubmit={(e) => { e.preventDefault(); void clear(((e as SubmitEvent).submitter as HTMLButtonElement | null)?.value === 'unsubscribe-archive' ? 'unsubscribe-archive' : 'archive'); }}>
+                    <button type="submit" class="btn" value="archive" disabled={clearing}>Archive all</button>
+                    <button type="submit" class="btn" value="unsubscribe-archive" disabled={clearing}>Unsubscribe and archive all</button>
+                  </form>
                 )}>
                   <p class="in-junk-note">Spam, cold outreach and newsletters. Stack never deletes mail.</p>
                   <ul class="in-list">{junk.map((r) => row(r, true))}</ul>

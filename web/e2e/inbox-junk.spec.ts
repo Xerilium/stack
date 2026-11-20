@@ -58,7 +58,7 @@ test('Archive all clears the junk in one click and says what stays', async ({ pa
   await junkBtn(page).click();
   await page.getByRole('button', { name: 'Archive all', exact: true }).click();
   await expect(page.getByText('Archived 2. 1 stays: Stack cannot move that mail.')).toBeVisible();
-  expect(m.calls.at(-1)).toEqual({ path: '/inbox-junk', body: { action: 'archive' } });
+  expect(m.calls.at(-1)).toEqual({ path: '/inbox-junk', body: { action: 'archive', ids: ['mail-bbbbbbbbbbbb', 'mail-cccccccccccc', 'mail-dddddddddddd'] } });
   await expect(page.locator('#inbox-junk .in-row')).toHaveCount(1);
   await expect(page.locator('.in-row').first()).toContainText('Quarterly plan');
 });
@@ -68,5 +68,5 @@ test('Unsubscribe and archive all sends one request', async ({ page }) => {
   await junkBtn(page).click();
   await page.getByRole('button', { name: 'Unsubscribe and archive all' }).click();
   await expect(page.getByText('Unsubscribed from 1. Archived 2. 1 stays: Stack cannot move that mail.')).toBeVisible();
-  expect(m.calls.at(-1)).toEqual({ path: '/inbox-junk', body: { action: 'unsubscribe-archive' } });
+  expect(m.calls.at(-1)).toEqual({ path: '/inbox-junk', body: { action: 'unsubscribe-archive', ids: ['mail-bbbbbbbbbbbb', 'mail-cccccccccccc', 'mail-dddddddddddd'] } });
 });

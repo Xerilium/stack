@@ -41,6 +41,7 @@ describe('not-junk', () => {
   });
 });
 
+const ALL = ['mail-aaaaaaaaaaaa', 'mail-bbbbbbbbbbbb', 'mail-cccccccccccc', 'mail-dddddddddddd', 'mail-eeeeeeeeeeee', 'mail-ffffffffffff'];
 function box(o: { fail?: string[]; oneClick?: string[] } = {}) {
   const log: string[] = [];
   const mailbox: JunkMailbox = {
@@ -55,27 +56,36 @@ describe('clearJunk', () => {
   it('archives exactly the junk ids of each writable account and removes those items', async () => {
     const ctx = await mk([item(), SPAM, REAL, OTHER, item({ id: 'mail-eeeeeeeeeeee', messageId: 'AAMk5', notJunk: true })]);
     const b = box();
-    const r = await clearJunk(ctx, { unsubscribe: false, mailbox: async (a) => (a === 'me@example.test' ? b.mailbox : undefined) });
+    const r = await clearJunk(ctx, { ids: ALL, unsubscribe: false, mailbox: async (a) => (a === 'me@example.test' ? b.mailbox : undefined) });
     expect(b.log).toEqual(['archive AAMk1,AAMk2']);
     expect(r).toEqual({ archived: 2, unsubscribed: 0, kept: 1 });
     expect((await readInbox(ctx.storage)).map((i) => i.id).sort()).toEqual(['mail-cccccccccccc', 'mail-dddddddddddd', 'mail-eeeeeeeeeeee']);
   });
+  // @req FR:inbox-page/junk.archive.shown
+  it('leaves alone junk the owner did not see: only the listed ids move or unsubscribe', async () => {
+    const ctx = await mk([item(), SPAM, item({ id: 'mail-ffffffffffff', messageId: 'AAMk6' })]);
+    const b = box({ oneClick: ['AAMk1', 'AAMk6'] });
+    const r = await clearJunk(ctx, { ids: ['mail-aaaaaaaaaaaa', 'mail-cccccccccccc', 'nope'], unsubscribe: true, mailbox: async () => b.mailbox });
+    expect(b.log).toEqual(['unsubscribe AAMk1', 'archive AAMk1']);
+    expect(r).toEqual({ archived: 1, unsubscribed: 1, kept: 0 });
+    expect((await readInbox(ctx.storage)).map((i) => i.id).sort()).toEqual(['mail-bbbbbbbbbbbb', 'mail-ffffffffffff']);
+  });
   it('keeps an item whose move failed', async () => {
     const ctx = await mk([item(), SPAM]);
-    const r = await clearJunk(ctx, { unsubscribe: false, mailbox: async () => box({ fail: ['AAMk2'] }).mailbox });
+    const r = await clearJunk(ctx, { ids: ALL, unsubscribe: false, mailbox: async () => box({ fail: ['AAMk2'] }).mailbox });
     expect(r).toEqual({ archived: 1, unsubscribed: 0, kept: 1 });
     expect((await readInbox(ctx.storage)).map((i) => i.id)).toEqual(['mail-bbbbbbbbbbbb']);
   });
   it('unsubscribes newsletters only, before the archive, and counts the one-click ones', async () => {
     const ctx = await mk([item(), SPAM, item({ id: 'mail-ffffffffffff', messageId: 'AAMk6' })]);
     const b = box({ oneClick: ['AAMk1'] });
-    const r = await clearJunk(ctx, { unsubscribe: true, mailbox: async () => b.mailbox });
+    const r = await clearJunk(ctx, { ids: ALL, unsubscribe: true, mailbox: async () => b.mailbox });
     expect(b.log).toEqual(['unsubscribe AAMk1', 'unsubscribe AAMk6', 'archive AAMk1,AAMk2,AAMk6']);
     expect(r).toEqual({ archived: 3, unsubscribed: 1, kept: 0 });
   });
   it('a mailbox that throws keeps its items', async () => {
     const ctx = await mk([item()]);
-    const r = await clearJunk(ctx, { unsubscribe: true, mailbox: async () => ({ archive: async () => { throw new Error('x'); }, unsubscribe: async () => { throw new Error('y'); } }) });
+    const r = await clearJunk(ctx, { ids: ALL, unsubscribe: true, mailbox: async () => ({ archive: async () => { throw new Error('x'); }, unsubscribe: async () => { throw new Error('y'); } }) });
     expect(r).toEqual({ archived: 0, unsubscribed: 0, kept: 1 });
     expect(await readInbox(ctx.storage)).toHaveLength(1);
   });

@@ -57,4 +57,5 @@
 }
 /* Junk section. @req FR:inbox-page/junk.group @req FR:inbox-page/junk.group.reason */
 .in-why { flex: none; color: var(--muted); }
+.in-junk-form { display: flex; flex-wrap: wrap; gap: 8px; }
 .in-junk-note { margin: 0 0 10px; font-size: 13px; color: var(--muted); }

@@ -135,7 +135,7 @@ The owner needs to read a whole message with its thread in Stack so that the Inb
 The owner needs obvious junk out of the way, with one click to clear it, so that the Inbox shows only mail that needs him.
 
 - **FR:junk.web** (P1): Interface: `#/inbox` shows a `Junk` section under the list.
-- **FR:junk.api** (P1): Interface: `POST /inbox-junk` takes `{ action }` (`archive` or `unsubscribe-archive`) and returns `{ archived, unsubscribed, kept }`.
+- **FR:junk.api** (P1): Interface: `POST /inbox-junk` takes `{ action, ids }` (`archive` or `unsubscribe-archive`; `ids`: the junk rows the owner sees) and returns `{ archived, unsubscribed, kept }`.
   - **FR:junk.api.owner** (P1): API MUST answer 403 to a token.
 - **FR:junk.class** (P1): Inbox MUST treat an email item of kind `spam` or `newsletter` as junk.
   > - @req FR:email-runner/model.classify
@@ -150,6 +150,7 @@ The owner needs obvious junk out of the way, with one click to clear it, so that
 - **FR:junk.archive** (P1): `Archive all` MUST move each junk mail to Archive and remove its item.
   > - @req FR:email-inbox-zero/gate.guard
   - **FR:junk.archive.ids** (P1): Mailbox MUST approve a move for the ids of the clicked junk items only.
+  - **FR:junk.archive.shown** (P1): API MUST leave alone a junk item that is not in `ids`.
   - **FR:junk.archive.readonly** (P1): API MUST keep the junk items of an account that it cannot write to, and count them in `kept`.
   - **FR:junk.archive.failed** (P1): API MUST keep an item whose move failed.
 - **FR:junk.unsubscribe** (P1): `Unsubscribe and archive all` MUST send the one-click unsubscribe for each junk newsletter before it archives.
@@ -157,6 +158,7 @@ The owner needs obvious junk out of the way, with one click to clear it, so that
   - **FR:junk.unsubscribe.other** (P1): Mailbox MUST NOT unsubscribe a newsletter that has no one-click target.
 - **FR:junk.never** (P1): Stack MUST NOT delete mail.
   - **FR:junk.never.auto** (P1): Stack MUST NOT move junk mail without a click by the owner.
+  - **FR:junk.never.demo** (P1): Demo copy MUST NOT write to a mailbox.
 
 ### FR:api: API
 

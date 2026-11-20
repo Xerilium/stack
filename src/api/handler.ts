@@ -339,8 +339,8 @@ const INBOX_ACTION_BODY = {
   required: ['action'],
 };
 const INBOX_JUNK_BODY = {
-  schema: { action: { t: 'enum', values: ['archive', 'unsubscribe-archive'] } } satisfies Record<string, Spec>,
-  required: ['action'],
+  schema: { action: { t: 'enum', values: ['archive', 'unsubscribe-archive'] }, ids: { t: 'strs', max: 500 } } satisfies Record<string, Spec>,
+  required: ['action', 'ids'],
 };
 const ASK_HANDLE_BODY = {
   schema: { outcome: { t: 'enum', values: ASK_OUTCOMES }, note: { t: 'str', max: 500, line: true }, reply: { t: 'str', max: 1000, line: true } } satisfies Record<string, Spec>,
@@ -1246,8 +1246,8 @@ export const ROUTES: Route[] = [
     async run(c) {
       noQuery(c);
       ownerOnly(c, 'Only the owner can act on the inbox'); // @req FR:inbox-page/junk.api.owner
-      const b = validate<{ action: 'archive' | 'unsubscribe-archive' }>(await readBody(c.req), INBOX_JUNK_BODY.schema, INBOX_JUNK_BODY.required);
-      return json(200, await clearJunk(c.life, { unsubscribe: b.action === 'unsubscribe-archive', mailbox: c.deps.junkMailbox ?? (async () => undefined) }));
+      const b = validate<{ action: 'archive' | 'unsubscribe-archive'; ids: string[] }>(await readBody(c.req), INBOX_JUNK_BODY.schema, INBOX_JUNK_BODY.required);
+      return json(200, await clearJunk(c.life, { ids: b.ids, unsubscribe: b.action === 'unsubscribe-archive', mailbox: c.deps.junkMailbox ?? (async () => undefined) }));
     },
   },
   {

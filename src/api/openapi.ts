@@ -299,7 +299,8 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Detail', { type: 'object', properties: { item: { type: 'object' }, live: { type: 'boolean' }, message: { type: 'object' }, thread: { type: 'array', items: { type: 'object' } } } }),
   },
   'inboxJunk.clear': {
-    operationId: 'clearInboxJunk', summary: 'Clear the Inbox junk (email items of kind spam or newsletter that the owner did not restore): move each to Archive, with unsubscribe-archive after a one-click unsubscribe where the sender offers one. Never deletes. kept counts items that stay (a read-only account, a failed move). Owner session only: 403 for tokens',
+    operationId: 'clearInboxJunk', summary: 'Clear the Inbox junk (email items of kind spam or newsletter that the owner did not restore): move each listed item (ids: the junk rows the owner sees) to Archive, with unsubscribe-archive after a one-click unsubscribe where the sender offers one. Junk not in ids is left alone. Never deletes. kept counts items that stay (a read-only account, a failed move). Owner session only: 403 for tokens',
+    desc: { ids: 'Item ids of the junk rows shown to the owner' },
     responses: ok('Counts', { type: 'object', properties: { archived: { type: 'integer' }, unsubscribed: { type: 'integer' }, kept: { type: 'integer' } } }),
   },
   'inboxSources.list': {

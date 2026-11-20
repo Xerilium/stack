@@ -2410,7 +2410,7 @@ paths:
           $ref: "#/components/responses/Error"
   /inbox-junk:
     post:
-      summary: "Clear the Inbox junk (email items of kind spam or newsletter that the owner did not restore): move each to Archive, with unsubscribe-archive after a one-click unsubscribe where the sender offers one. Never deletes. kept counts items that stay (a read-only account, a failed move). Owner session only: 403 for tokens"
+      summary: "Clear the Inbox junk (email items of kind spam or newsletter that the owner did not restore): move each listed item (ids: the junk rows the owner sees) to Archive, with unsubscribe-archive after a one-click unsubscribe where the sender offers one. Junk not in ids is left alone. Never deletes. kept counts items that stay (a read-only account, a failed move). Owner session only: 403 for tokens"
       operationId: clearInboxJunk
       requestBody:
         required: true
@@ -2421,12 +2421,20 @@ paths:
               additionalProperties: false
               required:
                 - action
+                - ids
               properties:
                 action:
                   type: string
                   enum:
                     - archive
                     - unsubscribe-archive
+                ids:
+                  type: array
+                  maxItems: 500
+                  items:
+                    type: string
+                    maxLength: 200
+                  description: Item ids of the junk rows shown to the owner
       responses:
         "200":
           description: Counts

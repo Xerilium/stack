@@ -17,8 +17,10 @@ export interface JunkMailbox {
 }
 export interface JunkResult { archived: number; unsubscribed: number; /** Junk items that stay: a read-only account or a failed move. */ kept: number }
 
-export async function clearJunk(ctx: LifecycleContext, o: { unsubscribe: boolean; mailbox: (account: string) => Promise<JunkMailbox | undefined> }): Promise<JunkResult> {
-  const junk = (await readInbox(ctx.storage)).filter((i) => isJunk(i) && i.messageId);
+/** `ids`: the junk item ids the owner saw when he clicked. Junk that arrived after the page loaded is left alone. @req FR:inbox-page/junk.archive.ids */
+export async function clearJunk(ctx: LifecycleContext, o: { ids: readonly string[]; unsubscribe: boolean; mailbox: (account: string) => Promise<JunkMailbox | undefined> }): Promise<JunkResult> {
+  const shown = new Set(o.ids);
+  const junk = (await readInbox(ctx.storage)).filter((i) => shown.has(i.id) && isJunk(i) && i.messageId);
   const out: JunkResult = { archived: 0, unsubscribed: 0, kept: 0 };
   const gone = new Set<string>();
   for (const account of [...new Set(junk.map((i) => i.account))]) {
