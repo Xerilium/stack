@@ -5288,6 +5288,19 @@ components:
           $ref: "#/components/schemas/Ref"
         task:
           type: string
+        thread:
+          type: array
+          description: The ask thread, oldest first; absent when empty
+          items:
+            type: object
+            properties:
+              at:
+                type: string
+                format: date-time
+              who:
+                type: string
+              text:
+                type: string
     TeamAgent:
       type: object
       properties:

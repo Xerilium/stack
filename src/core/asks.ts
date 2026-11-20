@@ -75,9 +75,13 @@ export interface AskPut {
 export interface AnswerInput { answer: AskAnswer; text?: string; until?: string }
 export interface HandleInput { outcome: AskOutcome; note?: string; reply?: string }
 
+/** One thread line as the page shows it. @req FR:ask-routing/ui.thread */
+export interface ThreadLine { at: string; who: string; text: string }
 export interface ListedAsk extends Omit<Ask, 'extra' | 'thread'> {
   /** Whose move it is. @req FR:ask-routing/turn.derive */
   turn: AskTurn;
+  /** The thread, oldest first; absent when empty. @req FR:ask-routing/ui.thread */
+  thread?: ThreadLine[];
   score: number; rank?: number; overdue: boolean; snoozedUntil?: string; agentReply?: string;
   /** The task title and where that row is now. @req FR:agent-thread/ask.ref */
   task?: string; row?: string;
@@ -85,6 +89,12 @@ export interface ListedAsk extends Omit<Ask, 'extra' | 'thread'> {
   flowTotal?: number; flowDone?: number;
 }
 export interface AskList { items: ListedAsk[]; total: number; latest?: string; snoozed: number }
+
+/** `- <iso> <who>: <text>` as a thread line; null for a line in another shape. @req FR:ask-routing/ui.thread */
+export function parseThreadLine(l: string): ThreadLine | null {
+  const m = /^- (\S+) ([^:]+?): (.*)$/.exec(l);
+  return m ? { at: m[1], who: m[2], text: m[3] } : null;
+}
 
 /** Parsed asks by storage and path, reused while the file version is unchanged, so a refresh re-parses only what moved. */
 const parsed = new WeakMap<object, Map<string, { version: string; rows: AskRow[]; ids: string[] }>>();
@@ -960,7 +970,8 @@ export async function listAsks(ctx: LifecycleContext, o: { state?: (typeof LIST_
     const flow = a.flow ? all.filter((x) => x.flow === a.flow) : [];
     const progress = a.flow ? { flowTotal: flow.length, flowDone: flow.filter((x) => x.state !== 'open').length } : {};
     const cur = rowOf.get(a.key);
-    return { ...rest, ...(a.refText ? { task: inboxTitle(a.refText) } : {}), ...(cur ? { row: apiRefOf(cur) } : {}), turn: askTurn(a), score: scoreAsk(a, now), overdue: a.state === 'open' && !!a.by && Date.parse(a.by) < now.getTime(), ...(a.snoozed ? { snoozedUntil: a.snoozed } : {}), ...(agentReply ? { agentReply } : {}), ...progress };
+    const lines = thread.map(parseThreadLine).filter((l): l is ThreadLine => !!l);
+    return { ...rest, ...(lines.length ? { thread: lines } : {}), ...(a.refText ? { task: inboxTitle(a.refText) } : {}), ...(cur ? { row: apiRefOf(cur) } : {}), turn: askTurn(a), score: scoreAsk(a, now), overdue: a.state === 'open' && !!a.by && Date.parse(a.by) < now.getTime(), ...(a.snoozed ? { snoozedUntil: a.snoozed } : {}), ...(agentReply ? { agentReply } : {}), ...progress };
   };
   /** A flow's questions sit together, by seq, where its best-scored question ranks. @req FR:quick-triage/flow.order */
   const flowsTogether = (sorted: Ask[]): Ask[] => {

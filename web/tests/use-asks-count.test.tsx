@@ -9,7 +9,8 @@ import { useAsks, type Asks } from '../src/useAsks';
 
 const ask = (key: string): AskItem => ({ key, kind: 'approve', title: key, from: 'agent', at: '2026-11-18T10:00:00Z' } as unknown as AskItem);
 const fakeApi = (open: AskItem[]) => ({
-  asks: async (state: string) => ({ items: state === 'open' ? open : [], total: state === 'open' ? open.length : 0 }),
+  asks: async () => ({ items: [], total: 0 }),
+  asksTurn: async (turn: string) => ({ items: turn === 'owner' ? open : [], total: turn === 'owner' ? open.length : 0 }),
   sync: async () => ({}),
 }) as unknown as Client;
 

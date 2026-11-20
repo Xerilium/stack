@@ -11,8 +11,10 @@ const MAX = 4000;
  * @req FR:ui-kit/message @req FR:ui-kit/message.label @req FR:ui-kit/message.exact @req FR:ui-kit/send.box
  * @owns class:ui-msg
  */
-export function MessageBox({ heading, to, text: start = '', off, onSend }: {
+export function MessageBox({ heading, to, text: start = '', off, max = MAX, onSend }: {
   heading: string;
+  /** The longest text the receiver takes; default 4000. */
+  max?: number;
   /** Who gets the message: names the text box, the button and the result. */
   to: string;
   /** The text the box starts with. */
@@ -40,7 +42,7 @@ export function MessageBox({ heading, to, text: start = '', off, onSend }: {
     <div class="ui-msg" role="group" aria-label={heading}>
       <h4 class="ui-bar-h">{heading}</h4>
       <form class="ui-msg-form" onSubmit={(e) => { void submit(e); }}>
-      <textarea class="ui-msg-box" rows={3} maxLength={MAX} value={text} disabled={!!off} aria-label={`Message ${to}`} placeholder={off ? undefined : `Message ${to}…`}
+      <textarea class="ui-msg-box" rows={3} maxLength={max} value={text} disabled={!!off} aria-label={`Message ${to}`} placeholder={off ? undefined : `Message ${to}…`}
         onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} />
       <div class="ui-msg-row">
         <button type="submit" class="fl-btn" disabled={!!off || busy || !text.trim()}>Send to {to}</button>

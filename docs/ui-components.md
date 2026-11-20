@@ -24,6 +24,9 @@ Every view builds on the components in `web/src/ui/`. Read this page before you 
 | `ThreadMessage` | `web/src/ui/ThreadMessage.tsx` | One message of a mail or chat thread: sender, time and the text as plain text. `fold` closes it under a summary line. |
 | `Fold` | `web/src/ui/Fold.tsx` | A group that stays closed until opened: a heading button with a count, and controls beside it while open. |
 | `MessageBox` | `web/src/ui/MessageBox.tsx` | One message from a detail pane: a heading, a text box and one button, `Send to <name>`. Start text waits in the box until you send it. |
+| `PickMessageBox` | `web/src/ui/PickMessageBox.tsx` | A recipient picker over a `MessageBox`. The button names the pick; a new pick keeps the draft. |
+| `ThreadLines` | `web/src/ui/ThreadLines.tsx` | A thread, oldest first: the newest 5 lines as `<who>: <text>` with the time, and `Show all`. |
+| `CollapseGroup` | `web/src/ui/CollapseGroup.tsx` | A collapsed group under a list: one header button `<label> (<n>)`. |
 | `LinkList` | `web/src/ui/LinkList.tsx` | One labelled line of links that wrap. Web links open in a new tab. |
 | `SourceLink` | `web/src/ui/SourceLink.tsx` | A link to where an item came from, named by its kind (PR, issue, session, email, site). |
 | `SourceButton` | `web/src/ui/SourceLink.tsx` | A source inside the app (a task, a session): a button with the look of `SourceLink`. |

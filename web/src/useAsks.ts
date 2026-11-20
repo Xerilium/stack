@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type Client } from './api';
-import { actionable, deferChoices, keepCursor, newKeys, pageTitle, replyKind, type AskItem, type Send } from './asks';
+import { actionable, agentOf, deferChoices, isOwnerQ, keepCursor, liveSessions, newKeys, pageTitle, questionBody, questionKey, replyKind, type AgentPick, type AskItem, type Send } from './asks';
 import { errText } from './errtext';
 import { connectLive, type LiveHandle, type LiveStatus } from './live';
 import { mergeNeeds } from './needs';
@@ -36,7 +36,8 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   const onNewRef = useRef(onNew); onNewRef.current = onNew;
   const extrasRef = useRef(extras); extrasRef.current = extras;
   const [items, setItems] = useState<AskItem[]>([]);
-  const [sent, setSent] = useState<AskItem[]>([]);
+  /** Asks that wait on their agent (`turn: agent`), in server order. @req FR:ask-routing/ui.waiting */
+  const [waiting, setWaiting] = useState<AskItem[]>([]);
   const [snoozed, setSnoozed] = useState<AskItem[]>([]);
   const [serverTotal, setTotal] = useState(0);
   const [latest, setLatest] = useState<string | undefined>();
@@ -74,7 +75,8 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   const load = useCallback(async () => {
     const mine = ++seq.current;
     try {
-      const [o, a, s] = await Promise.all([api.asks('open'), api.asks('answered'), api.asks('snoozed')]);
+      // His turns only, and what waits on the agents. @req FR:ask-routing/ui.mine @req FR:ask-routing/ui.waiting
+      const [o, a, s] = await Promise.all([api.asksTurn('owner'), api.asksTurn('agent'), api.asks('snoozed')]);
       if (mine !== seq.current) return;
       // A notification with no possible action is not shown and not counted. @req FR:notifications/list.drop @req FR:notifications/list.drop.count
       const next = o.items.filter((i) => !held(i.key) && actionable(i));
@@ -83,7 +85,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
       const added = newKeys(prevKeys.current, next, new Set([...hold.current.keys()].filter(held)));
       prevKeys.current = next.map((i) => i.key);
       serverRef.current = next;
-      setItems(next); setTotal(o.total - (o.items.length - next.length)); setSent(a.items); setSnoozed(s.items); setLatest(o.latest ?? a.latest); setNow(new Date());
+      setItems(next); setTotal(o.total - (o.items.length - next.length)); setWaiting(a.items); setSnoozed(s.items); setLatest(o.latest ?? a.latest); setNow(new Date());
       setPhase('ready'); setError(''); setErrorCode('');
       if (gone.length) { setLeaving((l) => [...l, ...gone]); setTimeout(() => setLeaving((l) => l.filter((x) => !gone.includes(x))), LEAVE_MS); }
       if (added.length) onNewRef.current?.(next.filter((i) => added.includes(i.key)));
@@ -186,12 +188,14 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     setItems((x) => x.filter((i) => i.key !== a.key)); setTotal((n) => Math.max(0, n - 1));
     if (cursorRef.current === a.key) { setPanel('none'); setDetail(false); }
     setLeaving((l) => [...l, a]); setTimeout(() => setLeaving((l) => l.filter((x) => x !== a)), LEAVE_MS);
-    if (s.answer !== 'defer') setSent((x) => [...x, { ...a, state: 'answered', answer: s.answer, text: s.text }]); // oldest first, like the server; the group shows newest first
+    // The turn goes to the agent: the ask joins the waiting group until the server says more. Closing his own question ends it.
+    const mine = isOwnerQ(a);
+    if (s.answer !== 'defer' && !(mine && s.answer === 'done')) setWaiting((x) => [...x.filter((w) => w.key !== a.key), mine ? { ...a, state: 'open', turn: 'agent', answer: undefined, text: undefined, delivered: undefined, undelivered: undefined } : { ...a, state: 'answered', turn: 'agent', answer: s.answer, text: s.text, delivered: undefined, undelivered: undefined }]);
     if (cursorRef.current === a.key) setCursor(after[Math.min(Math.max(at, 0), after.length - 1)]?.key ?? null);
     const call = api.answerAsk(a.key, s);
     call.catch(() => undefined);
     // Undo is ready at once; it waits for the write that is still in flight.
-    const undo = undoable && s.answer !== 'defer' ? () => {
+    const undo = undoable && !mine && s.answer !== 'defer' ? () => {
       undoRef.current = null;
       void (async () => {
         try { await call; await api.answerAsk(a.key, { answer: 'retract' }); release(a.key); await load(); setCursor(a.key); toastRef.current('Restored'); } catch (e) { toastRef.current(errText(e, 'undo the answer'), 'err'); }
@@ -216,8 +220,19 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
     const kind = replyKind(t);
     // a question about a row writes the answer under that row: nothing to take back from a toast. @req FR:quick-triage/flow.text
     if (a.kind === 'answer' && a.ref && !a.source) return answer(a, { answer: kind, text: t }, 'Written under the task', false);
-    return answer(a, { answer: kind, text: t }, kind === 'ask' ? `Question sent to ${a.from}` : `Sent to ${a.from}`);
+    const to = agentOf(a);
+    // His own question: the follow-up goes back to the agent at once; there is no answer to take back. @req FR:ask-routing/ui.reply
+    return answer(a, { answer: kind, text: t }, kind === 'ask' ? `Question sent to ${to}` : `Sent to ${to}`, !isOwnerQ(a));
   }, [answer]);
+
+  /** The owner's own question to one live session: a new owner ask. Rejects so the box keeps the text. @req FR:ask-routing/ui.ask */
+  const askAgent = useCallback(async (p: AgentPick, text: string) => {
+    await api.putAsk(questionKey(new Date()), questionBody(p, text));
+    toastRef.current(`Sent to ${p.title}`, 'ok');
+    void load();
+  }, [api, load]);
+  /** Live sessions for the Ask an agent picker. @req FR:ask-routing/ui.ask */
+  const agentPicks = useCallback(async () => liveSessions(await api.inventory()), [api]);
 
   const defer = useCallback((a: AskItem, at: Date, label: string) => answer(a, { answer: 'defer', until: at.toISOString() }, `Deferred until ${label.toLowerCase()}`, false), [answer]);
 
@@ -241,7 +256,7 @@ export function useAsks(api: Client, toast: ToastFn, onTasksChange: () => void, 
   return {
     liveTick,
     /** The main list only; stale CoS items are in `stale` (and in `itemsRef` while their group is open, for the keys). */
-    items: main, itemsRef, cursorRef, panelRef, leaving, sent, snoozed, total, countReady, stale, staleOpen, setStaleOpen, latest, phase, error, errorCode, status, syncedAt, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
+    items: main, itemsRef, cursorRef, panelRef, leaving, waiting, askAgent, agentPicks, snoozed, total, countReady, stale, staleOpen, setStaleOpen, latest, phase, error, errorCode, status, syncedAt, cursor, setCursor, current, panel, setPanel, detail, setDetail, showAll, setShowAll, fresh, now,
     reload: load, retry, answer, reply, defer, retract, edit, takeDraft, draftReply, undo: () => undoRef.current?.(), deferChoices: () => deferChoices(new Date()),
     openTask: (ref: string) => extrasRef.current.onOpenTask?.(ref),
     /** Null when the host runs no sessions: the row then shows no session link. */

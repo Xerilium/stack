@@ -133,6 +133,10 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
     /** @req FR:agent-inbox/api.handle */
     handled: (id: string, note?: string, withdrawn?: boolean) => call<{ changed: boolean }>('/inbox/handled', { id, ...(note ? { note } : {}), ...(withdrawn ? { withdrawn } : {}) }),
     asks: (state: 'open' | 'answered' | 'snoozed' = 'open') => call<AskList>(`/asks?state=${state}&limit=200`),
+    /** The live asks on one side: `owner` is his turn, `agent` waits on the agent. @req FR:ask-routing/ui.mine @req FR:ask-routing/ui.waiting */
+    asksTurn: (turn: 'owner' | 'agent') => call<AskList>(`/asks?turn=${turn}&limit=200`),
+    /** Puts an ask; the page uses it for the owner's own question to an agent. @req FR:ask-routing/ui.ask */
+    putAsk: (key: string, body: { ask: string; from: 'owner'; kind: 'answer'; agent: string }) => call<{ key: string; created: boolean }>(`/asks/${encodeURIComponent(key)}`, body),
     answerAsk: (key: string, body: Send) => call<{ changed: boolean }>(`/asks/${encodeURIComponent(key)}/answer`, body),
     /** The Inbox page: all mail, unread Teams and Slack. @req FR:inbox-page/api.read */
     inboxItems: () => call<{ items: import('./inbox').InboxRow[]; actions: import('./inbox').ActionInfo[] } & Partial<import('./inbox').SourcesReply>>('/inbox-items'),

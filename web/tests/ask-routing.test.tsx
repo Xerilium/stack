@@ -127,7 +127,7 @@ describe('Asks page', () => {
     const { r } = await mount();
     const card = r.querySelector('[data-key=q1]')!;
     const lines = () => [...card.querySelectorAll('.ui-thread li')];
-    expect(lines().map((l) => l.querySelector('.ui-thread-say')!.textContent)).toEqual(['stack: t1', 'you: t2', 'Stack architect: t3', 'you: t4', 'Stack architect: t5']);
+    expect(lines().map((l) => l.querySelector('.ui-thread-say')!.textContent)).toEqual(['stack: t1', 'Stack architect: t2', 'you: t3', 'Stack architect: t4', 'you: t5']);
     expect(lines()[0].classList.contains('muted')).toBe(true);
     await click(button(card, 'Show all')!);
     expect(lines()).toHaveLength(6);
@@ -173,7 +173,7 @@ describe('Asks page', () => {
 
   // @req FR:ask-routing/ui.kit
   it('builds on ui-kit components only', () => {
-    const src = readFileSync(new URL('../src/AsksView.tsx', import.meta.url), 'utf8');
+    const src = readFileSync('src/AsksView.tsx', 'utf8');
     for (const c of ['SelectCard', 'StatusChip', 'ThreadLines', 'CollapseGroup', 'PickMessageBox']) expect(src, c).toContain(`from './ui/${c}'`);
   });
 });
