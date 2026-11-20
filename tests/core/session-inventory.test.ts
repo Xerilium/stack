@@ -135,6 +135,14 @@ describe('runInventory', () => {
   // @req FR:session-inventory/read.files @req FR:session-inventory/read.bad @req FR:session-inventory/state.archived
   // @req FR:session-inventory/needs.list @req FR:session-inventory/needs.rank @req FR:session-inventory/needs.item @req FR:session-inventory/needs.reason
   // @req FR:session-inventory/archive.list @req FR:session-inventory/archive.superseded @req FR:session-inventory/store.result @req FR:session-inventory/$session
+  // @req FR:session-inventory/needs.item @req FR:ask-routing/deliver.mode
+  it('lists each session permission mode', () => {
+    const e = setup();
+    e.put('local_b1', { permissionMode: 'bypassPermissions' });
+    e.put('local_d1', {});
+    const by = Object.fromEntries(e.run().sessions.map((s) => [s.id, s.mode]));
+    expect(by).toEqual({ local_b1: 'bypassPermissions', local_d1: 'default' });
+  });
   it('classifies, ranks Needs you, lists archive candidates, never writes the session store', () => {
     const e = setup();
     e.put('local_x1', { cwd: '/Users/u/dev/todo', lastActivityAt: T - 2 * MIN }, [{ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'AskUserQuestion' }] } }]);
