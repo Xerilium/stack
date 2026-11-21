@@ -7,13 +7,7 @@ import { applyTags, matchTruth, parseTruth } from '../../src/core/autopri-tags';
 import { toScoringProject } from '../../src/core/scoring';
 
 const FIX = join(__dirname, '../fixtures/auto-priority');
-const TRUTH = `| Rank | Project  | Work | Hard date | Why |
-| ---- | -------- | ---- | --------- | --- |
-| 1    | catalyst | 0.3.4 release: automated PR sweeps via Catalyst | next | Sweep fails slow everything; unblocks FH.com |
-| 4    | ftk      | Update authored v16 PRs; review non-authored v16 PRs | - | Pipeline |
-| 6    | focus    | v1.6 ramp-up (see task file) | - | Commitment |
-| -    | todo     | Anything that keeps PR sweeps running until Cat 0.3.4 | - | Enabler for rank 1 |
-`;
+const TRUTH = readFileSync(join(FIX, 'truth.md'), 'utf8');
 
 describe('applyTags', () => {
   // @req FR:auto-priority/tag.unblocker
@@ -37,7 +31,7 @@ describe('truth', () => {
   // @req FR:auto-priority/truth.parse
   it('parses table rows with numeric or dash rank', () => {
     const t = parseTruth(TRUTH);
-    expect(t.map((r) => [r.rank, r.project])).toEqual([[1, 'catalyst'], [4, 'ftk'], [6, 'focus'], [null, 'todo']]);
+    expect(t.map((r) => [r.rank, r.project])).toEqual([[1, 'catalyst'], [4, 'ftk'], [6, 'focus'], [null, 'todo'], [2, 'atlas'], [3, 'birch'], [5, 'quill'], [8, 'hz']]);
     expect(t[0].why).toMatch(/unblocks/);
   });
   // @req FR:auto-priority/truth.match @req FR:auto-priority/truth.report
@@ -57,6 +51,28 @@ describe('truth', () => {
   it('does not match a v1.6 anchor to v16', () => {
     const r = matchTruth(parseTruth(TRUTH), [{ project: 'FOCUS', aliases: [], text: 'FOCUS v16 thing', context: '' }]);
     expect(r.find((x) => x.item.project === 'focus')!.status).toBe('missing');
+  });
+  // @req FR:autopri-tagging/truth.match @req FR:autopri-tagging/truth.report
+  it('names the Hard date, flags a speeds row, and matches a words anchor and an alias', () => {
+    const rows = [
+      { project: 'Quill', aliases: [], text: 'Quill v2.0 editor polish', context: '', ref: 'tasks/quill.md:3' },
+      { project: 'Birch', aliases: [], text: 'Harden the nightly importer retries', context: '' },
+      { project: 'Horizon', aliases: ['hz'], text: 'Trim the build cache', context: '' },
+    ];
+    const r = matchTruth(parseTruth(TRUTH), rows);
+    const item = (project: string) => r.find((x) => x.item.project === project)!;
+
+    const dated = item('atlas');
+    expect(dated).toMatchObject({ status: 'missing' });
+    expect(dated.suggest).toContain('stack add');
+    expect(dated.suggest).toContain('Nov 12');
+
+    const speeds = item('quill');
+    expect(speeds).toMatchObject({ status: 'untagged', actual: 1 });
+    expect(speeds.suggest).toContain('stack tag');
+
+    expect(item('birch')).toMatchObject({ status: 'ranked', actual: 2 });
+    expect(item('hz')).toMatchObject({ status: 'ranked', actual: 3 });
   });
 });
 
