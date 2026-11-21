@@ -92,3 +92,19 @@ describe('POST /api/sync', () => {
     expect((await call('GET', '/api/sync')).json).toMatchObject({ pending: 1 });
   });
 });
+
+describe('GET /api/sync drift', () => {
+  const drift = { base: 'origin/main', state: 'conflict' as const, behind: 3, files: ['tasks/b.md'], at: '2026-11-20T12:00:00.000Z' };
+  // @req FR:store-sync/host.api @req FR:store-sync/$drift-state
+  it('adds drift when the host runs the store sync and it has a state', async () => {
+    const h = createApiHandler({ storage: new MemoryStorage(), authorize: () => true, storeSync: { state: () => drift } });
+    const r = await h(new Request('https://x.test/api/sync', { headers: { 'x-ms-client-principal': OWNER } }));
+    expect(await r.json()).toEqual({ rev: null, drift });
+  });
+  // @req FR:store-sync/host.api
+  it('omits drift before the first state', async () => {
+    const h = createApiHandler({ storage: new MemoryStorage(), authorize: () => true, storeSync: { state: () => null } });
+    const r = await h(new Request('https://x.test/api/sync', { headers: { 'x-ms-client-principal': OWNER } }));
+    expect(await r.json()).toEqual({ rev: null });
+  });
+});

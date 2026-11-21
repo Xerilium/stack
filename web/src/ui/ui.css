@@ -249,6 +249,11 @@
 .fab .ui-nav-ic { color: inherit; }
 .fab .ui-nav-ic path { stroke-width: 2.2; }
 
+/* Drift banner: the task store is out of sync with main. @req FR:store-sync/banner.component */
+.ui-drift { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--line)); background: color-mix(in srgb, var(--danger) 10%, var(--panel)); color: var(--ink); font-size: 13px; }
+.ui-drift-title { color: var(--danger); font-weight: 600; }
+.ui-drift-files { color: var(--ink2); overflow-wrap: anywhere; }
+
 /* Server status: a chip and a note, the link, one button. @req FR:ui-kit/server */
 .ui-server { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 12px 0; }
 .ui-server-state { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; flex: 1 1 180px; min-width: 0; font-size: 13px; }

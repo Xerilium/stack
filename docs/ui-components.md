@@ -31,6 +31,7 @@ Every view builds on the components in `web/src/ui/`. Read this page before you 
 | `SourceLink` | `web/src/ui/SourceLink.tsx` | A link to where an item came from, named by its kind (PR, issue, session, email, site). |
 | `SourceButton` | `web/src/ui/SourceLink.tsx` | A source inside the app (a task, a session): a button with the look of `SourceLink`. |
 | `ServerStatus` | `web/src/ui/ServerStatus.tsx` | One local server: a status chip, the step, link or error, and one Start or Stop button. |
+| `DriftBanner` | `web/src/ui/DriftBanner.tsx` | An alert when the task store is out of sync with main: commits behind, then the conflicting or uncommitted files. |
 | `PageHeader` | `web/src/ui/PageHeader.tsx` | The top of a page: an `h1` title, a muted note, a sub line and actions at the right. |
 | `EmptyState` | `web/src/ui/States.tsx` | What is empty, then the next step. Text only. |
 | `Loading` | `web/src/ui/States.tsx` | Gray bars with a loading note for assistive tech. |

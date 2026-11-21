@@ -117,6 +117,18 @@ describe('createUnsaved edge cases', () => {
     expect(posts).toEqual([false, true]);
     release(); await click;
   });
+  // @req FR:store-sync/banner.app
+  it('hands the drift of each answer to onDrift, null when the answer has none', async () => {
+    const { doc, win } = fakeDom();
+    const drift = { base: 'origin/main', state: 'conflict' as const, behind: 2, files: ['tasks/b.md'], at: 'x' };
+    let answer: { pending?: number; drift?: typeof drift } = { pending: 0, drift };
+    const seen: unknown[] = [];
+    const u = createUnsaved({ get: async () => answer, post: async () => undefined, onState: () => undefined, onDrift: (d) => seen.push(d), doc, win });
+    await u.check();
+    answer = { pending: 0 };
+    await u.check();
+    expect(seen).toEqual([drift, null]);
+  });
 });
 
 describe('chip words', () => {

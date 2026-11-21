@@ -5,13 +5,16 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { Client } from './api';
+import type { Drift } from './ui/DriftBanner';
 
 export interface UnsavedState { pending: number; since: string | null; saving: boolean }
 
 interface Listening { addEventListener(type: string, fn: () => void): void; removeEventListener(type: string, fn: () => void): void }
 export interface UnsavedOpts {
   /** `GET /api/sync`: `pending`/`since` are absent when the storage does not batch. */
-  get: () => Promise<{ pending?: number; since?: string | null }>;
+  get: () => Promise<{ pending?: number; since?: string | null; drift?: Drift }>;
+  /** The store drift of each answer, null when it has none. @req FR:store-sync/banner.app */
+  onDrift?: (d: Drift | null) => void;
   /** `POST /api/sync`; `keepalive` when the page is going away. */
   post: (keepalive: boolean) => Promise<unknown>;
   onState: (s: UnsavedState) => void;
@@ -37,6 +40,7 @@ export function createUnsaved(o: UnsavedOpts): Unsaved {
       const r = await o.get();
       if (mine !== seq) return; // a newer check has answered or is in flight
       set({ pending: r.pending ?? 0, since: r.pending ? r.since ?? null : null });
+      o.onDrift?.(r.drift ?? null);
     } catch { /* keep what we know; the next check tries again */ }
   };
   /** @req FR:live-deploy/web.unsaved.click @req FR:live-deploy/web.unsaved.error */
@@ -73,16 +77,17 @@ export function unsavedTitle(s: UnsavedState): string {
  */
 export function useUnsaved(api: Client, onError: (message: string) => void, enabled = true) {
   const [state, setState] = useState<UnsavedState>({ pending: 0, since: null, saving: false });
+  const [drift, setDrift] = useState<Drift | null>(null);
   const errRef = useRef(onError); errRef.current = onError;
   const ctl = useRef<Unsaved | null>(null);
   useEffect(() => {
-    if (!enabled) { setState({ pending: 0, since: null, saving: false }); return; }
-    const u = createUnsaved({ get: () => api.syncState(), post: (k) => api.flush(k), onState: setState, onError: (m) => errRef.current(m) });
+    if (!enabled) { setState({ pending: 0, since: null, saving: false }); setDrift(null); return; }
+    const u = createUnsaved({ get: () => api.syncState(), post: (k) => api.flush(k), onState: setState, onDrift: setDrift, onError: (m) => errRef.current(m) });
     ctl.current = u;
     void u.check(); // the first refresh may have finished before the controller existed
     return () => { u.stop(); ctl.current = null; };
   }, [api, enabled]);
   const check = useCallback(() => ctl.current?.check() ?? Promise.resolve(), []);
   const flush = useCallback(() => ctl.current?.flush() ?? Promise.resolve(), []);
-  return { state, check, flush, label: unsavedLabel(state), title: unsavedTitle(state) };
+  return { state, drift, check, flush, label: unsavedLabel(state), title: unsavedTitle(state) };
 }

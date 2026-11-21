@@ -35,6 +35,7 @@ import { createGhClient, refreshQueryTasks } from '../core/query-tasks';
 import { ConflictError, FsStorage, NotFoundError, PathError, Storage, StorageError, writeAll, type AuxFiles } from '../core/storage';
 import { PRIORITIES_PATH } from '../core/priorities';
 import { GitStorage } from '../core/storage-git';
+import { doctorCmd } from './doctor';
 import { generateSummaries } from '../core/summaries';
 import { isReadme, projectId, projectPath } from '../core/task-paths'; // @req FR:task-structure/tree.readme
 import { assignIds, lintIds, moveProject } from '../core/task-ids';
@@ -125,6 +126,7 @@ const COMMANDS: Record<string, { flags: string[]; usage: string; help: string; s
   'pr-pri': { flags: ['rank', 'to', 'to-rank', 'note', 'rev', 'agent', 'reason', 'thread', 'on', 'remove', 'file', 'refresh'], usage: PR_PRI_USAGE, help: 'the PR priority queue the Sweep Manager works top down (~/.stack/pr-priority.json, never git): owner edits, agent recommendations, owner decisions, merge-order edges, thread acks, the escalation set; see docs/pr-priority.md', summary: 'the PR priority queue for the Sweep Manager' },
   app: { flags: ['check', 'install', 'no-build', 'source'], usage: 'app install [--no-build] | update [--check | --install] [--no-build] | status [--source dir]', help: 'build Stack.app from the source checkout (STACK_SOURCE or ~/.local/share/stack) and install or update it in /Applications; update never quits a running app unless --install (docs/desktop-install.md)', summary: 'build and install or update Stack.app' },
   live: { flags: ['agent', 'worktree', 'url', 'port', 'pid', 'file', 'text', 'reason', 'by', 'offline'], usage: 'live [next [ref] [--agent a --worktree p --offline] | ready <ref> --url u --pid n [--port n --worktree p] | state <ref> preparing|working | checklist <ref> --file items.json [--agent a] | item add|check|uncheck|fail|needs-fix|fixed|block|comment|edit <ref> [id] [--text t --reason r --by b] | resolve <ref> [--reason merged|closed|done]]', help: 'the live validation lane: one PR at a time, a checklist, the shared server lock; docs/live-validation-agent.md; never touches GitHub threads', summary: 'the live validation lane: one PR at a time' },
+  doctor: { flags: [], usage: 'doctor [--remote name] [--json]', help: 'health checks: how the task store branch stands against main on the remote (default origin): ok, behind, or out of sync with the conflicting files; read-only; exit 1 when out of sync', summary: 'health checks (task store drift against main)' },
   update: { flags: ['sweep', 'queries', 'engine'], usage: 'update [--sweep] [--queries] [--engine legacy|stack]', help: 'regenerate README, stack, projects, my-day (default stack: scores and order like `stack next`, with .stack/priorities.json; --engine legacy: the PowerShell output)', summary: 'regenerate README, stack, projects, and my-day' },
 };
 
@@ -1095,6 +1097,8 @@ export async function run(argv: string[], io: IO = { out: (s) => process.stdout.
     }
     // Devices live in ~/.stack (STACK_HOME), not the content repo. @req FR:tailnet-access/pair.@cli
     if (p.command === 'devices') { const d = await devicesCmd(p.positionals[0], p.positionals.slice(1), stackHome()); io.out(`${json ? JSON.stringify(d.json) : d.text}\n`); return EXIT.ok; }
+    // @req FR:store-sync/doctor.@cli
+    if (p.command === 'doctor') { const d = await doctorCmd(dir, flag(p.flags, 'remote')); io.out(`${json ? JSON.stringify(d.json) : d.text}\n`); return d.code; }
     const r = p.command === 'report' ? await reportCmd(p, io.in ?? readStdin) : p.command === 'sessions' ? sessionsCmd(p) : p.command === 'feedback' ? await feedbackCmd(p) : p.command === 'qm' ? qmCmd(p) : p.command === 'prs' ? await prsCmd(p.flags, p.positionals, () => loadConfig(dir), stackHome()) : p.command === 'priorities' ? await prioritiesCmd(p.flags, p.positionals, liveDeps(stackHome(), dir, () => loadConfig(dir), process.env, nowOf(p.flags))) : p.command === 'pris' ? await prisCmd(p, () => buildCtx(p.flags, dir)) : p.command === 'app' ? await appCmd(p.positionals[0], p.flags, realAppDeps(home)) : p.command === 'pr-pri' ? await prPriCmd(p.positionals, p.flags, io.in ?? readStdin) : await dispatch(p.command, p, dir);
     if (json) io.out(`${JSON.stringify(r.json)}\n`);
     else if (r.text) io.out(`${r.text}\n`);

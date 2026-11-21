@@ -15,6 +15,7 @@ import type { UpdateMode, VersionState } from './update';
 import type { QmPlan } from './qm';
 import type { ItemOp, Lane, LiveItem } from './live-lane';
 import type { ActionName, Agent, CaptureResult, InboxItem, Mutation, NextAction, NextTask, Position, Project, SetProps, Task } from './types';
+import type { Drift } from './ui/DriftBanner';
 
 /** @req FR:web-app/api.client */
 export class ApiFailure extends Error {
@@ -187,7 +188,7 @@ export function createClient(fetchFn: typeof fetch = (...a) => fetch(...a), base
 export type Client = ReturnType<typeof createClient>;
 
 /** `GET /api/sync`: `pending`/`since` only when the server batches commits. */
-export interface SyncState { rev: string | null; pending?: number; since?: string | null; live?: string }
+export interface SyncState { rev: string | null; pending?: number; since?: string | null; live?: string; /** @req FR:store-sync/host.api */ drift?: Drift }
 /** `POST /api/sync`. */
 export interface FlushResult { flushed: number; rev: string | null }
 
