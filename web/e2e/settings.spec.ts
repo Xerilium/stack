@@ -98,8 +98,14 @@ test.describe('Settings > Accounts', () => {
     const drafts = menu.getByRole('menuitemcheckbox', { name: /Let Stack save reply drafts in my mailbox/ });
     await expect(drafts).toHaveAttribute('aria-checked', 'true');
     await expect(drafts).toBeFocused();
-    await expect(drafts).toContainText('Stack writes drafts for you to review. It never sends.');
+    await expect(drafts).toContainText('Stack writes drafts for you to review. It sends only when you click Send.');
     await expect(drafts).toContainText('On');
+    // Send is its own setting, off until the owner turns it on. @req FR:connect-accounts/scope.send
+    await page.keyboard.press('ArrowDown');
+    const send = menu.getByRole('menuitemcheckbox', { name: /Let Stack send replies when I click Send/ });
+    await expect(send).toBeFocused();
+    await expect(send).toHaveAttribute('aria-checked', 'false');
+    await expect(send).toContainText('Stack sends one reply for each click on Send.');
     await page.keyboard.press('ArrowDown');
     await expect(menu.getByRole('menuitem', { name: 'Sign in again' })).toBeFocused();
     await page.keyboard.press('Escape');
@@ -108,6 +114,9 @@ test.describe('Settings > Accounts', () => {
     await more.click();
     await page.getByRole('menuitemcheckbox', { name: /Let Stack save reply drafts in my mailbox/ }).click();
     await expect.poll(() => m.calls.find((c) => c.path === '/connect/drafts')?.body).toEqual({ account: 'michael@xerilium.com', on: false });
+    await more.click();
+    await page.getByRole('menuitemcheckbox', { name: /Let Stack send replies when I click Send/ }).click();
+    await expect.poll(() => m.calls.find((c) => c.path === '/connect/send')?.body).toEqual({ account: 'michael@xerilium.com', on: true });
     await page.getByRole('button', { name: 'More for mf@hotmail.com' }).click();
     await page.getByRole('menuitem', { name: 'Disconnect' }).click();
     await expect(page.getByRole('menu')).toContainText('Disconnect mf@hotmail.com? Stack stops reading it.');
@@ -119,7 +128,7 @@ test.describe('Settings > Accounts', () => {
   // @req FR:connect-accounts/web.learn
   test('Learn more explains reads and drafts in a popover', async ({ page }) => {
     await open(page);
-    await expect(page.locator('#settings-accounts .set-sum')).toContainText('Stack reads mail and calendar. It never sends.');
+    await expect(page.locator('#settings-accounts .set-sum')).toContainText('Stack reads mail and calendar. It sends only when you click Send.');
     await page.getByRole('button', { name: 'Learn more' }).click();
     await expect(page.locator('#set-learn')).toContainText('Reply drafts is off by default');
     await page.keyboard.press('Escape');

@@ -13,7 +13,7 @@ describe('connect words', () => {
     expect(readsText({ ...row, mail: false })).toBe('calendar');
     expect(typeText(row)).toBe('Personal');
     expect(typeText({ ...row, type: 'work' })).toBe('Work or school');
-    expect(DRAFTS_TEXT).toMatch(/never sends/);
+    expect(DRAFTS_TEXT).toMatch(/sends only when you click Send/);
     expect(needsFix({ ...row, state: 'expired' })).toBe(true);
     expect(needsFix(row)).toBe(false);
     // Microsoft not responding: signing in again does not help.

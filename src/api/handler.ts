@@ -52,7 +52,7 @@ import { editTask, moveTask } from './edit';
 import { readMeetings } from '../core/meetings';
 import { answerNeed, readNeeds } from '../core/needs-you';
 import type { MailProvider } from '../email/types';
-import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, clearJunk, type JunkMailbox, loadSources, readInbox, readInboxChecked, requestAction, runAction, type ActionId, type IssueFiler, type MailReader, type SourceProbe } from '../inbox';
+import { ACTIONS as INBOX_ACTIONS, ACTION_IDS, replyDraft, type ReplyBox, SendBusy, SendFailed, sendItemReply, SendOff, clearJunk, type JunkMailbox, loadSources, readInbox, readInboxChecked, requestAction, runAction, type ActionId, type IssueFiler, type MailReader, type SourceProbe } from '../inbox';
 import { createBriefCache } from './brief';
 import type { ClaudeJson } from '../email/llm';
 import { IDLE_MINUTES, UPDATE_MODES, UpdateRefused, type AppUpdater, type UpdateMode } from '../core/app-update';
@@ -95,10 +95,12 @@ export interface ApiDeps {
   prs?: PrStatusProvider;
   /** Live agent sessions on this machine; absent on hosts that cannot run agents (every sessions.* route is then 404). @req FR:agent-sessions/driver.interface */
   agents?: AgentRuns;
-  /** Mail drafts for the Inbox page; absent means reply drafts answer 409. Never sends. @req FR:inbox-page/api.act */
+  /** Mail drafts for the Inbox page; absent means reply drafts answer 409. Makes drafts only. @req FR:inbox-page/api.act */
   mail?: Pick<MailProvider, 'createDraft'>;
   /** Reads one mailbox for the item detail; absent (or no reader for the account) means the detail shows the summary only. Read only. @req FR:inbox-page/detail.read */
   mailReader?: (account: string) => Promise<MailReader | undefined>;
+  /** The reply box of a mailbox: local drafts, and the send when the owner turned Send on; absent means no reply box. @req FR:email-send/draft.api.detail */
+  replies?: (account: string) => Promise<ReplyBox | undefined>;
   /** Writes for the Inbox Junk actions (move to Archive, one-click unsubscribe); absent, or no mailbox for the account, means its junk stays. @req FR:inbox-page/junk.archive.readonly */
   junkMailbox?: (account: string) => Promise<JunkMailbox | undefined>;
   /** This machine's inbox sign-ins (Graph caches, GitHub); absent on the hosted app, which uses sync records only. `fresh` skips any cache. @req FR:inbox-page/api.sources */
@@ -343,6 +345,10 @@ const INBOX_ACTION_BODY = {
   schema: { action: { t: 'enum', values: ACTION_IDS }, text: { t: 'str', max: 5000 }, until: { t: 'str', max: 40, line: true }, request: { t: 'bool' } } satisfies Record<string, Spec>,
   required: ['action'],
 };
+const INBOX_REPLY_BODY = {
+  schema: { text: { t: 'str', max: 20000 } } satisfies Record<string, Spec>,
+  required: ['text'],
+};
 const INBOX_JUNK_BODY = {
   schema: { action: { t: 'enum', values: ['archive', 'unsubscribe-archive'] }, ids: { t: 'strs', max: 500 } } satisfies Record<string, Spec>,
   required: ['action', 'ids'],
@@ -501,7 +507,7 @@ async function ghCall(fn: () => Promise<void>): Promise<void> {
 
 const DELIVERY_Q: Record<string, Spec> = { ref: { t: 'ref' } };
 const ACCOUNT: Spec = { t: 'str', max: 200, line: true, pattern: new RegExp(MAILBOX.source, 'i') };
-const CONNECT_START_BODY = { schema: { account: ACCOUNT, drafts: { t: 'bool' }, method: { t: 'enum', values: ['browser', 'device'] } } satisfies Record<string, Spec>, required: [] as string[] };
+const CONNECT_START_BODY = { schema: { account: ACCOUNT, drafts: { t: 'bool' }, send: { t: 'bool' }, method: { t: 'enum', values: ['browser', 'device'] } } satisfies Record<string, Spec>, required: [] as string[] };
 const CONNECT_DRAFTS_BODY = { schema: { account: { ...ACCOUNT, required: true }, on: { t: 'bool' } } satisfies Record<string, Spec>, required: ['account', 'on'] };
 /** Remove also takes no account (or ''): an older sign-in file that names no account. */
 const CONNECT_REMOVE_BODY = { schema: { account: { t: 'str', max: 200, line: true, pattern: new RegExp('^(?:|' + MAILBOX.source.slice(1, -1) + ')$', 'i') } } satisfies Record<string, Spec>, required: [] as string[] };
@@ -1257,7 +1263,43 @@ export const ROUTES: Route[] = [
       const read = item.source === 'email' && item.messageId && c.deps.mailReader
         ? await c.deps.mailReader(item.account).then((r) => r?.thread(item.messageId!)).catch(() => undefined)
         : undefined;
-      return json(200, read ? { item, live: true, message: read.message, thread: read.thread } : { item, live: false });
+      // The stored reply draft, when this machine has one. @req FR:email-send/draft.api.detail
+      const draft = replyDraft(item.source === 'email' && c.deps.replies ? await c.deps.replies(item.account).catch(() => undefined) : undefined, item);
+      return json(200, { ...(read ? { item, live: true, message: read.message, thread: read.thread } : { item, live: false }), ...(draft ? { draft } : {}) });
+    },
+  },
+  {
+    // Stores the owner's edit of a reply draft on this machine. Sends nothing. @req FR:email-send/draft.api
+    method: 'POST', doc: '/inbox-items/{id}/draft', name: 'inboxItems.draft', body: INBOX_REPLY_BODY,
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can write a reply'); // @req FR:email-send/draft.api.owner
+      const b = validate<{ text: string }>(await readBody(c.req), INBOX_REPLY_BODY.schema, INBOX_REPLY_BODY.required);
+      const item = (await readInbox(c.deps.storage)).find((i) => i.id === c.params[0]);
+      if (!item) throw new ApiError('not_found', 'Inbox item not found');
+      const box = item.source === 'email' && item.messageId && c.deps.replies ? await c.deps.replies(item.account).catch(() => undefined) : undefined;
+      if (!box) throw new ApiError('conflict', 'Mail is not connected');
+      box.save(item.id, item.messageId!, b.text);
+      return json(200, { ok: true });
+    },
+  },
+  {
+    // The one send: the owner session clicked Send on this text. Tokens and agents can never reach it. @req FR:email-send/send.api @req FR:email-send/send.approve
+    method: 'POST', doc: '/inbox-items/{id}/send', name: 'inboxItems.send', body: INBOX_REPLY_BODY,
+    async run(c) {
+      noQuery(c);
+      ownerOnly(c, 'Only the owner can send mail'); // @req FR:email-send/send.api.owner
+      const b = validate<{ text: string }>(await readBody(c.req), INBOX_REPLY_BODY.schema, INBOX_REPLY_BODY.required);
+      if (!b.text.trim()) throw invalid([{ field: 'text', message: 'Reply text is required' }]);
+      const item = (await readInbox(c.deps.storage)).find((i) => i.id === c.params[0]);
+      if (!item) throw new ApiError('not_found', 'Inbox item not found');
+      const box = item.source === 'email' && c.deps.replies ? await c.deps.replies(item.account).catch(() => undefined) : undefined;
+      try { return json(200, await sendItemReply(c.life, item, b.text, box)); } catch (e) {
+        if (e instanceof SendOff) throw new ApiError('conflict', 'Send is off for this account. Turn it on in Settings.'); // @req FR:email-send/send.api.off
+        if (e instanceof SendBusy) throw new ApiError('conflict', e.message);
+        if (e instanceof SendFailed) throw new ApiError('bad_gateway', e.message);
+        throw e;
+      }
     },
   },
   {
@@ -1293,10 +1335,10 @@ export const ROUTES: Route[] = [
     async run(c) {
       noQuery(c);
       const k = connectOf(c);
-      const b = validate<{ account?: string; drafts?: boolean; method?: 'browser' | 'device' }>(await readBody(c.req), CONNECT_START_BODY.schema, CONNECT_START_BODY.required);
+      const b = validate<{ account?: string; drafts?: boolean; send?: boolean; method?: 'browser' | 'device' }>(await readBody(c.req), CONNECT_START_BODY.schema, CONNECT_START_BODY.required);
       if (!k.hasClientId()) throw new ApiError('conflict', 'One-time setup needed: run setup first');
       const account = lower(b.account);
-      return json(201, await k.start({ ...(b.drafts !== undefined ? { drafts: b.drafts } : {}), ...(b.method ? { method: b.method } : {}), ...(account ? { account } : {}) }));
+      return json(201, await k.start({ ...(b.drafts !== undefined ? { drafts: b.drafts } : {}), ...(b.send !== undefined ? { send: b.send } : {}), ...(b.method ? { method: b.method } : {}), ...(account ? { account } : {}) }));
     },
   },
   {
@@ -1320,6 +1362,16 @@ export const ROUTES: Route[] = [
     },
   },
   {
+    // Turns the Send setting of one account on (a sign-in) or off. Sends nothing. @req FR:connect-accounts/scope.send
+    method: 'POST', doc: '/connect/send', name: 'connect.send', body: CONNECT_DRAFTS_BODY,
+    async run(c) {
+      noQuery(c);
+      const k = connectOf(c);
+      const b = validate<{ account: string; on: boolean }>(await readBody(c.req), CONNECT_DRAFTS_BODY.schema, CONNECT_DRAFTS_BODY.required);
+      return json(200, await k.setSend(lower(b.account)!, b.on));
+    },
+  },
+  {
     // @req FR:connect-accounts/api.remove
     method: 'POST', doc: '/connect/remove', name: 'connect.remove', body: CONNECT_REMOVE_BODY,
     async run(c) {
@@ -1340,7 +1392,7 @@ export const ROUTES: Route[] = [
     },
   },
   {
-    // Never sends: the only mail write is a reply draft. @req FR:inbox-page/api.act
+    // Sends nothing: the only mail write here is a reply draft. @req FR:inbox-page/api.act
     method: 'POST', doc: '/inbox-items/{id}/action', name: 'inboxItems.action', body: INBOX_ACTION_BODY,
     async run(c) {
       noQuery(c);

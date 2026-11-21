@@ -1,6 +1,7 @@
 /**
  * The Inbox page: all mail, unread Teams and Slack. Each row has a summary, one suggested action, and a menu of the rest.
- * A reply opens an editable draft first; the page can only create a draft, never send.
+ * A reply opens an editable draft first. The detail shows a stored reply draft ready to edit; mail leaves only on a click on Send.
+ * @req FR:email-send/draft.web @req FR:email-send/draft.show @req FR:email-send/draft.edit @req FR:email-send/draft.outlook @req FR:email-send/send.web @req FR:email-send/send.click
  * Mail only: no setup UI. Never says Inbox zero unless every source synced recently; a problem is one quiet line linked to Settings > Accounts.
  * Selecting a row opens its detail: the full message and its thread, read live and shown as plain text.
  * @req FR:inbox-page/detail.web @req FR:inbox-page/detail.split @req FR:inbox-page/detail.split.phone @req FR:inbox-page/detail.head @req FR:inbox-page/detail.body @req FR:inbox-page/detail.thread @req FR:inbox-page/detail.thread.fold @req FR:inbox-page/detail.offline @req FR:inbox-page/detail.safe
@@ -10,7 +11,7 @@
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ApiFailure, type Client } from './api';
-import { actionsFor, doneText, emptyText, junkActions, junkReason, junkToast, openLabel, person, SOURCE, splitJunk, statusLine, tomorrow, when, type ActionInfo, type DetailReply, type InboxRow, type SourcesReply } from './inbox';
+import { actionsFor, doneText, emptyText, replyNote, type ReplyDraft, junkActions, junkReason, junkToast, openLabel, person, SOURCE, splitJunk, statusLine, tomorrow, when, type ActionInfo, type DetailReply, type InboxRow, type SourcesReply } from './inbox';
 import { EmptyState, type Toast } from './parts';
 import { ActionBar } from './ui/ActionMenu';
 import { Fold } from './ui/Fold';
@@ -104,10 +105,49 @@ function Row({ row, catalog, api, toast, done, selected, onOpen, junk = false }:
 }
 
 /**
+ * The reply box: the stored draft, ready to edit in place. An edit is stored on this machine when the owner leaves the box.
+ * Send is one click, and the only way mail leaves: nothing here sends on load, on typing or on blur.
+ * Its own form, not `MessageBox`: it saves on blur, keeps long mail text, and swaps Send for the Outlook link when Send is off.
+ * @req FR:email-send/draft.show @req FR:email-send/draft.edit @req FR:email-send/draft.outlook @req FR:email-send/send.web @req FR:email-send/send.click
+ */
+function Reply({ row, draft, api, toast, onSent }: { row: InboxRow; draft: ReplyDraft; api: Client; toast: ToastFn; onSent: (id: string) => void }) {
+  const [text, setText] = useState(draft.text);
+  const [saved, setSaved] = useState(draft.text);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    // Never after Send: the item may be gone, and its draft must not be written again.
+    if (text === saved || sending.current) return;
+    try { await api.inboxDraft(row.id, text); setSaved(text); } catch { /* the text stays in the box; Send carries it */ }
+  };
+  /** A send in flight: a ref, so a second click in the same frame cannot send twice. */
+  const sending = useRef(false);
+  const send = async () => {
+    if (sending.current) return;
+    sending.current = true; setBusy(true);
+    try { await api.inboxSend(row.id, text); toast(`Reply sent to ${row.from}`); onSent(row.id); }
+    catch (e) { toast(e instanceof ApiFailure ? e.message : 'Could not send. The draft is kept.', 'err'); sending.current = false; setBusy(false); }
+  };
+  return (
+    <section class="in-reply" aria-labelledby={`rp-${row.id}`}>
+      <h4 class="in-thread-h" id={`rp-${row.id}`}>Reply</h4>
+      <label class="sr-only" for={`rt-${row.id}`}>Reply to {row.from}</label>
+      <form onSubmit={(e) => { e.preventDefault(); void send(); }}>
+        <textarea id={`rt-${row.id}`} class="in-reply-text" rows={7} value={text} disabled={busy} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} onBlur={() => void save()} />
+        <div class="in-draft-actions">
+          {draft.canSend && <button type="submit" class="btn primary" disabled={busy || !text.trim()}>Send</button>}
+          {!draft.canSend && draft.link && <a class="btn" href={draft.link} target="_blank" rel="noopener noreferrer">Open draft in Outlook</a>}
+          <span class="in-reply-note">{replyNote(draft)}{!draft.canSend && <> <a class="in-manage" href="#/settings/accounts">Turn on Send in Settings</a></>}</span>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+/**
  * The detail of one item. The text comes from the mailbox on each open and is never stored; `ThreadMessage` renders it as plain text.
  * @req FR:inbox-page/detail.head @req FR:inbox-page/detail.body @req FR:inbox-page/detail.thread @req FR:inbox-page/detail.offline @req FR:inbox-page/detail.safe
  */
-function Detail({ row, api }: { row: InboxRow; api: Client }) {
+function Detail({ row, api, toast, onSent }: { row: InboxRow; api: Client; toast: ToastFn; onSent: (id: string) => void }) {
   const [d, setD] = useState<DetailReply | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -137,6 +177,7 @@ function Detail({ row, api }: { row: InboxRow; api: Client }) {
           {thread.map((t) => <ThreadMessage key={t.id} fold from={person(t.from, t.mine)} when={when(t.receivedAt)} body={t.body} />)}
         </section>
       )}
+      {d?.draft && <Reply key={row.id} row={row} draft={d.draft} api={api} toast={toast} onSent={onSent} />}
       {row.link && <ActionBar heading="Actions" items={[{ id: 'open', label: openLabel(row.source), href: row.link }]} />}
     </div>
   );
@@ -180,7 +221,7 @@ export function InboxView({ api, toast, onStatus, refresh }: { api: Client; toas
   };
   /** Not junk keeps the row and moves it to the list; every other action removes the row. */
   const done = (id: string, action: string) => setItems((xs) => (action === 'not-junk' ? xs.map((x) => (x.id === id ? { ...x, notJunk: true } : x)) : xs.filter((x) => x.id !== id)));
-  const row = (r: InboxRow, isJunkRow: boolean) => <Row key={r.id} row={r} catalog={catalog} api={api} toast={toast} junk={isJunkRow} selected={r.id === sel} onOpen={() => setSel(r.id)} done={done} />;
+  const rowOf = (r: InboxRow, isJunkRow: boolean) => <Row key={r.id} row={r} catalog={catalog} api={api} toast={toast} junk={isJunkRow} selected={r.id === sel} onOpen={() => setSel(r.id)} done={done} />;
   const unread = main.filter((i) => i.unread).length;
   const empty = emptyText(src?.summary);
   const line = statusLine(src?.summary);
@@ -198,7 +239,7 @@ export function InboxView({ api, toast, onStatus, refresh }: { api: Client; toas
           reader wide={wide} open={!!open} label="Message" empty="Select a message to read it." onBack={() => setSel(null)}
           list={(
             <>
-              <ul class="in-list">{main.map((r) => row(r, false))}</ul>
+              <ul class="in-list">{main.map((r) => rowOf(r, false))}</ul>
               {junk.length > 0 && (
                 <Fold id="inbox-junk" title="Junk" count={junk.length} aside={(
                   <form class="in-junk-form" onSubmit={(e) => { e.preventDefault(); void clear(((e as SubmitEvent).submitter as HTMLButtonElement | null)?.value === 'unsubscribe-archive' ? 'unsubscribe-archive' : 'archive'); }}>
@@ -207,12 +248,12 @@ export function InboxView({ api, toast, onStatus, refresh }: { api: Client; toas
                   </form>
                 )}>
                   <p class="in-junk-note">Spam, cold outreach and newsletters. Stack never deletes mail.</p>
-                  <ul class="in-list">{junk.map((r) => row(r, true))}</ul>
+                  <ul class="in-list">{junk.map((r) => rowOf(r, true))}</ul>
                 </Fold>
               )}
             </>
           )}
-          detail={open ? <Detail key={open.id} row={open} api={api} /> : null}
+          detail={open ? <Detail key={open.id} row={open} api={api} toast={toast} onSent={(id) => { setSel(null); setItems((xs) => xs.filter((x) => x.id !== id)); }} /> : null}
         />
       )}
     </section>

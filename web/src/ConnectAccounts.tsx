@@ -10,7 +10,7 @@ import { StatusChip, type ChipTone } from './ui/StatusChip';
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import {
-  DRAFTS_HINT, DRAFTS_LABEL, needsFix, sessionText, SETUP_RESULT, SETUP_TEXT, STATE_TEXT, statusTip, waitFor,
+  DRAFTS_HINT, DRAFTS_LABEL, SEND_HINT, SEND_LABEL, needsFix, sessionText, SETUP_RESULT, SETUP_TEXT, STATE_TEXT, statusTip, waitFor,
   type AccountRow, type ConnectApi, type ConnectInfo, type ConnectSession, type SetupState,
 } from './connect';
 import './settings.css';
@@ -48,7 +48,7 @@ function Kind({ type }: { type: AccountRow['type'] }) {
 }
 
 /** The row menu: drafts, sign in again, disconnect (asks first). Arrows move, Escape closes and returns focus. @req FR:connect-accounts/web.menu */
-function RowMenu({ a, busy, onDrafts, onSignIn, onRemove }: { a: AccountRow; busy: boolean; onDrafts: (on: boolean) => void; onSignIn: () => void; onRemove: () => void }) {
+function RowMenu({ a, busy, onDrafts, onToggleSend, onSignIn, onRemove }: { a: AccountRow; busy: boolean; onDrafts: (on: boolean) => void; onToggleSend: (on: boolean) => void; onSignIn: () => void; onRemove: () => void }) {
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
@@ -94,6 +94,13 @@ function RowMenu({ a, busy, onDrafts, onSignIn, onRemove }: { a: AccountRow; bus
                   <span class="acct-onoff">{a.drafts ? 'On' : 'Off'}</span>
                 </button>
               )}
+              {a.mail && a.account && (
+                <button type="button" role="menuitemcheckbox" aria-checked={!!a.send} class="fl-option acct-check" aria-describedby={`${id}-send-hint`} onClick={pick(() => onToggleSend(!a.send))}>
+                  <span class="acct-box" aria-hidden="true">{a.send ? '✓' : ''}</span>
+                  <span>{SEND_LABEL}<small id={`${id}-send-hint`} class="acct-hint">{SEND_HINT}</small></span>
+                  <span class="acct-onoff">{a.send ? 'On' : 'Off'}</span>
+                </button>
+              )}
               <button type="button" role="menuitem" class="fl-option" onClick={pick(onSignIn)}>Sign in again</button>
               <button type="button" role="menuitem" class="fl-option" onClick={() => setConfirm(true)}>Disconnect</button>
             </>
@@ -107,7 +114,7 @@ function RowMenu({ a, busy, onDrafts, onSignIn, onRemove }: { a: AccountRow; bus
 /** One tone per account state: the same word never shows in two colors. @req FR:connect-accounts/web.row */
 const STATE_TONE: Record<AccountRow['state'], ChipTone> = { connected: 'ok', expired: 'warn', down: 'warn', error: 'bad' };
 
-function Row({ a, busy, now, onSignIn, onDrafts, onRemove }: { a: AccountRow; busy: boolean; now: Date; onSignIn: () => void; onDrafts: (on: boolean) => void; onRemove: () => void }) {
+function Row({ a, busy, now, onSignIn, onDrafts, onToggleSend, onRemove }: { a: AccountRow; busy: boolean; now: Date; onSignIn: () => void; onDrafts: (on: boolean) => void; onToggleSend: (on: boolean) => void; onRemove: () => void }) {
   const tip = statusTip(a, now);
   const name = a.account || 'Earlier sign-in';
   return (
@@ -119,7 +126,7 @@ function Row({ a, busy, now, onSignIn, onDrafts, onRemove }: { a: AccountRow; bu
         <span class="sr-only">. {tip}</span>
       </span>
       {needsFix(a) ? <button type="button" class="fl-btn primary acct-fix" disabled={busy} aria-label={`Fix ${name}`} onClick={onSignIn}>Fix</button> : <span class="acct-fix-gap" aria-hidden="true" />}
-      <RowMenu a={a} busy={busy} onDrafts={onDrafts} onSignIn={onSignIn} onRemove={onRemove} />
+      <RowMenu a={a} busy={busy} onDrafts={onDrafts} onToggleSend={onToggleSend} onSignIn={onSignIn} onRemove={onRemove} />
     </li>
   );
 }
@@ -138,7 +145,7 @@ export function ConnectAccounts({ api, onChange, other, now = new Date(), refres
   const [manual, setManual] = useState<boolean | null>(null);
   const gone = useRef(false);
   /** The last sign-in asked for, so "Use a code instead" keeps its account and drafts. */
-  const last = useRef<{ account?: string; drafts?: boolean }>({});
+  const last = useRef<{ account?: string; drafts?: boolean; send?: boolean }>({});
   useEffect(() => () => { gone.current = true; }, []);
 
   const load = async () => {
@@ -173,8 +180,8 @@ export function ConnectAccounts({ api, onChange, other, now = new Date(), refres
       else { await load(); onChange?.(); }
     } catch (e) { setMsg(e instanceof Error && e.message ? e.message : 'That did not work. Try again.'); } finally { setBusy(false); }
   };
-  const remember = (o: { account?: string; drafts?: boolean }) => { last.current = { ...(o.account ? { account: o.account } : {}), ...(o.drafts ? { drafts: true } : {}) }; };
-  const start = (o: { account?: string; drafts?: boolean; method?: 'browser' | 'device' } = {}) => { remember(o); return run(() => api.connectStart(o)); };
+  const remember = (o: { account?: string; drafts?: boolean; send?: boolean }) => { last.current = { ...(o.account ? { account: o.account } : {}), ...(o.drafts ? { drafts: true } : {}), ...(o.send ? { send: true } : {}) }; };
+  const start = (o: { account?: string; drafts?: boolean; send?: boolean; method?: 'browser' | 'device' } = {}) => { remember(o); return run(() => api.connectStart(o)); };
   const runSetup = async () => {
     setSetup('running');
     try { const r = await api.connectSetup(); setSetup(r.state); if (r.state === 'done') await load(); } catch { setSetup('failed'); }
@@ -216,8 +223,9 @@ export function ConnectAccounts({ api, onChange, other, now = new Date(), refres
           {info.accounts.map((a, i) => (
             <Row key={`${a.account}|${i}`} a={a} busy={busy || waiting} now={now}
               // Signing in again keeps drafts on when they were on.
-              onSignIn={() => void start(a.account ? { account: a.account, ...(a.drafts ? { drafts: true } : {}) } : {})}
-              onDrafts={(on) => { if (on) remember({ account: a.account, drafts: true }); void run(() => api.connectDrafts(a.account, on)); }}
+              onSignIn={() => void start(a.account ? { account: a.account, ...(a.drafts ? { drafts: true } : {}), ...(a.send ? { send: true } : {}) } : {})}
+              onToggleSend={(on) => { if (on) remember({ account: a.account, ...(a.drafts ? { drafts: true } : {}), send: true }); void run(() => api.connectSend(a.account, on)); }}
+              onDrafts={(on) => { if (on) remember({ account: a.account, drafts: true, ...(a.send ? { send: true } : {}) }); void run(() => api.connectDrafts(a.account, on)); }}
               onRemove={() => void run(async () => { await api.connectRemove(a.account); })} />
           ))}
         </ul>

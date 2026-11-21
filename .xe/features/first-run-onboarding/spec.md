@@ -18,7 +18,7 @@ A new owner opens `stack web` or the desktop app with no content repo set. Today
 
 - Local hosts only (`stack web`, desktop). The hosted app never shows the flow.
 - Demo is the default mode. Live is a choice the owner makes after reading what live writes.
-- Stack never sends mail. The email step says so and only shows the sign-in command.
+- Stack sends mail only when the owner clicks Send. The email step says so and only shows the sign-in command.
 - Feed URLs and paths are secrets in logs: never logged, never in a URL query.
 - Every step after the mode step is skippable.
 
@@ -44,7 +44,7 @@ A new owner opens `stack web` or the desktop app with no content repo set. Today
 - **FR:step.mode** (P1): Two choices: `Demo` (default, a copy; the repo is never written) and `Live`. Live shows: "Live edits your repo. Stack writes task files in `tasks/`, commits them, and pushes to your remote." The owner must check "I understand" before Live continues. When `stack web --live` sets the mode (`modeLock`), the step shows the Live warning and the source, offers no choice, and saves nothing.
 - **FR:step.mode.tasks** (P2): Live on a repo with no `tasks/` folder creates an empty `tasks/` folder. This holds for Live set by `--live` too: the locked mode step creates it and restarts. Demo on such a repo is an error that names Live as the fix.
 - **FR:step.calendar** (P2): Optional. The owner pastes a published ICS link (`https:` or `webcal:`). It is saved as `ics` in the user config and used when `STACK_CALENDAR_ICS` is not set. Skip is always there.
-- **FR:step.email** (P2): Optional. Shows the in-app Connect accounts panel (`FR:connect-accounts/web.panel`), no command, and says: "Stack reads mail and writes reply drafts. It never sends mail." It shows `Signed in` when any Graph token cache exists (Connect writes one per account). Skip is always there.
+- **FR:step.email** (P2): Optional. Shows the in-app Connect accounts panel (`FR:connect-accounts/web.panel`), no command, and says: "Stack reads mail and writes reply drafts. It sends mail only when you click Send." It shows `Signed in` when any Graph token cache exists (Connect writes one per account). Skip is always there.
 - **FR:step.phone** (P2): Optional. Says Stack pings the phone only when an ask is due within 1 hour, and links to `#/install`. `Finish` marks the flow done.
 - **FR:step.max** (P1): The flow has at most 5 steps.
 

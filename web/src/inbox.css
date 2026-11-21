@@ -59,3 +59,10 @@
 .in-why { flex: none; color: var(--muted); }
 .in-junk-form { display: flex; flex-wrap: wrap; gap: 8px; }
 .in-junk-note { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
+/* Reply box in the detail. @req FR:email-send/draft.show @req FR:email-send/send.web */
+.in-reply { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--line); }
+.in-reply-text { width: 100%; min-height: 150px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; line-height: 1.5; resize: vertical; }
+.in-reply-text:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.in-reply-note { font-size: 12px; color: var(--muted); }
+.in-reply a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+@media (max-width: 719px) { .in-reply a.btn { min-height: var(--tap); } }

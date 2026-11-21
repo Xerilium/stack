@@ -1,6 +1,6 @@
 /**
  * Owner sign-in to Microsoft Graph with the device code flow, a token cache outside the task repo, and refresh on demand.
- * Read scopes only (plus reply drafts when asked); nothing here can send mail or write a calendar.
+ * Read scopes only (plus reply drafts when asked); nothing here can write a calendar, and no CLI sign-in asks for a send scope.
  * @req FR:graph-signin/scope.sets @req FR:graph-signin/scope.never @req FR:graph-signin/flow.start @req FR:graph-signin/flow.poll @req FR:graph-signin/flow.host
  * @req FR:graph-signin/cache.file @req FR:graph-signin/cache.provider @req FR:graph-signin/flow.pkce @req FR:graph-signin/flow.idtoken
  */
@@ -23,16 +23,20 @@ export function scopesFor(features: Feature[]): string[] {
   return [...out.sort(), 'offline_access'];
 }
 
-/** The only scopes Stack accepts (case-insensitive, Graph resource only): the feature scopes plus sign-in basics. Anything else, including send, settings, and other resources, is refused. */
-const ALLOWED = new Set(['calendars.read', 'mail.read', 'mail.readwrite', 'offline_access', 'openid', 'profile', 'email', 'user.read']);
+/** The only scopes Stack accepts (case-insensitive, Graph resource only): the feature scopes plus sign-in basics. Anything else, including shared send, settings, and other resources, is refused. */
+/** The send scope. Only the in-app Send setting asks for it (`FR:connect-accounts/scope.send`); no CLI sign-in does. */
+export const SEND_SCOPE = 'Mail.Send';
+const ALLOWED = new Set(['calendars.read', 'mail.read', 'mail.readwrite', SEND_SCOPE.toLowerCase(), 'offline_access', 'openid', 'profile', 'email', 'user.read']);
 const bare = (s: string) => s.toLowerCase().replace(/^https:\/\/graph\.microsoft\.com\//, '');
-/** Throws for any scope outside the allowlist, so nothing can send mail, write a calendar, or change mailbox settings. @req FR:graph-signin/scope.never */
-export function assertSafeScopes(scopes: string[]): void {
-  const bad = scopes.filter((s) => typeof s !== 'string' || !ALLOWED.has(bare(s))).map(String);
+/** Throws for any scope outside the allowlist, so nothing can write a calendar or change mailbox settings; what may be sent is limited by the email guard (`FR:email-send/send.guard`). @req FR:graph-signin/scope.never */
+export function assertSafeScopes(scopes: string[], o: { /** The send scope is accepted: a grant or a cache (Microsoft returns every consented scope), or the in-app Send sign-in. */ send?: boolean } = {}): void {
+  const bad = scopes.filter((s) => typeof s !== 'string' || !ALLOWED.has(bare(s)) || (!o.send && bare(s) === SEND_SCOPE.toLowerCase())).map(String);
   // Scope names are not secret; naming them tells the owner exactly what to remove.
   if (bad.length) throw new GraphSignInError('unsafe_scope', `${bad.join(', ')}. Remove these API permissions from the app registration in Entra ID and revoke the consent already granted (Entra ID > Enterprise applications > the app > Permissions, or myapps.microsoft.com), then run stack graph login again`);
 }
 
+/** `scopes` without the send scope: what a sign-in that did not ask for Send may save. @req FR:connect-accounts/scope.send */
+export const withoutSend = (scopes: string[]): string[] => scopes.filter((x) => bare(x) !== SEND_SCOPE.toLowerCase());
 /** True when `scopes` holds `name`, ignoring case and the Graph resource prefix. */
 export const hasScope = (scopes: string[], name: string): boolean => scopes.some((s) => bare(s) === name.toLowerCase());
 
@@ -50,12 +54,12 @@ const TENANT = /^(?:organizations|consumers|common|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CODE = /^[a-z_]{1,64}$/;
 
-export interface SignInOptions { tenant: string; clientId: string; fetch?: typeof fetch }
+export interface SignInOptions { tenant: string; clientId: string; fetch?: typeof fetch; /** This sign-in may ask for the send scope: only the in-app Send setting sets it. @req FR:connect-accounts/scope.send */ send?: boolean }
 
 function check(o: SignInOptions, scopes: string[]): void {
   if (!TENANT.test(o.tenant)) throw new GraphSignInError('invalid_tenant');
   if (!GUID.test(o.clientId)) throw new GraphSignInError('invalid_client_id');
-  assertSafeScopes(scopes);
+  assertSafeScopes(scopes, { send: o.send === true });
 }
 
 /** POSTs form data to the login host; returns the JSON body and whether the status was 2xx. @req FR:graph-signin/flow.host */
@@ -92,7 +96,8 @@ function granted(b: Record<string, unknown>, now: number): Granted {
   if (typeof b.access_token !== 'string') throw new GraphSignInError('server_error');
   if (typeof b.refresh_token !== 'string') throw new GraphSignInError('no_refresh_token');
   const scopes = typeof b.scope === 'string' ? b.scope.split(/\s+/).filter(Boolean) : [];
-  assertSafeScopes(scopes);
+  // A grant lists every scope ever consented, the send scope too; whoever saves the cache drops it unless this sign-in asked for it.
+  assertSafeScopes(scopes, { send: true });
   return { accessToken: b.access_token, refreshToken: b.refresh_token, expiresAt: now + (Number(b.expires_in) || 3600) * 1000, scopes, ...(typeof b.id_token === 'string' ? { idToken: b.id_token } : {}) };
 }
 
@@ -248,7 +253,7 @@ export function graphToken(cache: FileTokenCache, o: { fetch?: typeof fetch; now
     const t = await cache.read();
     if (!t) throw new GraphSignInRequired();
     if (!force && t.accessToken && (t.expiresAt ?? 0) - now() > SKEW) return t.accessToken;
-    assertSafeScopes(t.scopes);
+    assertSafeScopes(t.scopes, { send: true });
     const r = await post({ tenant: t.tenant, clientId: t.clientId, fetch: o.fetch }, 'token', {
       grant_type: 'refresh_token', client_id: t.clientId, refresh_token: t.refreshToken, scope: t.scopes.join(' '),
     });

@@ -7,6 +7,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, r
 import { dirname, join } from 'path';
 import { writeAtomic } from '../core/file-lock';
 import type { LifecycleContext } from '../core/lifecycle';
+import { draftsPath, saveDrafts } from './draft-store';
 import { createGraphActions, createGraphMail, messageDetails } from './graph-mail';
 import type { Transport } from './guard';
 import { approvedMoves, emptyState, type Http, type HygieneState, type MailState } from './hygiene';
@@ -170,6 +171,8 @@ export interface PassOptions {
   llm?: ClaudeJson;
   http?: Http;
   dataDir?: string;
+  /** Send is on for this mailbox: drafts stay local (`FR:email-send/draft.local`). The pass itself never sends. @req FR:email-send/send.runner */
+  localDrafts?: boolean;
   /** Keeps state in memory and writes nothing to the mailbox. */
   dryRun?: boolean;
   /** Gets the triaged results after a successful pass (the Inbox page writer). Never called on a dry run. @req FR:inbox-page/run.email */
@@ -209,11 +212,13 @@ export async function runPass(o: PassOptions): Promise<PassSummary> {
   const { cursor, summary, results } = await runTriage({
     ctx: o.ctx, provider, rules: o.rules ?? rulesFor(o.account, o.dataDir), project: o.project, cursor: st.cursor, voice,
     classifier, beforeAsks: () => classifier.check(),
-    ...(live ? { drafter: createDrafter(llm, voice, usage) } : {}),
+    ...(live || (o.localDrafts && !o.dryRun) ? { drafter: createDrafter(llm, voice, usage) } : {}), ...(o.localDrafts ? { localDrafts: true } : {}),
     hygiene: { state, judge: createJudge(llm, usage), ...(live ? { actions: createGraphActions({ transport: o.transport, approvedMoves: moves }), ...(o.http ? { http: o.http } : {}) } : {}) },
   });
   const lastSummary: PassSummary = { ...summary, resolved: summary.resolved + resolved, modelCalls: usage.calls, costUsd: Math.round(usage.costUsd * 10000) / 10000, modelErrors };
   if (!o.dryRun) await o.onResults?.(results);
+  // The detail shows the draft from this file. @req FR:email-send/draft.store
+  if (!o.dryRun) saveDrafts(draftsPath(o.account, o.dataDir), results, now);
   if (!o.dryRun) writeState(sPath, { version: 1, cursor, sentCursor: sent.cursor, hygiene, lastRun: now.toISOString(), lastSummary });
   return lastSummary;
 }

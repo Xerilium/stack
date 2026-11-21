@@ -12,7 +12,7 @@ dependencies: [day-inputs, email-triage, cli]
 
 ## Purpose
 
-The calendar and mail adapters (`FR:day-inputs/*`) need a Graph token. The owner signs in once from the terminal, without a browser redirect or a client secret, and Stack keeps a refresh token on his machine so Today shows his real meetings. Nothing here can send mail or write a calendar.
+The calendar and mail adapters (`FR:day-inputs/*`) need a Graph token. The owner signs in once from the terminal, without a browser redirect or a client secret, and Stack keeps a refresh token on his machine so Today shows his real meetings. Nothing here can write a calendar, and no CLI sign-in asks for a send scope.
 
 ## Scope
 
@@ -25,7 +25,7 @@ The calendar and mail adapters (`FR:day-inputs/*`) need a Graph token. The owner
 ### FR:scope: Scopes
 
 - **FR:scope.sets** (P1): `scopesFor(features)` maps `calendar` to `Calendars.Read`, `mail` to `Mail.Read`, and `drafts` to `Mail.ReadWrite`, always adds `offline_access`, and removes duplicates. Unknown features throw
-- **FR:scope.never** (P1): `assertSafeScopes(scopes)` is an allowlist, case-insensitive, Graph resource only: `Calendars.Read`, `Mail.Read`, `Mail.ReadWrite`, `offline_access`, `openid`, `profile`, `email`, `User.Read`. Anything else (send, `MailboxSettings.*`, `.default`, `*.All`, `*.Shared`, other resources) throws `unsafe_scope`, naming the refused scopes and the fix (remove them from the app registration and revoke the consent already granted, since removing a permission does not revoke consent). It checks the requested scopes before every login request and the granted scopes in every token response (Microsoft grants all scopes already consented for the app), so a token with an unsafe scope is never saved
+- **FR:scope.never** (P1): `assertSafeScopes(scopes)` is an allowlist, case-insensitive, Graph resource only: `Calendars.Read`, `Mail.Read`, `Mail.ReadWrite`, `Mail.Send` (asked for only by the in-app Send setting, `FR:connect-accounts/scope.send`), `offline_access`, `openid`, `profile`, `email`, `User.Read`. Anything else (`Mail.Send.Shared`, `MailboxSettings.*`, `.default`, `*.All`, `*.Shared`, other resources) throws `unsafe_scope`, naming the refused scopes and the fix (remove them from the app registration and revoke the consent already granted, since removing a permission does not revoke consent). It checks the requested scopes before every login request and the granted scopes in every token response (Microsoft grants all scopes already consented for the app), so a token with an unsafe scope is never saved
 
 ### FR:flow: Device code flow
 
@@ -46,7 +46,7 @@ The calendar and mail adapters (`FR:day-inputs/*`) need a Graph token. The owner
 
 - **FR:cli.login** (P1): `stack graph login --client-id <guid> [--tenant t] [--account addr] [--with calendar,mail,drafts] [--cache path]` (default `--with calendar`, tenant `organizations`) prints the sign-in message (URL and code; on stderr with `--json`), polls, and saves the cache. It prints the granted scopes and the cache path, never a token
 - **FR:cli.login.account** (P1): `--account addr` signs in one more inbox: the cache is `accountCachePath(addr)` (unless `--cache` is given), the default tenant is `tenantFor(addr)` (so a personal Outlook.com mailbox uses `consumers`), and the address is saved in the cache as `account`. `status` and `logout` accept the same flag. The app registration must allow personal accounts and work accounts
-- **FR:cli.login.nosend** (P1): No `--with` value ever requests a send scope; a cache that names one is refused by `FR:scope.never`
+- **FR:cli.login.nosend** (P1): No `--with` value ever requests a send scope, and the CLI login never saves one that Microsoft grants
 - **FR:cli.status** (P1): `stack graph status` prints `signed in` with tenant, scopes, and access-token expiry, or `not signed in`; exit code 0 or 4 (none). `--json` gives the same fields. With no `--account` or `--cache` and no default cache file, it lists every per-mailbox sign-in (`FR:cache.accounts`) as `accounts` (account, tenant, scopes, expiry; an unreadable cache is listed with its error); exit 4 when none is readable. No token is printed
 - **FR:cli.logout** (P1): `stack graph logout` deletes the cache file; it is not an error when there is none
 

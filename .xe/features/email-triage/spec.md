@@ -2,7 +2,7 @@
 id: email-triage
 title: Email Triage Module
 author: flanakin
-description: "Inbound email triage as a Stack module: reads a mailbox, decides what needs the owner, drafts replies (never sends), and writes asks into the ask queue. Plan: https://github.com/flanakin/todo/pull/93"
+description: "Inbound email triage as a Stack module: reads a mailbox, decides what needs the owner, drafts replies (the module never sends), and writes asks into the ask queue. Plan: https://github.com/flanakin/todo/pull/93"
 dependencies: [ask-queue, ai-triage-assist]
 ---
 
@@ -12,7 +12,7 @@ dependencies: [ask-queue, ai-triage-assist]
 
 ## Purpose
 
-Mail is the biggest source of interruptions. This module reads a mailbox on a schedule, settles most mail with rules, classifies the rest with models, drafts replies for what needs one, and gives the owner only the decisions, as asks in the live ask queue (`FR:ask-queue/*`). It never sends mail. The architecture, cost, and risk analysis is in the email assistant plan (todo PR 93); this spec fits that plan into Stack and covers what this repository ships first.
+Mail is the biggest source of interruptions. This module reads a mailbox on a schedule, settles most mail with rules, classifies the rest with models, drafts replies for what needs one, and gives the owner only the decisions, as asks in the live ask queue (`FR:ask-queue/*`). It never sends mail: the one send is the owner's click in the Inbox (`FR:email-send/send.click`). The architecture, cost, and risk analysis is in the email assistant plan (todo PR 93); this spec fits that plan into Stack and covers what this repository ships first.
 
 ## Scope
 
@@ -25,10 +25,10 @@ Mail is the biggest source of interruptions. This module reads a mailbox on a sc
 
 ## Scenarios
 
-### FR:safe: Never send
+### FR:safe: Send only on the owner's click
 
-- **FR:safe.allowlist** (P1): `createGraphGuard()` allows only these (method, path) pairs against `https://graph.microsoft.com/v1.0`: `GET /me/mailFolders/{id}/messages` (and `/delta`; Graph's own delta next and delta links that name the folder as `mailFolders('{id}')` are allowed on `/messages/delta` only, with a `$skiptoken` or `$deltatoken` and no other query), `GET /me/messages/{id}`, `POST /me/messages/{id}/createReply` (draft), `PATCH /me/messages/{id}` limited to `categories`. Any other request throws `GraphDenied` before the network is touched. Paths containing `send`, `sendMail`, `forward`, `reply` (other than `createReply`), `replyAll`, `move`, `copy`, or any `DELETE` are always denied, with one exception: a `move` to Archive or Junk of a message the owner approved, in an answered ask or with a click on an Inbox Junk action (`FR:email-inbox-zero/gate.guard`)
-- **FR:safe.scopes** (P1): The requested scopes are exactly `Mail.Read` (observe mode) or `Mail.ReadWrite` (drafts mode), plus `offline_access`. `Mail.Send` is never requested; a test fails the build if the string appears in `src/email/` outside this requirement's test
+- **FR:safe.allowlist** (P1): `createGraphGuard()` allows only these (method, path) pairs against `https://graph.microsoft.com/v1.0`: `GET /me/mailFolders/{id}/messages` (and `/delta`; Graph's own delta next and delta links that name the folder as `mailFolders('{id}')` are allowed on `/messages/delta` only, with a `$skiptoken` or `$deltatoken` and no other query), `GET /me/messages/{id}`, `POST /me/messages/{id}/createReply` (draft), `PATCH /me/messages/{id}` limited to `categories`. Any other request throws `GraphDenied` before the network is touched. Paths containing `send`, `sendMail`, `forward`, `reply` (other than `createReply`), `replyAll`, `move`, `copy`, or any `DELETE` are always denied, with two exceptions: a `reply` the owner approved with a click on Send (`FR:email-send/send.guard`), and a `move` to Archive or Junk of a message the owner approved, in an answered ask or with a click on an Inbox Junk action (`FR:email-inbox-zero/gate.guard`)
+- **FR:safe.scopes** (P1): The requested scopes are exactly `Mail.Read` (observe mode) or `Mail.ReadWrite` (drafts mode), plus `offline_access`. The triage module never requests `Mail.Send`; a test fails the build if the string appears in `src/email/`. Only the in-app Send setting asks for it (`FR:connect-accounts/scope.send`)
 - **FR:safe.draft-marker** (P1): A draft body starts with `⟦AI draft: review before sending⟧`. Recipients, subject, and thread come from the server's `createReply`, never from model output
 
 ### FR:rules: Prefilter

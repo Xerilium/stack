@@ -26,6 +26,7 @@ import type { AppUpdater } from '../core/app-update';
 import { createClaudeJson } from '../email/llm';
 import { createJunkMailboxes } from '../inbox/junk-mailbox';
 import { createMailReaders } from '../inbox/readers';
+import { createReplyBoxes } from '../inbox/reply-box';
 import type { MailReader } from '../inbox/detail';
 import { createGitHubPrs, githubRepos } from '../api/github';
 import { createLazyPrPage, createPrPage } from '../api/pr-page';
@@ -89,7 +90,7 @@ export function prepareDemo(repo: string, dest: string, reset = false): void {
 
 /** What the UI header shows at all times. */
 /** Mailbox writers for the API. A demo copy gets none: it never writes to a real mailbox. @req FR:inbox-page/junk.never.demo */
-export const mailWrites = (demo: boolean) => (demo ? {} : { junkMailbox: createJunkMailboxes() });
+export const mailWrites = (demo: boolean) => (demo ? {} : { junkMailbox: createJunkMailboxes(), replies: createReplyBoxes() /* @req FR:email-send/send.demo */ });
 
 export interface RepoInfo { mode: 'demo' | 'live'; repo: string; branch: string }
 export interface WebOpts {

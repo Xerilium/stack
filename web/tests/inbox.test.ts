@@ -1,6 +1,6 @@
 /** @req FR:inbox-page/web.view */
 import { describe, expect, it } from 'vitest';
-import { actionsFor, isJunk, junkActions, junkReason, junkToast, splitJunk, openLabel, person, when, doneText, emptyText, SOURCE, statusLine, tomorrow, type ActionInfo, type InboxRow, type SourcesSummary } from '../src/inbox';
+import { replyNote, actionsFor, isJunk, junkActions, junkReason, junkToast, splitJunk, openLabel, person, when, doneText, emptyText, SOURCE, statusLine, tomorrow, type ActionInfo, type InboxRow, type SourcesSummary } from '../src/inbox';
 
 const cat: ActionInfo[] = [{ id: 'reply-draft', label: 'Draft reply', ready: true }, { id: 'mark-done', label: 'Mark done', ready: true }, { id: 'unsubscribe', label: 'Unsubscribe', ready: false }];
 const row = (o: Partial<InboxRow>): InboxRow => ({ id: 'mail-a', source: 'email', account: 'a', from: 'x', subject: 's', receivedAt: '2026-01-01', unread: true, summary: '', suggested: 'unsubscribe', actions: ['unsubscribe', 'reply-draft', 'mark-done'], ...o });
@@ -89,5 +89,13 @@ describe('inbox junk', () => {
     expect(junkToast({ archived: 12, unsubscribed: 0, kept: 1 })).toBe('Archived 12. 1 stays: Stack cannot move that mail.');
     expect(junkToast({ archived: 12, unsubscribed: 4, kept: 3 })).toBe('Unsubscribed from 4. Archived 12. 3 stay: Stack cannot move that mail.');
     expect(junkToast({ archived: 0, unsubscribed: 0, kept: 2 })).toBe('Nothing was archived. 2 stay: Stack cannot move that mail.');
+  });
+});
+
+/** @req FR:email-send/draft.outlook @req FR:email-send/send.web */
+describe('reply box note', () => {
+  it('says when Send is on and when it is off', () => {
+    expect(replyNote({ text: 'x', canSend: true })).toBe('Stack sends this reply when you click Send.');
+    expect(replyNote({ text: 'x', canSend: false, link: 'https://outlook.example.test/d/1' })).toBe('Send is off for this account.');
   });
 });

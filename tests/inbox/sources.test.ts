@@ -65,7 +65,7 @@ describe('buildSources', () => {
   });
 
   // @req FR:connect-accounts/web.nocmd
-  it('help: sign-in is the in-app Connect (no command), read-only by default, drafts kept, and Stack never sends', () => {
+  it('help: sign-in is the in-app Connect (no command), read-only by default, drafts kept, and Stack sends only on a click', () => {
     const s = build({
       probe: probe({ emails: [{ account: 'b@contoso.test', mode: 'drafts' }], clientId: '11111111-2222-3333-4444-555555555555' }),
       records: [{ kind: 'email', account: 'b@contoso.test', at: ago(10), ok: false, error: 'signin-expired' }], accounts: ['d@outlook.com'],
@@ -74,7 +74,7 @@ describe('buildSources', () => {
     expect(by(s, 'email', 'd@outlook.com').command).toBeUndefined();
     expect(by(s, 'email', 'd@outlook.com').needs).toMatch(/read-only/i);
     expect(by(s, 'email', 'd@outlook.com').needs).toMatch(/drafts/i);
-    expect(by(s, 'email', 'd@outlook.com').needs).toMatch(/Stack never sends/);
+    expect(by(s, 'email', 'd@outlook.com').needs).toMatch(/Stack sends only when you click Send/);
     expect(by(s, 'email', 'b@contoso.test')).toMatchObject({ connect: true, mode: 'drafts' });
     expect(by(build({ probe: probe() }), 'email')).toMatchObject({ connect: true });
     expect(by(build({ probe: probe() }), 'email').command).toBeUndefined();

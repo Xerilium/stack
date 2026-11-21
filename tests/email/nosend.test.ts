@@ -10,13 +10,14 @@ const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true })
 // Built from parts so this file never contains the literal it forbids.
 const SEND_SCOPE = 'Mail.' + 'Send';
 
-// @req FR:email-runner/cli.nosend
-describe('no code path sends mail', () => {
-  it('no source file under src names the send scope', () => {
+// @req FR:email-runner/cli.nosend @req FR:email-send/send.runner @req FR:email-send/send.guard.rest
+describe('no code path sends mail but the owner\'s click on Send', () => {
+  it('only the sign-in allowlist names the send scope; no file under src/email does', () => {
     const root = path.join(__dirname, '../../src');
     const files = walk(root);
     expect(files.length).toBeGreaterThan(20);
-    for (const f of files) expect([f, fs.readFileSync(f, 'utf8').toLowerCase().includes(SEND_SCOPE.toLowerCase())]).toEqual([f, false]);
+    // The scope is spelled once, in the allowlist; the Send setting and the runner use that constant. @req FR:connect-accounts/scope.send
+    for (const f of files) expect([f, fs.readFileSync(f, 'utf8').toLowerCase().includes(SEND_SCOPE.toLowerCase())]).toEqual([f, f.endsWith(path.join('graph', 'auth.ts'))]);
   });
 
   it('only the guard deny list names send, forward or reply-all paths; no source calls them', () => {
@@ -24,14 +25,26 @@ describe('no code path sends mail', () => {
     const bad = /\/(sendmail|send|forward|createforward|replyall|createreplyall)\b|\.sendMail\(|\.forward\(|\.replyAll\(/i;
     for (const f of walk(root)) {
       if (f.endsWith(path.join('email', 'guard.ts'))) continue;
-      const code = fs.readFileSync(f, 'utf8').split('\n').filter((l) => !/^\s*(\/\/|\/?\*)/.test(l));
+      // Stack's own API routes for the Send button and the Send setting are not Graph paths.
+      const code = fs.readFileSync(f, 'utf8').split('\n').filter((l) => !/^\s*(\/\/|\/?\*)/.test(l)).map((l) => l.replace(/doc: '\/(inbox-items\/\{id\}|connect)\/send'/g, '').replace(/FR:[\w-]+\/[\w.$-]+/g, ''));
       expect([f, code.filter((l) => bad.test(l))]).toEqual([f, []]);
     }
   });
 
-  it('sign-in refuses the send scope in every spelling, and never offers it', () => {
-    for (const s of [SEND_SCOPE, SEND_SCOPE.toLowerCase(), SEND_SCOPE.toUpperCase(), `https://graph.microsoft.com/${SEND_SCOPE}`, `${SEND_SCOPE}.Shared`, 'Mail.Send.Shared'.toLowerCase()]) {
-      expect(() => assertSafeScopes(['Mail.Read', s])).toThrow(/unsafe_scope/);
+  // @req FR:email-send/send.approve
+  it('only reply-send.ts builds a reply request or an approval', () => {
+    const root = path.join(__dirname, '../../src');
+    for (const f of walk(root)) {
+      const code = fs.readFileSync(f, 'utf8').split('\n').filter((l) => !/^\s*(\/\/|\/?\*)/.test(l)).join('\n').replace(/FR:[\w-]+\/[\w.$-]+/g, '');
+      const own = f.endsWith(path.join('email', 'reply-send.ts')) || f.endsWith(path.join('email', 'guard.ts'));
+      expect([f, /approvedSends|messages\/[^\n]*\/reply\b/.test(code)]).toEqual([f, own]);
+    }
+  });
+
+  it('sign-in accepts the plain send scope only; the CLI never offers it', () => {
+    for (const s of [SEND_SCOPE, SEND_SCOPE.toLowerCase(), `https://graph.microsoft.com/${SEND_SCOPE}`]) { expect(() => assertSafeScopes(['Mail.Read', s], { send: true })).not.toThrow(); expect(() => assertSafeScopes(['Mail.Read', s])).toThrow(/unsafe_scope/); }
+    for (const s of [`${SEND_SCOPE}.Shared`, 'Mail.Send.Shared'.toLowerCase(), `${SEND_SCOPE}.All`, 'MailboxSettings.ReadWrite', `https://outlook.office.com/${SEND_SCOPE}`]) {
+      expect(() => assertSafeScopes(['Mail.Read', s], { send: true })).toThrow(/unsafe_scope/);
     }
     for (const f of ['send', 'sendmail', 'mail.send'] as never[]) expect(() => signInScopes([f])).toThrow();
     expect(signInScopes(['mail', 'drafts', 'calendar'] as never[]).join(' ').toLowerCase()).not.toContain('send');

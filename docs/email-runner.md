@@ -4,10 +4,10 @@ The runner reads your inboxes and writes reply drafts and asks. It cannot send m
 
 ## Safety limits
 
-- The app asks for `Mail.Read` or `Mail.ReadWrite`. It never asks for `Mail.Send`. Sign-in refuses it.
-- Every Graph request passes an allowlist. Send, forward, reply, reply-all, delete and copy are refused.
+- The runner asks for `Mail.Read` or `Mail.ReadWrite`. It never asks for `Mail.Send`. Only the in-app Send setting does (off by default).
+- Every Graph request passes an allowlist. Send, forward, reply-all, delete and copy are refused. A reply is refused unless you clicked Send on that exact text in the Inbox.
 - The only writes: a category tag, a reply draft (`createReply`), and a move to Archive or Junk that you approved.
-- You send every draft yourself from Outlook.
+- You send every draft yourself: from Outlook, or with the Send button in the Inbox when Send is on for the account.
 
 ## Try it with no network
 
@@ -22,7 +22,7 @@ The runner reads your inboxes and writes reply drafts and asks. It cannot send m
 3. Leave the redirect URI empty.
 4. Open Authentication. Set **Allow public client flows** to Yes.
 5. Open API permissions > Add > Microsoft Graph > Delegated: `Mail.ReadWrite` and `offline_access` (add `Calendars.Read` if you use the calendar).
-6. Do not add `Mail.Send`.
+6. Add `Mail.Send` only if you plan to turn on Send in Settings > Accounts.
 7. Copy the Application (client) ID.
 
 ## Human: sign in to each inbox
@@ -32,7 +32,7 @@ Repeat for every inbox. The cache is one file per address in `~/.config/stack/`,
 1. Work or school inbox: `stack graph login --client-id <app id> --account you@company.com --with mail,drafts`.
 2. Personal inbox (outlook.com, hotmail.com, live.com, msn.com): use the same command with the personal address. Stack picks the `consumers` tenant for these domains. Add `--tenant consumers` to force it.
 3. Open the printed URL, enter the code, and sign in as that address. Approve the permissions.
-4. Run `stack graph status --account <address>`. Check the scopes: `Mail.ReadWrite`, no send.
+4. Run `stack graph status --account <address>`. Check the scopes: `Mail.ReadWrite`. The send scope shows only for an account with Send on.
 5. If login says `unsafe_scope`, remove the named permission from the app and revoke the consent already granted (Entra ID > Enterprise applications > the app > Permissions). Then log in again.
 
 ## Human: first pass, then voice

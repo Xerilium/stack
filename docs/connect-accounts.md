@@ -1,6 +1,6 @@
 # Connect Microsoft accounts
 
-Stack reads mail and calendar from Outlook.com and from work or school (Microsoft 365) accounts. You connect each account in the app. No terminal. Stack never sends.
+Stack reads mail and calendar from Outlook.com and from work or school (Microsoft 365) accounts. You connect each account in the app. No terminal. Stack sends only when you click Send.
 
 ## The one-time step (once, for all accounts)
 
@@ -16,7 +16,7 @@ The script (Az PowerShell only):
 - Creates or reuses one app named `Stack (Xerilium)`.
 - Lets personal Microsoft accounts and work or school accounts sign in (`AzureADandPersonalMicrosoftAccount`).
 - Is a public client with the loopback redirect `http://localhost`. It has no secret.
-- Asks only for delegated Microsoft Graph permissions: `Mail.Read`, `Calendars.Read`, `offline_access`, `openid`, `profile`, and `Mail.ReadWrite` (asked for only when you turn on reply drafts for an account). Never `Mail.Send`.
+- Asks only for delegated Microsoft Graph permissions: `Mail.Read`, `Calendars.Read`, `offline_access`, `openid`, `profile`, `Mail.ReadWrite` (asked for only when you turn on reply drafts for an account), and `Mail.Send` (asked for only when you turn on Send for an account).
 - Saves the app id to `~/.config/stack/config.json` as `graph.clientId`.
 
 Without PowerShell 7 and the Az module: install them (`brew install powershell`, then `Install-Module Az -Scope CurrentUser`), then click Run setup again.
@@ -35,7 +35,11 @@ Repeat for each account. Outlook.com, Hotmail and Live accounts are personal; Mi
 
 ## Reply drafts
 
-Each account is read-only by default. Turn on **Reply drafts** to let Stack save reply drafts in that mailbox. Microsoft asks you to accept once. Stack never sends: you send each draft yourself from Outlook. Turn it off to go back to read scopes. Turning it off does not remove the consent you gave Microsoft: to remove it, see account.live.com/consent/Manage (personal) or myapps.microsoft.com (work or school).
+Each account is read-only by default. Turn on **Reply drafts** to let Stack save reply drafts in that mailbox. Microsoft asks you to accept once. Drafts never sends: you send each draft yourself from Outlook, or with Send (below). Turn it off to go back to read scopes. Turning it off does not remove the consent you gave Microsoft: to remove it, see account.live.com/consent/Manage (personal) or myapps.microsoft.com (work or school).
+
+## Send
+
+Send is off by default. Open the **More** menu of an account and turn on **Let Stack send replies when I click Send**. Microsoft asks you to accept once. After that, the Inbox shows a **Send** button on a reply draft. Stack sends one reply for each click, and nothing else. The runner never sends. Turning Send off removes the permission from the account in Stack; it does not remove the consent you gave Microsoft. To remove that too, see account.live.com/consent/Manage (personal) or myapps.microsoft.com (work or school). With Send on, reply drafts stay on this computer until you send them. Turn it off to remove the permission from that account in Stack.
 
 ## Live calendar
 

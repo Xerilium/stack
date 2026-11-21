@@ -177,15 +177,15 @@ const DOCS: Record<string, RouteDoc> = {
   },
   'connect.get': {
     operationId: 'getConnect', summary: 'Whether the one-time Stack app registration exists, and each connected Microsoft account (type, mail, calendar, drafts, state). Never a token. Owner session only: 403 for tokens; 404 on a host without Connect',
-    responses: ok('Accounts', { type: 'object', properties: { setup: { type: 'object', properties: { clientId: { type: 'boolean' } } }, accounts: { type: 'array', items: { type: 'object', properties: { account: { type: 'string' }, type: { type: 'string', enum: ['personal', 'work'] }, mail: { type: 'boolean' }, calendar: { type: 'boolean' }, drafts: { type: 'boolean' }, state: { type: 'string', enum: ['connected', 'expired', 'down', 'error'], description: 'expired: needs sign-in; down: Microsoft not responding (retries on its own)' }, lastOkAt: { type: 'string', format: 'date-time', description: 'The last good live read' }, retryAt: { type: 'string', format: 'date-time', description: 'The next automatic try, while the account is not connected' } } } } } }),
+    responses: ok('Accounts', { type: 'object', properties: { setup: { type: 'object', properties: { clientId: { type: 'boolean' } } }, accounts: { type: 'array', items: { type: 'object', properties: { account: { type: 'string' }, type: { type: 'string', enum: ['personal', 'work'] }, mail: { type: 'boolean' }, calendar: { type: 'boolean' }, drafts: { type: 'boolean' }, send: { type: 'boolean' }, state: { type: 'string', enum: ['connected', 'expired', 'down', 'error'], description: 'expired: needs sign-in; down: Microsoft not responding (retries on its own)' }, lastOkAt: { type: 'string', format: 'date-time', description: 'The last good live read' }, retryAt: { type: 'string', format: 'date-time', description: 'The next automatic try, while the account is not connected' } } } } } }),
   },
   'connect.setup': {
     operationId: 'runConnectSetup', summary: 'Run the one-time app registration (scripts/register-stack-app.ps1, Az PowerShell). Returns a state code only: done, needs-azure-signin, needs-pwsh, failed. Owner session only',
     responses: ok('Setup state', { type: 'object', properties: { state: { type: 'string', enum: ['done', 'needs-azure-signin', 'needs-pwsh', 'failed'] } } }),
   },
   'connect.start': {
-    operationId: 'startConnect', summary: 'Start a Microsoft sign-in: the browser opens the sign-in page (PKCE, loopback), or a device code shows in the page. Read-only scopes; drafts opt-in; never send. 409 until setup has run. Owner session only',
-    desc: { account: 'Mailbox address to sign in (login hint)', drafts: 'Also ask for Mail.ReadWrite (reply drafts)', method: 'browser (default) or device' },
+    operationId: 'startConnect', summary: 'Start a Microsoft sign-in: the browser opens the sign-in page (PKCE, loopback), or a device code shows in the page. Read-only scopes; drafts and Send are opt-in. 409 until setup has run. Owner session only',
+    desc: { account: 'Mailbox address to sign in (login hint)', drafts: 'Also ask for Mail.ReadWrite (reply drafts)', send: 'Also ask for the send permission (the Send setting)', method: 'browser (default) or device' },
     responses: ok('Sign-in session', SESSION, '201'),
   },
   'connect.poll': {
@@ -298,6 +298,21 @@ const DOCS: Record<string, RouteDoc> = {
     operationId: 'inboxItemDetail', summary: 'One inbox item with its full message and thread, read live from the mailbox (read only) and never stored. live is false when this host cannot read the mailbox. Owner session only: 403 for tokens',
     responses: ok('Detail', { type: 'object', properties: { item: { type: 'object' }, live: { type: 'boolean' }, message: { type: 'object' }, thread: { type: 'array', items: { type: 'object' } } } }),
   },
+  'inboxItems.draft': {
+    operationId: 'saveInboxDraft', summary: 'Store the reply draft of an email item on this machine. Sends nothing. 409 when the mailbox is not connected here. Owner session only: 403 for tokens',
+    desc: { text: 'The reply text' },
+    responses: ok('Stored', { type: 'object', properties: { ok: { type: 'boolean' } } }),
+  },
+  'inboxItems.send': {
+    operationId: 'sendInboxReply', summary: 'Send this text as the reply to the item (the owner clicked Send). One guarded reply; recipients, subject and thread come from the server. 409 when Send is off for the account; 502 when the send failed (the draft is kept). Owner session only: 403 for tokens',
+    desc: { text: 'The reply text to send' },
+    responses: ok('Sent', { type: 'object', properties: { ok: { type: 'boolean' } } }),
+  },
+  'connect.send': {
+    operationId: 'setConnectSend', summary: 'Turn Send on for an account (starts a sign-in that also asks for the send permission) or off. Off by default. Sends nothing. Owner session only',
+    desc: { account: 'Mailbox address', on: 'true to turn Send on' },
+    responses: ok('Sign-in session or ok', { type: 'object' }),
+  },
   'inboxJunk.clear': {
     operationId: 'clearInboxJunk', summary: 'Clear the Inbox junk (email items of kind spam or newsletter that the owner did not restore): move each listed item (ids: the junk rows the owner sees) to Archive, with unsubscribe-archive after a one-click unsubscribe where the sender offers one. Junk not in ids is left alone. Never deletes. kept counts items that stay (a read-only account, a failed move). Owner session only: 403 for tokens',
     desc: { ids: 'Item ids of the junk rows shown to the owner' },
@@ -308,7 +323,7 @@ const DOCS: Record<string, RouteDoc> = {
     responses: ok('Sources', { type: 'object', properties: SOURCES_PROPS }),
   },
   'inboxItems.action': {
-    operationId: 'inboxAction', summary: 'Run an inbox action (reply-draft makes a draft and never sends), or with request true file a request for a missing action. Owner session only: 403 for tokens',
+    operationId: 'inboxAction', summary: 'Run an inbox action (reply-draft makes a draft and sends nothing), or with request true file a request for a missing action. Owner session only: 403 for tokens',
     desc: { text: 'Draft text for reply-draft', until: 'ISO date for snooze', request: 'File a GitHub issue (label help wanted) for a missing action' },
     responses: ok('Result', { type: 'object' }),
   },

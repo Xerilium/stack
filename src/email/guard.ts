@@ -3,11 +3,13 @@
  * @req FR:email-triage/safe.allowlist @req FR:email-triage/safe.scopes
  */
 
+import { createHash } from 'crypto';
+
 export const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
 export type WriteMode = 'observe' | 'categories' | 'drafts';
 
-/** Delegated scopes per mode. Read-only until the owner opts in; the send scope is never requested. @req FR:email-triage/safe.scopes */
+/** Delegated scopes per mode. Read-only until the owner opts in; a pass never requests the send scope. @req FR:email-triage/safe.scopes */
 export const SCOPES: Record<WriteMode, readonly string[]> = {
   observe: ['Mail.Read', 'offline_access'],
   categories: ['Mail.ReadWrite', 'offline_access'],
@@ -46,12 +48,16 @@ const DELTA_QUERY = new Set(['$skiptoken', '$deltatoken']);
 const MESSAGE = re(`/me/messages/${ID}`);
 const CREATE_REPLY = re(`/me/messages/${ID}/createReply`);
 const MOVE = re(`/me/messages/(${ID})/move`);
+/** The one send: a reply to one message, exact spelling. @req FR:email-send/send.guard */
+const REPLY = re(`/me/messages/(${ID})/reply`);
+/** What an approved send is bound to: the SHA-256 of the exact reply text. @req FR:email-send/send.guard */
+export const sendDigest = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex');
 /** The only folders an approved move may target; both are reversible in Outlook. @req FR:email-inbox-zero/gate.guard */
 export const MOVE_TARGETS = ['archive', 'junkemail'] as const;
 const hasOnly = (body: unknown, key: string) => !!body && typeof body === 'object' && !Array.isArray(body) && Object.keys(body).length === 1 && key in body;
 
 /** `createGraphGuard()` allows reads, reply drafts and category tags; `mode` narrows it. @req FR:email-triage/safe.allowlist */
-export function createGraphGuard(opts: { mode?: WriteMode; approvedMoves?: ReadonlyMap<string, (typeof MOVE_TARGETS)[number]> } = {}): GraphGuard {
+export function createGraphGuard(opts: { mode?: WriteMode; approvedMoves?: ReadonlyMap<string, (typeof MOVE_TARGETS)[number]>; /** Message id to the digest of the reply text the owner clicked Send on. Only the Inbox send route builds it. @req FR:email-send/send.approve */ approvedSends?: ReadonlyMap<string, string> } = {}): GraphGuard {
   const mode = opts.mode ?? 'drafts';
   const deny = (req: GraphRequest, why: string): never => { throw new GraphDenied(String(req.method), String(req.url), why); };
 
@@ -72,6 +78,10 @@ export function createGraphGuard(opts: { mode?: WriteMode; approvedMoves?: Reado
     // The one exception to the denied verbs: moving a message the owner approved in an answered ask, to Archive or Junk only. @req FR:email-inbox-zero/gate.guard
     const mv = MOVE.exec(path);
     if (method === 'POST' && mv && mode === 'drafts' && hasOnly(req.body, 'destinationId') && typeof (req.body as { destinationId: unknown }).destinationId === 'string' && opts.approvedMoves?.get(mv[1]) === (req.body as { destinationId: unknown }).destinationId && ![...u.searchParams.keys()].length) return;
+    // The other exception: a reply the owner clicked Send on. The id and the exact text must match the approval; the body is the comment only. @req FR:email-send/send.guard @req FR:email-send/send.guard.body
+    const rp = REPLY.exec(path);
+    const comment = hasOnly(req.body, 'comment') ? (req.body as { comment: unknown }).comment : undefined;
+    if (method === 'POST' && rp && typeof comment === 'string' && comment.length > 0 && opts.approvedSends?.get(rp[1]) === sendDigest(comment) && ![...u.searchParams.keys()].length) return;
     if (segs.some((s) => DENY.some((d) => s.toLowerCase() === d || (s.toLowerCase() === `create${d}` && d !== 'reply')))) return deny(req, 'denied verb');
     for (const k of u.searchParams.keys()) if (!QUERY.has(k)) return deny(req, `query ${k}`);
 

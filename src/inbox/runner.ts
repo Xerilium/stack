@@ -1,4 +1,4 @@
-/** Writes `.stack/inbox-items.json` from email pass results and chat connectors. Never sends. @req FR:inbox-page/run.email @req FR:inbox-page/run.chat @req FR:inbox-page/run.store */
+/** Writes `.stack/inbox-items.json` from email pass results and chat connectors. Sends nothing. @req FR:inbox-page/run.email @req FR:inbox-page/run.chat @req FR:inbox-page/run.store */
 import { putAsk } from '../core/asks';
 import type { LifecycleContext } from '../core/lifecycle';
 import { ConflictError } from '../core/storage';

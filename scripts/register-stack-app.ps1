@@ -7,7 +7,7 @@
   Creates (or reuses) one multi-tenant public client app named "Stack (Xerilium)" that personal Microsoft accounts
   (Outlook.com) and work or school accounts can sign in to. Delegated Microsoft Graph permissions only:
   Mail.Read, Calendars.Read, Mail.ReadWrite (asked for only when you turn on reply drafts), offline_access, openid, profile.
-  Never Mail.Send, never an application permission, never a secret.
+  Mail.Send is listed for the Send setting (off by default). Never an application permission, never a secret.
 
   Writes graph.clientId to ~/.config/stack/config.json (keeps every other key). Prints the client id (not a secret).
 
@@ -33,11 +33,12 @@ Set-StrictMode -Version Latest
 $DisplayName = 'Stack (Xerilium)'
 $RedirectUri = 'http://localhost'
 $GraphAppId = '00000003-0000-0000-c000-000000000000'
-# Delegated Microsoft Graph permission ids (Scope). No send, no write beyond drafts, no application roles.
+# Delegated Microsoft Graph permission ids (Scope). Mail.Send is asked for only when the owner turns Send on for an account. No application roles.
 $Scopes = [ordered]@{
   'Mail.Read'       = '570282fd-fa5c-430d-a7fd-fc8dc98a9dca'
   'Calendars.Read'  = '465a38f9-76ea-45b9-9f34-9e8b0d4b0b42'
   'Mail.ReadWrite'  = '024d486e-b451-40bb-833d-3e66d98c5c73'
+  'Mail.Send'       = 'e383f46e-2787-4529-855e-0e479a3ffac0'
   'offline_access'  = '7427e0e9-2fba-42fe-b0c0-848c9e6a8182'
   'openid'          = '37f7f235-527c-4136-accd-4a02d197296e'
   'profile'         = '14dad69e-099b-42c9-810b-d002981feec1'

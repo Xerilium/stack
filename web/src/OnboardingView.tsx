@@ -114,7 +114,7 @@ export function Onboarding({ initial, fetch: f = (u, i) => fetch(u, i), onDone }
     case 'email':
       body = (
         <div class="ob-form">
-          <p class="ob-lede">Optional. Stack reads mail and writes reply drafts. It never sends mail.</p>
+          <p class="ob-lede">Optional. Stack reads mail and writes reply drafts. It sends mail only when you click Send.</p>
           {/* The sign-in runs in the app; no command. @req FR:connect-accounts/web.where @req FR:connect-accounts/web.nocmd */}
           <ConnectAccounts api={connectApi} />
           {s.email && <p class="ob-ok" role="status"><span aria-hidden="true">✓ </span>Signed in</p>}

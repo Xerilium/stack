@@ -80,7 +80,7 @@ export function toAsk(r: TriageResult, opts: { project?: string } = {}): AskPut 
       return {
         ...base, kind: 'review', ask: line('Review draft reply to', m), // A reused draft keeps the recommendation from when it was scored. @req FR:email-voice/score.ask
         ...(r.draft.reused ? {} : { recommend: r.confidence >= SEND_AS_DRAFTED && r.draft.voice?.pass !== false ? 'Send as drafted' : 'Edit then send' }),
-        link: https(r.draft.webLink), default: 'Draft stays in Drafts (nothing is sent)', reversible: true, priority: priority(r),
+        link: https(r.draft.webLink), default: r.draft.local ? 'Draft stays in Stack (nothing is sent)' /* @req FR:email-send/draft.local.ask */ : 'Draft stays in Drafts (nothing is sent)', reversible: true, priority: priority(r),
         ...(r.draft.reused ? {} : detail(redact(voiced(r.draft)).slice(0, DETAIL_CHARS))), ...(why ? { why } : {}),
       };
     case 'needs_decision': {
@@ -99,11 +99,11 @@ export function toAsk(r: TriageResult, opts: { project?: string } = {}): AskPut 
 }
 
 /** The draft already recorded for this conversation's open ask (its link and the detail kept from the draft), or null. @req FR:email-triage/ask.once */
-export async function existingDraft(ctx: LifecycleContext, m: Message): Promise<{ webLink: string; text: string } | null> {
+export async function existingDraft(ctx: LifecycleContext, m: Message, o: { /** A local draft has no link. @req FR:email-send/draft.local */ local?: boolean } = {}): Promise<{ webLink: string; text: string } | null> {
   const cur = await readAsk(ctx, mailKey(m.conversationId));
   const a = cur?.ask;
-  if (!a || a.state === 'done' || a.kind !== 'review' || !a.link) return null;
-  return { webLink: a.link, text: a.detail };
+  if (!a || a.state === 'done' || a.kind !== 'review' || (!a.link && !o.local)) return null;
+  return { webLink: a.link ?? '', text: a.detail };
 }
 
 /**

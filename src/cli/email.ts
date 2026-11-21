@@ -16,7 +16,7 @@ import { createSafeHttp } from '../email/http';
 import type { ClaudeJson } from '../email/llm';
 import { CLAUDE_DOWN_TEXT, CLAUDE_LOGIN_ASK, CLAUDE_LOGIN_TEXT, lockPath, MaxExceeded, ModelUnavailable, readState, rulesFor, runPass, statePath, takeLock } from '../email/runner';
 import { learnVoice, loadVoice, renderStyleGuide, saveVoice, voicePath, type SentMessage } from '../email/voice';
-import { accountCachePath, cacheDir as graphCacheDir, defaultCachePath, FileTokenCache, GraphSignInError, GraphSignInRequired, graphToken, hasScope, listCachePaths } from '../graph/auth';
+import { accountCachePath, cacheDir as graphCacheDir, defaultCachePath, FileTokenCache, GraphSignInError, GraphSignInRequired, graphToken, hasScope, listCachePaths, SEND_SCOPE } from '../graph/auth';
 import { recordSync, type SyncError } from '../inbox/sources';
 import { GraphHttpError, graphTransport, timedFetch } from '../graph/transport';
 import { graphLogger } from '../graph/diag';
@@ -222,7 +222,7 @@ async function emailOne(ctx: LifecycleContext, action: string | undefined, f: Re
     try {
       const max = flag(f, 'max') ? Number(flag(f, 'max')) : undefined;
       if (max !== undefined && (!Number.isInteger(max) || max < 1)) throw new UsageError('--max must be a positive integer');
-      const s = await runPass({ ctx: passCtx, account, transport, mode, max, dryRun: dry, dataDir: d.dataDir, ...(d.llm ? { llm: d.llm } : {}), http: createSafeHttp(), onResults: async (r) => { await syncInbox(ctx, { account, results: r }); }, project: flag(f, 'project') });
+      const s = await runPass({ ctx: passCtx, account, transport, mode, max, dryRun: dry, dataDir: d.dataDir, ...(d.llm ? { llm: d.llm } : {}), http: createSafeHttp(), localDrafts: hasScope(t.scopes, SEND_SCOPE), onResults: async (r) => { await syncInbox(ctx, { account, results: r }); }, project: flag(f, 'project') });
       if (!dry && s.modelCalls > 0 && s.modelErrors === 0) await handleAsk(ctx, CLAUDE_LOGIN_ASK, { outcome: 'resolved', note: 'claude works again' }, 'email-triage').catch((e) => { if (!(e instanceof NotFoundError)) throw e; });
       if (!dry) await syncRecord(ctx, account, signIn, null);
       // A sign-in without a mailbox name (first-run onboarding) takes the one this pass worked on, so --all and the Inbox find it.
