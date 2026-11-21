@@ -34,13 +34,15 @@ Owner needs every commit on main to reach the live branch without a rebase or a 
   - **FR:merge.check.conflict** (P1): Conflicting files MUST answer `conflict` with the files, and `mergeFrom` MUST NOT start the merge
 - **FR:merge.dirty** (P1): An uncommitted or untracked file in the work tree that `<base>` also changed MUST answer `blocked` with those files, and `mergeFrom` MUST NOT start the merge
   - Uncommitted app writes (a pending batch) are such files until the batch commits
+  - **FR:merge.dirty.paths** (P1): Paths MUST be compared with renames off and NUL-separated, so a file main renames or a non-ASCII name still blocks
   - **FR:merge.dirty.staged** (P1): A staged file MUST also answer `blocked` with the staged files, since git merges only when the index matches `HEAD`
 - **FR:merge.behind** (P1): Else `drift` MUST answer `behind` (a merge would be clean) and change nothing
 - **FR:merge.run** (P1): Else `mergeFrom` MUST run `git merge --no-ff --no-edit <remote>/<base>` (a merge commit, so a later sync rebase keeps the base commits as they are; no rebase, no force) and answer `merged` with `behind` 0
   - **FR:merge.run.keep** (P1): Uncommitted files that `<base>` did not change MUST stay as they were, staged state included
-  - **FR:merge.run.abort** (P1): A merge that fails anyway MUST be aborted (`git merge --abort` when a merge is in progress), leave `HEAD`, the index and the work tree as before, and answer `conflict` with the unmerged files
+  - **FR:merge.run.abort** (P1): A merge that fails anyway MUST be aborted (`git merge --abort` when a merge is in progress), leave `HEAD`, the index and the work tree as before, and answer `conflict` with the unmerged files, or `error` with the message when no file is unmerged (a hook, a lock)
 - **FR:merge.push** (P1): After a merge, `mergeFrom` MUST push the live branch to the remote once, without force; a failed push MUST NOT undo the merge (the next flush pushes it) and sets `message`
-- **FR:merge.live** (P1): Before it merges the base, `mergeFrom` MUST bring in `<remote>/<live branch>` the same way (checks first, fast-forward allowed), so the push after the merge is a fast-forward and no later sync rebases a merge
+- **FR:merge.live** (P1): Before it merges the base, `mergeFrom` MUST bring in `<remote>/<live branch>` the same way (checks first, fast-forward allowed), so the push after the merge is a fast-forward
+  - **FR:merge.live.keep** (P1): When `HEAD` holds an unpushed merge commit, a `GitStorage` sync MUST merge `<remote>/<live branch>` instead of rebasing onto it, so the merge and main's commits stay as they are
 - **FR:merge.lock** (P1): `mergeFrom` MUST run in the storage write queue under `stack-write.lock` (`FR:storage-git/git.concurrency`)
 
 ### FR:host: Host loop
@@ -53,6 +55,7 @@ Owner needs the host to merge on its own so that drift never waits for him to no
   - Interval `intervalMs` (number). Default: 180000
 - **FR:host.start** (P1): The loop MUST tick once at start and every `intervalMs` after, one tick at a time
 - **FR:host.flush** (P2): When a tick answers `blocked` and the storage batches commits with writes pending, the tick MUST flush the batch and merge once more
+  - **FR:host.flush.fail** (P2): A failed flush MUST keep the `blocked` state and its files, with the flush error as `message`
 - **FR:host.errors** (P1): A tick that throws MUST keep running the loop and answer `error` with the message
 - **FR:host.event** (P2): `onState` MUST hear each new state
 - **FR:host.wire** (P1): `startWeb` MUST start the loop for a storage with `mergeFrom`, and stop it on close
@@ -65,7 +68,7 @@ Owner needs the host to merge on its own so that drift never waits for him to no
 Owner needs a clear warning when the live branch cannot keep up with main so that he fixes it before he trusts the list.
 
 - **FR:banner.component** (P1): `DriftBanner` (ui-kit) MUST show nothing unless the state is `conflict`, `blocked` or `error`
-- **FR:banner.text** (P1): The banner MUST read `Task store out of sync with main: <n> commit(s) behind`, then the files (`Conflicts: a, b` or `Uncommitted: a, b`), or the error message
+- **FR:banner.text** (P1): The banner MUST read `Task store out of sync with <base branch>: <n> commit(s) behind` (`main`, or the live branch when its own remote copy is what conflicts), then the files (`Conflicts: a, b` or `Uncommitted: a, b`), or the error message
 - **FR:banner.role** (P1): The banner MUST be a `role=alert` region
 - **FR:banner.app** (P1): The app MUST show the banner at the top of the main pane from the `drift` of `GET /api/sync`
 

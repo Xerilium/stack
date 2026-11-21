@@ -29,8 +29,10 @@ export function startStoreSync(storage: Mergeable, o: StoreSyncOpts = {}): Store
     try {
       s = await storage.mergeFrom(base);
       if (s?.state === 'blocked' && storage.flush && (storage.pending?.().count ?? 0) > 0) {
-        await storage.flush();
-        s = await storage.mergeFrom(base);
+        // A failed flush keeps the blocked state and its files; the flush error rides along.
+        let flushed = true;
+        try { await storage.flush(); } catch (e) { flushed = false; s = { ...s, message: e instanceof Error ? e.message : String(e) }; }
+        if (flushed) s = await storage.mergeFrom(base);
       }
     } catch (e) {
       s = { base: last?.base ?? base, state: 'error', behind: last?.behind ?? 0, files: [], at: new Date().toISOString(), message: e instanceof Error ? e.message : String(e) };

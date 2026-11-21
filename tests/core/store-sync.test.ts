@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'fs';
+import { chmodSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { GitStorage } from '../../src/core/storage-git';
 import { BatchedGitStorage } from '../../src/core/storage-batch';
@@ -161,6 +161,47 @@ describe('GitStorage.mergeFrom', () => {
     pushMain(r, 'tasks/b.md', 'B-main\n');
     expect(await new GitStorage(r.live, OPTS).drift('main', { fetch: false })).toMatchObject({ state: 'ok', behind: 0 });
   });
+
+  // @req FR:store-sync/merge.dirty.paths
+  it('blocked: an uncommitted file that main renames away', async () => {
+    const r = setup();
+    put(r.live, 'tasks/b.md', 'B-unsaved\n');
+    git(r.main, 'mv', 'tasks/b.md', 'tasks/b2.md'); git(r.main, 'commit', '-q', '-m', 'rename'); git(r.main, 'push', '-q', 'origin', 'main');
+    expect(await new GitStorage(r.live, OPTS).mergeFrom('main')).toMatchObject({ state: 'blocked', files: ['tasks/b.md'] });
+    expect(read(r.live, 'tasks/b.md')).toBe('B-unsaved\n');
+  });
+
+  // @req FR:store-sync/merge.run.abort
+  it('a merge a hook refuses: error, no merge left behind', async () => {
+    const r = setup();
+    pushMain(r, 'tasks/c.md', 'C\n');
+    put(r.live, '.git/hooks/pre-merge-commit', '#!/bin/sh\necho no merges >&2\nexit 1\n');
+    chmodSync(join(r.live, '.git/hooks/pre-merge-commit'), 0o755);
+    const was = head(r.live);
+    const st = await new GitStorage(r.live, OPTS).mergeFrom('main');
+    expect(st).toMatchObject({ state: 'error', files: [] });
+    expect(st!.message).toMatch(/no merges/);
+    expect(head(r.live)).toBe(was);
+    expect(merging(r.live)).toBe(false);
+    expect(status(r.live)).toBe('');
+  });
+
+  // @req FR:store-sync/merge.live.keep
+  it('an unpushed merge survives a later save: the sync merges the remote live branch instead of rebasing', async () => {
+    const r = setup();
+    pushMain(r, 'tasks/b.md', 'B-main\n');
+    git(r.live, 'fetch', '-q', 'origin');
+    git(r.live, 'merge', '-q', '--no-ff', '--no-edit', 'origin/main'); // merged, push lost
+    const other = cloneLive(r, 'other');
+    commit(other, 'tasks/d.md', 'D\n'); git(other, 'push', '-q', 'origin', 'stack/live');
+    const s = new BatchedGitStorage(r.live, { ...OPTS, idleMs: 60_000 });
+    await s.write('tasks/a.md', 'A-app\n', { message: 'Complete: A' });
+    await s.close();
+    git(r.bare, 'merge-base', '--is-ancestor', 'main', 'stack/live'); // main's commits kept as they are
+    expect(git(r.bare, 'show', 'stack/live:tasks/a.md')).toBe('A-app\n');
+    expect(git(r.bare, 'show', 'stack/live:tasks/d.md')).toBe('D\n');
+    expect(status(r.live)).toBe('');
+  });
 });
 
 describe('startStoreSync', () => {
@@ -195,6 +236,18 @@ describe('startStoreSync', () => {
       expect(st).toMatchObject({ state: 'conflict', files: ['tasks/b.md'] });
       expect(read(r.live, 'tasks/b.md')).toContain('B-app');
     } finally { await loop.stop(); await s.close(); }
+  });
+
+  // @req FR:store-sync/host.flush.fail
+  it('a failed flush keeps the blocked state and its files', async () => {
+    const blocked = { base: 'origin/main', state: 'blocked' as const, behind: 2, files: ['tasks/b.md'], at: 'x' };
+    let merges = 0;
+    const fake = { mergeFrom: async () => { merges++; return blocked; }, pending: () => ({ count: 1 }), flush: async () => { throw new Error('remote ahead; commit first'); } };
+    const loop = startStoreSync(fake, { intervalMs: 60_000 });
+    try {
+      expect(await loop.tick()).toMatchObject({ state: 'blocked', files: ['tasks/b.md'], message: 'remote ahead; commit first' });
+      expect(merges).toBe(1);
+    } finally { await loop.stop(); }
   });
 
   // @req FR:store-sync/host.errors

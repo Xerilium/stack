@@ -173,11 +173,15 @@ export class GitStorage extends FsStorage {
       const after = (await this.tryGit('rev-parse', '-q', '--verify', 'refs/stash'))?.trim() ?? null;
       stash = after !== before ? after : null; // never touch a pre-existing user stash
     }
+    // An unpushed merge (main into the live branch) is never rebased: a rebase would drop it and copy main's commits.
+    // @req FR:store-sync/merge.live.keep
+    const merges = ((await this.tryGit('rev-list', '--merges', '--count', `${this.ref}..HEAD`)) ?? '0').trim() !== '0';
     try {
-      await this.git('rebase', '-q', this.ref);
+      if (merges) await this.git('merge', '-q', '--no-edit', this.ref);
+      else await this.git('rebase', '-q', this.ref);
     } catch (e) {
       const conflict = await this.rebaseInProgress() || await this.unmerged();
-      if (conflict) await this.tryGit('rebase', '--abort');
+      if (conflict) await this.tryGit(merges ? 'merge' : 'rebase', '--abort');
       if (stash) await this.applyStash(stash);
       if (conflict) return false;
       throw e;
@@ -254,13 +258,14 @@ export class GitStorage extends FsStorage {
     }));
   }
 
-  /** Merge `d.base`; null when it landed, else the conflict state after a clean abort. @req FR:store-sync/merge.run.abort */
+  /** Merge `d.base`; null when it landed, else the conflict or error state after a clean abort. @req FR:store-sync/merge.run.abort */
   private async merge(d: DriftState, flags: string[]): Promise<DriftState | null> {
     try { await this.git('merge', '-q', ...flags, '--no-edit', d.base); return null; } catch (e) {
       const files = ((await this.tryGit('diff', '--name-only', '--diff-filter=U')) ?? '').split('\n').filter(Boolean);
       const p = (await this.tryGit('rev-parse', '--git-path', 'MERGE_HEAD'))?.trim();
       if (p && existsSync(isAbsolute(p) ? p : join(this.root, p))) await this.tryGit('merge', '--abort');
-      return { ...d, state: 'conflict', files, message: (e as Error).message };
+      // Only unmerged files make a conflict; a hook, a lock or a refused merge is an error.
+      return { ...d, state: files.length ? 'conflict' : 'error', files, message: (e as Error).message };
     }
   }
 
@@ -282,12 +287,12 @@ export class GitStorage extends FsStorage {
     if (offline !== undefined) return out('offline', behind, [], offline);
     if (behind === 0) return out('ok', 0);
     // merge-tree writes objects only: no file, index or ref changes. Exit 1 with conflicts; the names follow the tree id.
-    const tree = await new Promise<{ code: number; out: string }>((ok) => execFile('git', ['merge-tree', '--write-tree', '--name-only', '--no-messages', 'HEAD', ref], {
-      cwd: this.root, encoding: 'utf8', env: { ...(this.env ?? process.env), GIT_TERMINAL_PROMPT: '0' },
+    const tree = await new Promise<{ code: number; out: string }>((ok) => execFile('git', ['merge-tree', '--write-tree', '--name-only', '--no-messages', '-z', 'HEAD', ref], {
+      cwd: this.root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: { ...(this.env ?? process.env), GIT_TERMINAL_PROMPT: '0' },
     }, (err, stdout) => ok({ code: err ? (typeof (err as { code?: unknown }).code === 'number' ? (err as { code: number }).code : 2) : 0, out: stdout })));
-    if (tree.code === 1) return out('conflict', behind, [...new Set(tree.out.split('\n').slice(1).filter(Boolean))]);
+    if (tree.code === 1) return out('conflict', behind, [...new Set(tree.out.split('\0').slice(1).filter(Boolean))]);
     if (tree.code !== 0) throw new StorageError(`git merge-tree failed: ${tree.out.trim() || 'needs git 2.38 or later'}`);
-    const theirs = new Set(((await this.git('diff', '--name-only', `HEAD...${ref}`))).split('\n').filter(Boolean));
+    const theirs = new Set(((await this.git('diff', '--name-only', '--no-renames', '-z', `HEAD...${ref}`))).split('\0').filter(Boolean));
     const dirty: string[] = [];
     const rows = (await this.git('status', '--porcelain', '-z', '-uall')).split('\0');
     for (let i = 0; i < rows.length; i++) { const r = rows[i]; if (!r) continue; dirty.push(r.slice(3)); if (r[0] === 'R' || r[0] === 'C') dirty.push(rows[++i]); } // a rename names its source next
