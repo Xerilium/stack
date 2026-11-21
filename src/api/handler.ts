@@ -3,6 +3,7 @@
  * @req FR:api/handler.@function
  */
 import { getDefaults, MAILBOX, type StackConfig } from '../core/config';
+import type { DriftState } from '../core/storage-git';
 import { cleanOverrides, daySchedule, dayScheduleOn, type ScheduleOverrides } from '../core/schedule';
 import {
   addProject, addTask, completeTask, dailyGoal, nextStep, rankStack, removeCompleted, resumeTask, setProperties, skipTask, startTask, suspendTask,
@@ -67,6 +68,8 @@ export type Authorize = (req: Request, route: RouteInfo) => AuthDecision | Promi
 
 export interface ApiDeps {
   storage: Storage;
+  /** The host's main → live branch sync; its last state rides on `GET /sync`. @req FR:store-sync/host.api */
+  storeSync?: { state(): DriftState | null };
   config?: StackConfig;
   now?: () => Date;
   engine?: string;
@@ -1619,7 +1622,8 @@ export const ROUTES: Route[] = [
       const b = batchOf(c.deps.storage);
       // `live` changes when live state outside the repo (the PR priority store) changes, so a poller reloads Needs you. @req FR:pr-priority/needs.poll
       const p = b?.pending();
-      return json(200, { rev: await revOf(c.deps.storage), ...(p ? { pending: p.count, since: p.since?.toISOString() ?? null } : {}), ...(c.deps.prPriority ? { live: c.deps.prPriority.stamp() } : {}) });
+      const drift = c.deps.storeSync?.state(); // @req FR:store-sync/host.api
+      return json(200, { rev: await revOf(c.deps.storage), ...(p ? { pending: p.count, since: p.since?.toISOString() ?? null } : {}), ...(c.deps.prPriority ? { live: c.deps.prPriority.stamp() } : {}), ...(drift ? { drift } : {}) });
     },
   },
   {

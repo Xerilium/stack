@@ -43,6 +43,7 @@ import type { SourceProbe } from '../inbox/sources';
 import { loadConfig } from '../core/config';
 import type { Storage } from '../core/storage';
 import { GitStorage } from '../core/storage-git';
+import { startStoreSync, type StoreSync, type StoreSyncOpts } from '../core/store-sync';
 import { ALL_KINDS, watchRepo, type WatchOptions } from './watch';
 import { createRunManager, createSdkDriver, type AgentRuns } from '../agents';
 import { createAuth, type DeviceService, type DeviceView, type TokenService } from '../api';
@@ -99,6 +100,8 @@ export interface WebOpts {
   ics?: string;
   /** The task storage; default a direct-commit `GitStorage` on `dir`. A storage with `close()` (batched live mode) is closed, and so flushed, on shutdown. @req FR:cli/web.batch */
   storage?: Storage & { close?(): Promise<void> };
+  /** Main → live branch sync for a git storage (`mergeFrom`); `false` turns it off. Never in demo mode. @req FR:store-sync/host.wire */
+  storeSync?: StoreSyncOpts | false;
   /** Agent runs for the sessions routes; omitted means the Claude Agent SDK driver, `false` means none (the routes are 404). @req FR:agent-sessions/driver.interface */
   agents?: AgentRuns | false;
   /** Opens a URL in the system browser for Connect; default the OS opener. The desktop shell passes `shell.openExternal`. @req FR:connect-accounts/flow.browser */
@@ -357,7 +360,8 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
     ...(agents && inventory ? { leads: { runs: agents, inventory, readDef: async (p: string) => { const f = resolve(o.dir, p); if (!f.startsWith(resolve(o.dir) + sep)) return null; try { return readFileSync(f, 'utf8'); } catch { return null; } } } } : {}) };
   const deliveryLoop = dd && dd.settings.mode === 'claude' ? startDeliveryLoop(dd, { intervalMs: o.delivery ? o.delivery.intervalMs : undefined, onError: (e) => console.error(`delivery: ${e instanceof Error ? e.message : 'error'}`) }) : undefined;
   const delivery = dd ? { status: (ref: string) => deliveryStatus(dd, ref, inventory), summary: () => ({ mode: dd.settings.mode, login: dd.store.read().login.state }), login: () => (o.delivery && o.delivery.login ? o.delivery.login() : startLogin()) } : undefined;
-  const apiDeps = { storage, config, reports, inventory, agentScan, delivery, pris, prPriority, feedback, qm, designReview: o.designReview ?? createDesignReview({ filer: ghIssueFiler() }), ...(prPage ?? {}), ...(prServers ? { prServers } : {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), onError: (e: unknown) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe({ health }), mailReader: o.mailReader ?? createMailReaders(), ...mailWrites(o.info?.mode === 'demo'), ...(o.app ? { app: o.app } : {}), ...(connect ? { connect } : {}) };
+  const sync: { loop?: StoreSync } = {}; // started below, once the watcher exists
+  const apiDeps = { storage, storeSync: { state: () => sync.loop?.state() ?? null }, config, reports, inventory, agentScan, delivery, pris, prPriority, feedback, qm, designReview: o.designReview ?? createDesignReview({ filer: ghIssueFiler() }), ...(prPage ?? {}), ...(prServers ? { prServers } : {}), live, briefs: new BriefStore(laneHome), facts: new FactsStore(laneHome), onError: (e: unknown) => console.error(e), prs, calendar: cal.provider, agents, brief: createClaudeJson(), inboxProbe: o.inboxProbe ?? cachedProbe({ health }), mailReader: o.mailReader ?? createMailReaders(), ...mailWrites(o.info?.mode === 'demo'), ...(o.app ? { app: o.app } : {}), ...(connect ? { connect } : {}) };
   const api = createApiHandler({ ...apiDeps, authorize: () => true });
   // Device self endpoints (push subscription) run as the device token through the auth-security hook; no owner list, so no session ever matches. @req FR:tailnet-access/gate.scope
   const auth = remoteAuth ? createAuth({ owners: [], tokens: remoteAuth.tokens, devices: remoteAuth.devices, vapidPublicKey: process.env.STACK_VAPID_PUBLIC_KEY?.trim() || undefined }) : undefined;
@@ -378,6 +382,21 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
   const extra = headersFrom(o.webDir);
   // @req FR:ask-queue/live.watch
   const watcher = watchRepo(o.dir, { debounceMs: o.watch?.debounceMs, onRaw: o.watch?.onRaw, watchFn: o.watch?.watchFn });
+  // Main → live branch: merged at start and every few minutes; a new state tells open pages (the drift banner).
+  // @req FR:store-sync/host.wire @req FR:store-sync/host.wire.demo @req FR:store-sync/host.event.page
+  const mergeable = typeof (storage as { mergeFrom?: unknown }).mergeFrom === 'function' ? storage as Storage & Parameters<typeof startStoreSync>[0] : null;
+  let lastDrift = '';
+  sync.loop = mergeable && o.storeSync !== false && o.info?.mode !== 'demo' ? startStoreSync(mergeable, {
+    ...(o.storeSync || {}),
+    onState: (s) => {
+      if (o.storeSync) o.storeSync.onState?.(s);
+      const key = `${s.state}:${s.behind}:${s.files.join(',')}`;
+      if (key === lastDrift) return;
+      lastDrift = key;
+      if (s.state === 'conflict' || s.state === 'blocked' || s.state === 'error') console.error(`store sync: ${s.state} against ${s.base} (${s.behind} behind)${s.files.length ? `: ${s.files.join(', ')}` : ''}${s.message ? ` - ${s.message}` : ''}`);
+      for (const f of sinks) f('change', { rev: watcher.rev(), kinds: ['sync'] });
+    },
+  }) : undefined;
   // A new message is a task file change (tasks/.stack/inbox): deliver it now instead of at the next tick.
   const offDelivery = deliveryLoop ? watcher.on((c) => { if (c.kinds.includes('tasks')) deliveryLoop.kick(); }) : undefined;
   // @req FR:ask-routing/deliver.loop: every answer goes to the asking session; an answer is a task file change, so it goes at once.
@@ -581,12 +600,12 @@ export async function startWeb(o: WebOpts): Promise<WebServer> {
     port = (server.address() as { port: number }).port;
     for (const a of addrs) { const s = createServer(handler); servers.push(s); await listen(s, port, a); }
   } catch (e) {
-    await stopAll(); offPending?.(); offReports(); offQm(); unwatchQm(); watcher.close();
+    await stopAll(); await sync.loop?.stop(); offPending?.(); offReports(); offQm(); unwatchQm(); watcher.close();
     throw e;
   }
   // @req FR:cli/web.batch.shutdown
   const close = async () => {
-    offPending?.();
+    await sync.loop?.stop(); offPending?.();
     offReports(); offPrPri(); unwatchPrPri();
     offPris();
     prPage?.prBoard.stop();

@@ -39,6 +39,7 @@ import { usePins } from './pins';
 import { useUnsaved } from './unsaved';
 import { useUpdates } from './update';
 import { Skeleton } from './ui/Skeleton';
+import { DriftBanner } from './ui/DriftBanner';
 import { UpdatesDialog } from './UpdatesView';
 import type { RankItem } from './home';
 import { useSessions } from './useSessions';
@@ -1056,6 +1057,7 @@ export function App() {
       </nav>
       <Main class="main" title={offline ? 'Offline' : undefined}>
         {shellHead(<>
+        {/* @req FR:store-sync/banner.app */}<DriftBanner drift={unsaved.drift} />
         {offline && <div class="banner offline" role="status" data-testid="offline-banner">Offline · {savedAt ? `showing ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} copy` : 'showing the saved copy'}</div>}
         <div class="phone-brand" title={info ? `${info.repo} · ${info.branch}` : undefined}><Mark /><span class="brand-text">Stack{local && info?.mode !== 'live' ? ' [DEMO]' : ''}</span>{unsavedChip}{updateChip}<FeedbackButton compact /><PrsButton api={api} where="phone" /></div>
         </>)}
